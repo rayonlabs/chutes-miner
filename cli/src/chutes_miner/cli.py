@@ -60,6 +60,7 @@ def display_local_inventory(inventory):
         if server["deployments"]:
             deploy_table = Table(title="Active Deployments", box=box.ROUNDED)
             deploy_table.add_column("Model Name")
+            deploy_table.add_column("Chute ID")
             deploy_table.add_column("GPUs")
             deploy_table.add_column("Port")
             deploy_table.add_column("Created")
@@ -72,6 +73,7 @@ def display_local_inventory(inventory):
                 )
                 deploy_table.add_row(
                     deploy["chute"]["name"],
+                    deploy["chute"]["chute_id"],
                     str(len(deploy["gpus"])),
                     str(deploy["port"]),
                     format_date(deploy["created_at"]),
