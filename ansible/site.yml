@@ -1,3 +1,22 @@
+- name: Ensure no duplicate WireGuard IPs
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Gather Wireguard IPs
+      set_fact:
+        wireguard_ips: "{{ wireguard_ips | default([]) + [hostvars[item].wireguard_ip] }}"
+      loop: "{{ groups['all'] }}"
+      when: hostvars[item].wireguard_ip is defined
+
+    - name: Check if there are duplicates in IP list
+      set_fact:
+        wireguard_ip_duplicates: "{{ wireguard_ips | unique | length != wireguard_ips | length }}"
+
+    - name: Fail if there are duplicates
+      fail:
+        msg: "Duplicate Wireguard IP address found"
+      when: wireguard_ip_duplicates
+
 - name: Setup Kubernetes Node
   hosts: all
   become: yes
