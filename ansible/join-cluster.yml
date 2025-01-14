@@ -27,6 +27,10 @@
 - name: Get join command from primary node
   hosts: all
   tasks:
+    - name: Make sure node advertises the WG IP
+      shell: microk8s kubectl annotate node {{ inventory_hostname }} "kubeadm.alpha.kubernetes.io/internal-ip={{ wireguard_ip }}" --overwrite
+      when: is_primary | bool
+
     - name: Check if node is already part of cluster
       shell: microk8s status | grep "acting as a node in a cluster"
       register: cluster_check

@@ -367,9 +367,18 @@
             src: /var/snap/microk8s/current/args/kubelet
           register: kubelet_args
 
+        - name: Get current kube-apiserver args
+          slurp:
+            src: /var/snap/microk8s/current/args/kube-apiserver
+          register: kubeapi_args
+
         - name: Check if node-ip is already configured
           set_fact:
             has_node_ip: "{{ (kubelet_args.content | b64decode) is regex('--node-ip=') }}"
+
+        - name: Check if advertise-addr is already configured
+          set_fact:
+            has_adv_ip: "{{ (kubeapi_args.content | b64decode) is regex('--advertise-address=') }}"
 
         - name: Add node-ip to kubelet args
           lineinfile:
@@ -379,11 +388,19 @@
           when: not has_node_ip
           register: kubelet_modified
 
+        - name: Add advertise-address to to kubeapi args
+          lineinfile:
+            path: /var/snap/microk8s/current/args/kube-apiserver
+            line: "--advertise-address={{ wireguard_ip }}"
+            create: yes
+          when: not has_adv_ip
+          register: kubeapi_modified
+
         - name: Restart kubelet if config changed
           systemd:
             name: snap.microk8s.daemon-kubelite
             state: restarted
-          when: kubelet_modified.changed
+          when: kubelet_modified.changed or kubeapi_modified.changed
 
     - name: Setup Kubernetes access for user
       block:
