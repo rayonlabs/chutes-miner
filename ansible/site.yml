@@ -34,7 +34,7 @@
       when: amd_sev | default(false)
 
     - name: Non-TEE CUDA installation
-      ansible.builtin.include_tasks: tasks/non_tee_cuda.yaml
+      ansible.builtin.include_tasks: tasks/non_tee_gpu_setup.yaml
       when: not amd_sev | default(false) and enable_gpu | bool
 
     - name: Microk8s installation and configuration
@@ -156,3 +156,40 @@
           perl -pi -e 's/^\s*disabled_plugins\s*=/##disabled_plugins = []/g' /etc/containerd/config.toml
           systemctl restart containerd
         fi
+
+    - name: SEV | Clone NVIDIA GPU Admin Tools repository if needed
+      ansible.builtin.git:
+        repo: https://github.com/nvidia/gpu-admin-tools
+        dest: "{{ shared_dir }}/nvtrust/host_tools/python/gpu-admin-tools"
+        version: main
+        force: no
+
+    - name: SEV | Detect NVIDIA GPU PCI BDF addresses
+      ansible.builtin.shell: |
+        nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader
+      register: nvidia_gpu_bdfs_result
+      changed_when: false
+      failed_when: nvidia_gpu_bdfs_result.rc != 0
+      check_mode: no
+
+    - name: SEV | Ensure GPU CC mode is devtools for each NVIDIA GPU
+      become: yes
+      loop: "{{ nvidia_gpu_bdfs_result.stdout_lines | default([]) }}"
+      loop_control:
+        loop_var: gpu_bdf
+      when: nvidia_gpu_bdfs_result.stdout_lines | default([]) | length > 0
+      block:
+        - name: "Check current CC mode for GPU {{ gpu_bdf }}"
+          ansible.builtin.command:
+            cmd: "python3 ./nvidia_gpu_tools.py --gpu-bdf={{ gpu_bdf }} --get-cc-mode"
+            chdir: "{{ shared_dir }}/nvtrust/host_tools/python/gpu-admin-tools"
+          register: current_gpu_mode
+          changed_when: false
+          failed_when: false
+
+        - name: "Set CC mode to devtools for GPU {{ gpu_bdf }} if not already set"
+          ansible.builtin.command:
+            cmd: "python3 ./nvidia_gpu_tools.py --gpu-bdf={{ gpu_bdf }} --set-cc-mode=devtools --reset-after-cc-mode-switch"
+            chdir: "{{ shared_dir }}/nvtrust/host_tools/python/gpu-admin-tools"
+          when: "'devtools' not in current_gpu_mode.stdout | default('')"
+          register: set_gpu_mode_result
