@@ -22,7 +22,7 @@
 - name: Preflight | Verify required SEV flags are present
   ansible.builtin.fail:
     msg: "CPU Flags line missing or does not contain required flag '{{ item }}'. Flags line: {{ cpu_flags_line }}"
-  when: "' ' ~ item ~ ' ' not in cpu_flags_line"
+  when: item not in cpu_flags_line
   loop: "{{ required_cpu_flags }}"
 
 - name: Preflight | Checks passed

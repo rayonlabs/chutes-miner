@@ -163,33 +163,19 @@
         dest: "{{ shared_dir }}/nvtrust/host_tools/python/gpu-admin-tools"
         version: main
         force: no
+      when: amd_sev | default(false)
 
     - name: SEV | Detect NVIDIA GPU PCI BDF addresses
-      ansible.builtin.shell: |
-        nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader
+      ansible.builtin.shell: nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader
       register: nvidia_gpu_bdfs_result
       changed_when: false
-      failed_when: nvidia_gpu_bdfs_result.rc != 0
+      failed_when: amd_sev | default(false) and nvidia_gpu_bdfs_result.rc != 0
       check_mode: no
 
-    - name: SEV | Ensure GPU CC mode is devtools for each NVIDIA GPU
-      become: yes
+    - name: SEV | Configure NVIDIA GPU TEE Mode for each GPU
+      ansible.builtin.include_tasks: tasks/set_gpu_mode.yml
       loop: "{{ nvidia_gpu_bdfs_result.stdout_lines | default([]) }}"
       loop_control:
         loop_var: gpu_bdf
-      when: nvidia_gpu_bdfs_result.stdout_lines | default([]) | length > 0
-      block:
-        - name: "Check current CC mode for GPU {{ gpu_bdf }}"
-          ansible.builtin.command:
-            cmd: "python3 ./nvidia_gpu_tools.py --gpu-bdf={{ gpu_bdf }} --get-cc-mode"
-            chdir: "{{ shared_dir }}/nvtrust/host_tools/python/gpu-admin-tools"
-          register: current_gpu_mode
-          changed_when: false
-          failed_when: false
-
-        - name: "Set CC mode to devtools for GPU {{ gpu_bdf }} if not already set"
-          ansible.builtin.command:
-            cmd: "python3 ./nvidia_gpu_tools.py --gpu-bdf={{ gpu_bdf }} --set-cc-mode=devtools --reset-after-cc-mode-switch"
-            chdir: "{{ shared_dir }}/nvtrust/host_tools/python/gpu-admin-tools"
-          when: "'devtools' not in current_gpu_mode.stdout | default('')"
-          register: set_gpu_mode_result
+      when: amd_sev | default(false) and nvidia_gpu_bdfs_result.stdout_lines | default([]) | length > 0
+      register: set_gpu_mode_results
