@@ -182,5 +182,5 @@
 
     - name: Include GPU CC Mode Enablement tasks if enable_gpu_cc_mode is true
       ansible.builtin.include_tasks: tasks/enable_gpu_cc.yml
-      when: enable_gpu_cc_mode | default(false)
+      when: amd_sev | default(false)
       register: gpu_cc_setup_result

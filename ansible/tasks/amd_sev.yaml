@@ -249,7 +249,7 @@
 
 - name: Find the latest SNP release directory (after potential build)
   ansible.builtin.shell:
-    cmd: "ls -1 | grep '^snp-release-{{ kernel_base_version }}' | grep -v '.tar.gz$' | sort -r | head -n 1"
+    cmd: "ls -1 | grep -E '^snp-release-' | grep -v '.tar.gz$' | sort -r | head -n 1"
     chdir: "{{ amdsev_dir }}"
   register: find_release_dir
   changed_when: false
@@ -317,7 +317,7 @@
 
 - name: Sync kernel source to DKMS headers directory
   ansible.builtin.command:
-    cmd: "rsync -a --checksum --delete {{ amdsev_dir }}/linux/host/ /usr/src/{{ kernel_source_dir_name }}/"
+    cmd: "rsync -av --delete {{ amdsev_dir }}/linux/host/ /usr/src/{{ kernel_source_dir_name }}/"
   changed_when: "'Number of files transferred: 0' not in rsync_result.stdout"
   register: rsync_result
 
@@ -344,18 +344,10 @@
       - nvidia-fabricmanager-{{ cc_nvidia_driver_version_short }}
     state: present
 
-- name: Check DKMS status for NVIDIA modules on target kernel
-  ansible.builtin.shell: |
-    dkms status -k {{ kernel_full_version }} | grep 'nvidia.*{{ cc_nvidia_driver_version_short }}.*installed'
-  register: dkms_status_check
-  changed_when: false
-  failed_when: false
-  check_mode: no
-
-- name: Announce DKMS status
-  ansible.builtin.debug:
-    msg: "NVIDIA DKMS modules already installed for kernel {{ kernel_full_version }}. Skipping autoinstall."
-  when: dkms_status_check.rc == 0
+- name: Prevent deleting required build files
+  ansible.builtin.shell:
+    cmd: |
+      perl -pi -e 's/^mrproper(-dirs)?\s*:\s*.*\$\(.*/mrproper$1: @echo "mrproper target has been disabled to preserve generated files"/g' /usr/src/{{ kernel_source_dir_name }}/Makefile
 
 - name: Build and install NVIDIA modules via DKMS for the custom kernel
   ansible.builtin.shell:
