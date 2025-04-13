@@ -101,12 +101,14 @@
     src: /usr/bin/python3
     dest: /usr/bin/python
     state: link
+  ignore_errors: true
 
 - name: Ensure /usr/bin/pip symlink exists (points to pip3)
   ansible.builtin.file:
     src: /usr/bin/pip3
     dest: /usr/bin/pip
     state: link
+  ignore_errors: true
 
 - name: Create common.sh patch file from template
   ansible.builtin.template:
@@ -114,12 +116,13 @@
     dest: /tmp/common.patch
     mode: '0644'
 
-- name: Apply patch to common.sh
+- name: SEV | Apply patch to common.sh
   ansible.builtin.patch:
     src: /tmp/common.patch
     dest: "{{ amdsev_dir }}/common.sh"
     state: present
     backup: yes
+    remote_src: yes
 
 - name: Build AMDSEV kernel (first pass - ensures source/tools are ready)
   ansible.builtin.shell:
