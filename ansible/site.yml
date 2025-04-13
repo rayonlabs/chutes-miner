@@ -16,10 +16,10 @@
     amdsev_dir: "{{ shared_dir }}/AMDSEV"
     nvtrust_dir: "{{ shared_dir }}/nvtrust"
     kernel_base_version: 5.19.0-rc6
-    nvidia_cuda_keyring_url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
-    nvidia_cuda_keyring_deb: /tmp/cuda-keyring_1.1-1_all.deb
-    cuda_version: "12-8"
-    nvidia_driver_version_short: "570"
+    cc_nvidia_cuda_keyring_url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+    cc_nvidia_cuda_keyring_deb: /tmp/cuda-keyring_1.1-1_all.deb
+    cc_cuda_version: "12-8"
+    cc_nvidia_driver_version_short: "570"
     required_cpu_flags:
       - sev
       - sev_es
@@ -54,6 +54,29 @@
         (ipv6_disabled is defined and ipv6_disabled.changed) or
         (sev_reboot_required | default(false))
       register: rebooted
+
+    - name: Set NVIDIA device permissions
+      file:
+        path: "{{ item }}"
+        mode: '0666'
+      with_fileglob:
+        - /dev/nvidia*
+        - /dev/nvidiactl
+        - /dev/nvidia-uvm
+        - /dev/nvidia-uvm-tools
+      when: gpu_enabled | bool
+
+    - name: Create NVIDIA character device symlinks
+      when: gpu_enabled | bool
+      shell: |
+        ls /dev/nvidia? | egrep 'nvidia[0-9]' | while read i
+        do
+          N=$(echo $i | sed 's/\/dev\/nvidia//');
+          MAJ=$(ls -l $i | awk '{print $5}' | cut -d, -f1)
+          MIN=$(ls -l $i | awk '{print $6}')
+          mkdir -p /dev/char/$MAJ:$MIN
+          ln -sf $i /dev/char/$MAJ:$MIN
+        done
 
     - name: Wait for system to be ready
       wait_for_connection:

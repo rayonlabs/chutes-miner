@@ -74,7 +74,7 @@
     - git
     - libsdl-console
     - libsdl-console-dev
-    - libocket++-dev
+    - libsocket++-dev
 
 - name: Ensure shared directory exists
   ansible.builtin.file:
@@ -277,13 +277,13 @@
 
 - name: Download NVIDIA CUDA keyring deb
   ansible.builtin.get_url:
-    url: "{{ nvidia_cuda_keyring_url }}"
-    dest: "{{ nvidia_cuda_keyring_deb }}"
+    url: "{{ cc_nvidia_cuda_keyring_url }}"
+    dest: "{{ cc_nvidia_cuda_keyring_deb }}"
     mode: '0644'
 
 - name: Install NVIDIA CUDA keyring
   ansible.builtin.apt:
-    deb: "{{ nvidia_cuda_keyring_deb }}"
+    deb: "{{ cc_nvidia_cuda_keyring_deb }}"
     state: present
 
 - name: Update apt cache after adding NVIDIA repo
@@ -293,14 +293,14 @@
 - name: Install CUDA toolkit and drivers
   ansible.builtin.apt:
     name:
-      - cuda-toolkit-{{ cuda_version }}
-      - cuda-drivers-{{ nvidia_driver_version_short }}
-      - nvidia-fabricmanager-{{ nvidia_driver_version_short }}
+      - cuda-toolkit-{{ cc_cuda_version }}
+      - cuda-drivers-{{ cc_nvidia_driver_version_short }}
+      - nvidia-fabricmanager-{{ cc_nvidia_driver_version_short }}
     state: present
 
 - name: Check DKMS status for NVIDIA modules on target kernel
   ansible.builtin.shell: |
-    dkms status -k {{ kernel_full_version }} | grep 'nvidia.*{{ nvidia_driver_version_short }}.*installed'
+    dkms status -k {{ kernel_full_version }} | grep 'nvidia.*{{ cc_nvidia_driver_version_short }}.*installed'
   register: dkms_status_check
   changed_when: false
   failed_when: false

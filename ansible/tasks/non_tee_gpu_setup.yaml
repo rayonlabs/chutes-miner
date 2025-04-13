@@ -50,25 +50,3 @@
         name: nvidia-fabricmanager
         enabled: yes
         masked: no
-
-- name: Set NVIDIA device permissions
-  file:
-    path: "{{ item }}"
-    mode: '0666'
-  with_fileglob:
-    - /dev/nvidia*
-    - /dev/nvidiactl
-    - /dev/nvidia-uvm
-    - /dev/nvidia-uvm-tools
-
-- name: Create NVIDIA character device symlinks
-  when: gpu_enabled | bool
-  shell: |
-    ls /dev/nvidia? | egrep 'nvidia[0-9]' | while read i
-    do
-      N=$(echo $i | sed 's/\/dev\/nvidia//');
-      MAJ=$(ls -l $i | awk '{print $5}' | cut -d, -f1)
-      MIN=$(ls -l $i | awk '{print $6}')
-      mkdir -p /dev/char/$MAJ:$MIN
-      ln -sf $i /dev/char/$MAJ:$MIN
-    done
