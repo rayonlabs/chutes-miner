@@ -30,12 +30,12 @@
       ansible.builtin.include_tasks: tasks/prerequisites.yaml
 
     - name: AMD SEV setup and configuration
-      ansible.builtin.include_tasks: tasks/amd_tee.yaml
-      when: tee_amd | default(false)
+      ansible.builtin.include_tasks: tasks/amd_sev.yaml
+      when: amd_sev | default(false)
 
     - name: Non-TEE CUDA installation
       ansible.builtin.include_tasks: tasks/non_tee_cuda.yaml
-      when: not tee_amd | default(false) and enable_gpu | bool
+      when: not amd_sev | default(false) and enable_gpu | bool
 
     - name: Microk8s installation and configuration
       ansible.builtin.include_tasks: tasks/microk8s.yaml

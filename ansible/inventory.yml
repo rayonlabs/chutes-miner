@@ -34,7 +34,7 @@ all:
     # Default MTU
     wireguard_mtu: 1380
     # Flag indicating if this is an AMD chip and we want to enable TEE (AMD-SEV with nvidia CC)
-    tee_amd: false
+    amd_sev: false
 
   hosts:
     # This would be the main node, which runs postgres, redis, gepetto, etc.
