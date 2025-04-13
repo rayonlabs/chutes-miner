@@ -1,326 +1,324 @@
-pre_tasks:
-  - name: Preflight | Check OS Distribution and Version
-    ansible.builtin.fail:
-      msg: "This playbook requires Ubuntu 22.04. Detected {{ ansible_distribution }} {{ ansible_distribution_version }}."
-    when: ansible_distribution != 'Ubuntu' or ansible_distribution_version != '22.04'
+- name: Preflight | Check OS Distribution and Version
+  ansible.builtin.fail:
+    msg: "This playbook requires Ubuntu 22.04. Detected {{ ansible_distribution }} {{ ansible_distribution_version }}."
+  when: ansible_distribution != 'Ubuntu' or ansible_distribution_version != '22.04'
 
-  - name: Preflight | Get CPU information
-    ansible.builtin.command: lscpu
-    register: lscpu_output
-    changed_when: false
+- name: Preflight | Get CPU information
+  ansible.builtin.command: lscpu
+  register: lscpu_output
+  changed_when: false
 
-  - name: Preflight | Extract CPU Vendor and Flags lines
-    ansible.builtin.set_fact:
-      cpu_vendor_line: "{{ lscpu_output.stdout | regex_search('^Vendor ID:.*$', multiline=True) | default('') }}"
-      cpu_flags_line: "{{ lscpu_output.stdout | regex_search('^Flags:.*$', multiline=True) | default('') }}"
-    changed_when: false
+- name: Preflight | Extract CPU Vendor and Flags lines
+  ansible.builtin.set_fact:
+    cpu_vendor_line: "{{ lscpu_output.stdout | regex_search('^Vendor ID:.*$', multiline=True) | default('') }}"
+    cpu_flags_line: "{{ lscpu_output.stdout | regex_search('^Flags:.*$', multiline=True) | default('') }}"
+  changed_when: false
 
-  - name: Preflight | Verify CPU is AMD
-    ansible.builtin.fail:
-      msg: "CPU Vendor is not AMD. Detected: {{ cpu_vendor_line }}"
-    when: "'AuthenticAMD' not in cpu_vendor_line"
+- name: Preflight | Verify CPU is AMD
+  ansible.builtin.fail:
+    msg: "CPU Vendor is not AMD. Detected: {{ cpu_vendor_line }}"
+  when: "'AuthenticAMD' not in cpu_vendor_line"
 
-  - name: Preflight | Verify required SEV flags are present
-    ansible.builtin.fail:
-      msg: "CPU Flags line missing or does not contain required flag '{{ item }}'. Flags line: {{ cpu_flags_line }}"
-    when: "' ' ~ item ~ ' ' not in cpu_flags_line"
-    loop: "{{ required_cpu_flags }}"
+- name: Preflight | Verify required SEV flags are present
+  ansible.builtin.fail:
+    msg: "CPU Flags line missing or does not contain required flag '{{ item }}'. Flags line: {{ cpu_flags_line }}"
+  when: "' ' ~ item ~ ' ' not in cpu_flags_line"
+  loop: "{{ required_cpu_flags }}"
 
-  - name: Preflight | Checks passed
-    ansible.builtin.debug:
-      msg: "OS and CPU checks passed (Ubuntu 22.04, AMD CPU with SEV/SEV-ES/SEV-SNP)."
+- name: Preflight | Checks passed
+  ansible.builtin.debug:
+    msg: "OS and CPU checks passed (Ubuntu 22.04, AMD CPU with SEV/SEV-ES/SEV-SNP)."
 
-tasks:
-  - name: Update apt cache
-    ansible.builtin.apt:
-      update_cache: yes
-      cache_valid_time: 3600
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
 
-  - name: Install prerequisite packages
-    ansible.builtin.apt:
-      name: "{{ item }}"
-      state: present
-    loop:
-      - ninja-build
-      - iasl
-      - nasm
-      - flex
-      - bison
-      - openssl
-      - dkms
-      - autoconf
-      - zlib1g-dev
-      - python3-pip
-      - libncurses-dev
-      - libssl-dev
-      - libelf-dev
-      - libudev-dev
-      - libpci-dev
-      - libiberty-dev
-      - libtool
-      - libpango1.0-dev
-      - libjpeg8-dev
-      - libpixman-1-dev
-      - libcairo2-dev
-      - libgif-dev
-      - libglib2.0-dev
-      - git-lfs
-      - jq
-      - libc6-dev
-      - linux-libc-dev
-      - python3
-      - python3-venv
-      - patch
-      - rsync
-      - wget
-      - git
-      - libsdl-console
-      - libsdl-console-dev
-      - libocket++-dev
+- name: Install prerequisite packages
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - ninja-build
+    - iasl
+    - nasm
+    - flex
+    - bison
+    - openssl
+    - dkms
+    - autoconf
+    - zlib1g-dev
+    - python3-pip
+    - libncurses-dev
+    - libssl-dev
+    - libelf-dev
+    - libudev-dev
+    - libpci-dev
+    - libiberty-dev
+    - libtool
+    - libpango1.0-dev
+    - libjpeg8-dev
+    - libpixman-1-dev
+    - libcairo2-dev
+    - libgif-dev
+    - libglib2.0-dev
+    - git-lfs
+    - jq
+    - libc6-dev
+    - linux-libc-dev
+    - python3
+    - python3-venv
+    - patch
+    - rsync
+    - wget
+    - git
+    - libsdl-console
+    - libsdl-console-dev
+    - libocket++-dev
 
-  - name: Ensure shared directory exists
-    ansible.builtin.file:
-      path: "{{ shared_dir }}"
-      state: directory
-      mode: '0755'
+- name: Ensure shared directory exists
+  ansible.builtin.file:
+    path: "{{ shared_dir }}"
+    state: directory
+    mode: '0755'
 
-  - name: Clone AMDSEV repository
-    ansible.builtin.git:
-      repo: "{{ amdsev_repo_url }}"
-      dest: "{{ amdsev_dir }}"
-      version: "{{ amdsev_branch }}"
-      force: yes
+- name: Clone AMDSEV repository
+  ansible.builtin.git:
+    repo: "{{ amdsev_repo_url }}"
+    dest: "{{ amdsev_dir }}"
+    version: "{{ amdsev_branch }}"
+    force: yes
 
-  - name: Clone nvtrust repository
-    ansible.builtin.git:
-      repo: "{{ nvtrust_repo_url }}"
-      dest: "{{ nvtrust_dir }}"
-      version: main
-      force: yes
+- name: Clone nvtrust repository
+  ansible.builtin.git:
+    repo: "{{ nvtrust_repo_url }}"
+    dest: "{{ nvtrust_dir }}"
+    version: main
+    force: yes
 
-  - name: Ensure /usr/bin/python symlink exists (points to python3)
-    ansible.builtin.file:
-      src: /usr/bin/python3
-      dest: /usr/bin/python
-      state: link
+- name: Ensure /usr/bin/python symlink exists (points to python3)
+  ansible.builtin.file:
+    src: /usr/bin/python3
+    dest: /usr/bin/python
+    state: link
 
-  - name: Ensure /usr/bin/pip symlink exists (points to pip3)
-    ansible.builtin.file:
-      src: /usr/bin/pip3
-      dest: /usr/bin/pip
-      state: link
+- name: Ensure /usr/bin/pip symlink exists (points to pip3)
+  ansible.builtin.file:
+    src: /usr/bin/pip3
+    dest: /usr/bin/pip
+    state: link
 
-  - name: Create common.sh patch file from template
-    ansible.builtin.template:
-      src: common.patch.j2
-      dest: /tmp/common.patch
-      mode: '0644'
+- name: Create common.sh patch file from template
+  ansible.builtin.template:
+    src: common.patch.j2
+    dest: /tmp/common.patch
+    mode: '0644'
 
-  - name: Apply patch to common.sh
-    ansible.builtin.patch:
-      src: /tmp/common.patch
-      dest: "{{ amdsev_dir }}/common.sh"
-      state: present
-      backup: yes
+- name: Apply patch to common.sh
+  ansible.builtin.patch:
+    src: /tmp/common.patch
+    dest: "{{ amdsev_dir }}/common.sh"
+    state: present
+    backup: yes
 
-  - name: Build AMDSEV kernel (first pass - ensures source/tools are ready)
-    ansible.builtin.shell:
-      cmd: ./build.sh --package
-      chdir: "{{ amdsev_dir }}"
-    args:
-      creates: "{{ amdsev_dir }}/snp-release-{{ kernel_base_version }}*"
+- name: Build AMDSEV kernel (first pass - ensures source/tools are ready)
+  ansible.builtin.shell:
+    cmd: ./build.sh --package
+    chdir: "{{ amdsev_dir }}"
+  args:
+    creates: "{{ amdsev_dir }}/snp-release-{{ kernel_base_version }}*"
 
-  - name: Apply IOMMU pagefault patch
-    ansible.builtin.patch:
-      src: "{{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagefault.patch"
-      dest: "{{ amdsev_dir }}/linux/host/"
-      strip: 1
-      state: present
-      backup: yes
+- name: Apply IOMMU pagefault patch
+  ansible.builtin.patch:
+    src: "{{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagefault.patch"
+    dest: "{{ amdsev_dir }}/linux/host/"
+    strip: 1
+    state: present
+    backup: yes
 
-  - name: Apply IOMMU pagesize patch
-    ansible.builtin.patch:
-      src: "{{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagesize.patch"
-      dest: "{{ amdsev_dir }}/linux/host/"
-      strip: 1
-      state: present
-      backup: yes
+- name: Apply IOMMU pagesize patch
+  ansible.builtin.patch:
+    src: "{{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagesize.patch"
+    dest: "{{ amdsev_dir }}/linux/host/"
+    strip: 1
+    state: present
+    backup: yes
 
-  - name: Extract kernel local version suffix from .config
-    ansible.builtin.shell:
-      cmd: "grep '^CONFIG_LOCALVERSION=' linux/host/.config | cut -d'=' -f2 | tr -d '\"'"
-      chdir: "{{ amdsev_dir }}"
-    register: kernel_localversion_cmd
-    changed_when: false
-    failed_when: kernel_localversion_cmd.rc != 0
-    check_mode: no
+- name: Extract kernel local version suffix from .config
+  ansible.builtin.shell:
+    cmd: "grep '^CONFIG_LOCALVERSION=' linux/host/.config | cut -d'=' -f2 | tr -d '\"'"
+    chdir: "{{ amdsev_dir }}"
+  register: kernel_localversion_cmd
+  changed_when: false
+  failed_when: kernel_localversion_cmd.rc != 0
+  check_mode: no
 
-  - name: Set dynamic kernel version facts
-    ansible.builtin.set_fact:
-      kernel_localversion: "{{ kernel_localversion_cmd.stdout | trim }}"
-      kernel_full_version: "{{ kernel_base_version }}{{ kernel_localversion_cmd.stdout | trim }}"
-    when: kernel_localversion_cmd.stdout is defined and kernel_localversion_cmd.stdout != ""
+- name: Set dynamic kernel version facts
+  ansible.builtin.set_fact:
+    kernel_localversion: "{{ kernel_localversion_cmd.stdout | trim }}"
+    kernel_full_version: "{{ kernel_base_version }}{{ kernel_localversion_cmd.stdout | trim }}"
+  when: kernel_localversion_cmd.stdout is defined and kernel_localversion_cmd.stdout != ""
 
-  - name: Fail if kernel local version could not be determined
-    ansible.builtin.fail:
-      msg: "Could not determine kernel local version from {{ amdsev_dir }}/linux/host/.config"
-    when: kernel_full_version is not defined or kernel_full_version == kernel_base_version
+- name: Fail if kernel local version could not be determined
+  ansible.builtin.fail:
+    msg: "Could not determine kernel local version from {{ amdsev_dir }}/linux/host/.config"
+  when: kernel_full_version is not defined or kernel_full_version == kernel_base_version
 
-  - name: Show determined kernel version
-    ansible.builtin.debug:
-      msg: "Determined kernel full version: {{ kernel_full_version }}"
+- name: Show determined kernel version
+  ansible.builtin.debug:
+    msg: "Determined kernel full version: {{ kernel_full_version }}"
 
-  - name: Check if target kernel image exists
-    ansible.builtin.stat:
-      path: "/boot/vmlinuz-{{ kernel_full_version }}"
-    register: kernel_image_stat
+- name: Check if target kernel image exists
+  ansible.builtin.stat:
+    path: "/boot/vmlinuz-{{ kernel_full_version }}"
+  register: kernel_image_stat
 
-  - name: Check if target kernel modules directory exists
-    ansible.builtin.stat:
-      path: "/lib/modules/{{ kernel_full_version }}"
-    register: kernel_modules_stat
+- name: Check if target kernel modules directory exists
+  ansible.builtin.stat:
+    path: "/lib/modules/{{ kernel_full_version }}"
+  register: kernel_modules_stat
 
-  - name: Set fact indicating if kernel is already installed
-    ansible.builtin.set_fact:
-      kernel_already_installed: "{{ kernel_image_stat.stat.exists and kernel_modules_stat.stat.isdir | default(false) }}"
+- name: Set fact indicating if kernel is already installed
+  ansible.builtin.set_fact:
+    kernel_already_installed: "{{ kernel_image_stat.stat.exists and kernel_modules_stat.stat.isdir | default(false) }}"
 
-  - name: Announce kernel status
-    ansible.builtin.debug:
-      msg: "Kernel {{ kernel_full_version }} already installed. Skipping rebuild and install steps."
-    when: kernel_already_installed
+- name: Announce kernel status
+  ansible.builtin.debug:
+    msg: "Kernel {{ kernel_full_version }} already installed. Skipping rebuild and install steps."
+  when: kernel_already_installed
 
-  - name: Rebuild AMDSEV kernel (second pass, generates final debs)
-    ansible.builtin.shell:
-      cmd: ./build.sh --package
-      chdir: "{{ amdsev_dir }}"
-    when: not kernel_already_installed
+- name: Rebuild AMDSEV kernel (second pass, generates final debs)
+  ansible.builtin.shell:
+    cmd: ./build.sh --package
+    chdir: "{{ amdsev_dir }}"
+  when: not kernel_already_installed
 
-  - name: Copy kvm.conf to modprobe.d
-    ansible.builtin.copy:
-      src: "{{ amdsev_dir }}/kvm.conf"
-      dest: /etc/modprobe.d/kvm.conf
-      remote_src: yes
-      mode: '0644'
-    when: not kernel_already_installed
+- name: Copy kvm.conf to modprobe.d
+  ansible.builtin.copy:
+    src: "{{ amdsev_dir }}/kvm.conf"
+    dest: /etc/modprobe.d/kvm.conf
+    remote_src: yes
+    mode: '0644'
+  when: not kernel_already_installed
 
-  - name: Find the latest SNP release directory (after potential build)
-    ansible.builtin.shell:
-      cmd: "ls -1 | grep '^snp-release-{{ kernel_base_version }}' | grep -v '.tar.gz$' | sort -r | head -n 1"
-      chdir: "{{ amdsev_dir }}"
-    register: find_release_dir
-    changed_when: false
-    failed_when: find_release_dir.rc != 0 or find_release_dir.stdout == ""
-    when: not kernel_already_installed
+- name: Find the latest SNP release directory (after potential build)
+  ansible.builtin.shell:
+    cmd: "ls -1 | grep '^snp-release-{{ kernel_base_version }}' | grep -v '.tar.gz$' | sort -r | head -n 1"
+    chdir: "{{ amdsev_dir }}"
+  register: find_release_dir
+  changed_when: false
+  failed_when: find_release_dir.rc != 0 or find_release_dir.stdout == ""
+  when: not kernel_already_installed
 
-  - name: Set release directory fact
-    ansible.builtin.set_fact:
-      release_dir_name: "{{ find_release_dir.stdout | trim }}"
-    when: not kernel_already_installed and find_release_dir.stdout is defined
+- name: Set release directory fact
+  ansible.builtin.set_fact:
+    release_dir_name: "{{ find_release_dir.stdout | trim }}"
+  when: not kernel_already_installed and find_release_dir.stdout is defined
 
-  - name: Install the new kernel
-    ansible.builtin.shell:
-      cmd: ./install.sh
-      chdir: "{{ amdsev_dir }}/{{ release_dir_name }}"
-    when: not kernel_already_installed and release_dir_name is defined
+- name: Install the new kernel
+  ansible.builtin.shell:
+    cmd: ./install.sh
+    chdir: "{{ amdsev_dir }}/{{ release_dir_name }}"
+  when: not kernel_already_installed and release_dir_name is defined
 
-  - name: Get list of installed kernel packages
-    ansible.builtin.shell:
-      cmd: "dpkg-query -W -f='${Package}\\n' 'linux-image-*' 'linux-headers-*'"
-    register: installed_kernels
-    changed_when: false
-    check_mode: no
+- name: Get list of installed kernel packages
+  ansible.builtin.shell:
+    cmd: "dpkg-query -W -f='${Package}\\n' 'linux-image-*' 'linux-headers-*'"
+  register: installed_kernels
+  changed_when: false
+  check_mode: no
 
-  - name: Set kernel package name facts to keep
-    ansible.builtin.set_fact:
-      kernel_image_to_keep: "linux-image-{{ kernel_full_version }}"
-      kernel_headers_to_keep: "linux-headers-{{ kernel_full_version }}"
+- name: Set kernel package name facts to keep
+  ansible.builtin.set_fact:
+    kernel_image_to_keep: "linux-image-{{ kernel_full_version }}"
+    kernel_headers_to_keep: "linux-headers-{{ kernel_full_version }}"
 
-  - name: Create list of kernel packages to remove
-    ansible.builtin.set_fact:
-      kernels_to_remove: "{{ installed_kernels.stdout_lines | default([]) | difference([kernel_image_to_keep, kernel_headers_to_keep]) | list }}"
+- name: Create list of kernel packages to remove
+  ansible.builtin.set_fact:
+    kernels_to_remove: "{{ installed_kernels.stdout_lines | default([]) | difference([kernel_image_to_keep, kernel_headers_to_keep]) | list }}"
 
-  - name: Remove old/other kernel packages
-    ansible.builtin.apt:
-      name: "{{ kernels_to_remove }}"
-      state: absent
-      purge: yes
-    when: kernels_to_remove | length > 0
+- name: Remove old/other kernel packages
+  ansible.builtin.apt:
+    name: "{{ kernels_to_remove }}"
+    state: absent
+    purge: yes
+  when: kernels_to_remove | length > 0
 
-  - name: Find existing linux-headers symlinks in /usr/src
-    ansible.builtin.find:
-      paths: /usr/src
-      patterns: "linux-headers-*"
-      file_type: link
-    register: header_symlinks
-    check_mode: no
+- name: Find existing linux-headers symlinks in /usr/src
+  ansible.builtin.find:
+    paths: /usr/src
+    patterns: "linux-headers-*"
+    file_type: link
+  register: header_symlinks
+  check_mode: no
 
-  - name: Remove existing linux-headers symlinks
-    ansible.builtin.file:
-      path: "{{ item.path }}"
-      state: absent
-    loop: "{{ header_symlinks.files }}"
-    when: header_symlinks.files | length > 0
+- name: Remove existing linux-headers symlinks
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ header_symlinks.files }}"
+  when: header_symlinks.files | length > 0
 
-  - name: Set kernel source directory name fact
-    ansible.builtin.set_fact:
-      kernel_source_dir_name: "linux-headers-{{ kernel_full_version }}"
+- name: Set kernel source directory name fact
+  ansible.builtin.set_fact:
+    kernel_source_dir_name: "linux-headers-{{ kernel_full_version }}"
 
-  - name: Create kernel source directory for DKMS if missing
-    ansible.builtin.file:
-      path: "/usr/src/{{ kernel_source_dir_name }}"
-      state: directory
-      mode: '0755'
+- name: Create kernel source directory for DKMS if missing
+  ansible.builtin.file:
+    path: "/usr/src/{{ kernel_source_dir_name }}"
+    state: directory
+    mode: '0755'
 
-  - name: Sync kernel source to DKMS headers directory
-    ansible.builtin.command:
-      cmd: "rsync -a --checksum --delete {{ amdsev_dir }}/linux/host/ /usr/src/{{ kernel_source_dir_name }}/"
-    changed_when: "'Number of files transferred: 0' not in rsync_result.stdout"
-    register: rsync_result
+- name: Sync kernel source to DKMS headers directory
+  ansible.builtin.command:
+    cmd: "rsync -a --checksum --delete {{ amdsev_dir }}/linux/host/ /usr/src/{{ kernel_source_dir_name }}/"
+  changed_when: "'Number of files transferred: 0' not in rsync_result.stdout"
+  register: rsync_result
 
-  - name: Download NVIDIA CUDA keyring deb
-    ansible.builtin.get_url:
-      url: "{{ nvidia_cuda_keyring_url }}"
-      dest: "{{ nvidia_cuda_keyring_deb }}"
-      mode: '0644'
+- name: Download NVIDIA CUDA keyring deb
+  ansible.builtin.get_url:
+    url: "{{ nvidia_cuda_keyring_url }}"
+    dest: "{{ nvidia_cuda_keyring_deb }}"
+    mode: '0644'
 
-  - name: Install NVIDIA CUDA keyring
-    ansible.builtin.apt:
-      deb: "{{ nvidia_cuda_keyring_deb }}"
-      state: present
+- name: Install NVIDIA CUDA keyring
+  ansible.builtin.apt:
+    deb: "{{ nvidia_cuda_keyring_deb }}"
+    state: present
 
-  - name: Update apt cache after adding NVIDIA repo
-    ansible.builtin.apt:
-      update_cache: yes
+- name: Update apt cache after adding NVIDIA repo
+  ansible.builtin.apt:
+    update_cache: yes
 
-  - name: Install CUDA toolkit and drivers
-    ansible.builtin.apt:
-      name:
-        - cuda-toolkit-{{ cuda_version }}
-        - cuda-drivers-{{ nvidia_driver_version_short }}
-        - nvidia-fabricmanager-{{ nvidia_driver_version_short }}
-      state: present
+- name: Install CUDA toolkit and drivers
+  ansible.builtin.apt:
+    name:
+      - cuda-toolkit-{{ cuda_version }}
+      - cuda-drivers-{{ nvidia_driver_version_short }}
+      - nvidia-fabricmanager-{{ nvidia_driver_version_short }}
+    state: present
 
-  - name: Check DKMS status for NVIDIA modules on target kernel
-    ansible.builtin.shell: |
-      dkms status -k {{ kernel_full_version }} | grep 'nvidia.*{{ nvidia_driver_version_short }}.*installed'
-    register: dkms_status_check
-    changed_when: false
-    failed_when: false
-    check_mode: no
+- name: Check DKMS status for NVIDIA modules on target kernel
+  ansible.builtin.shell: |
+    dkms status -k {{ kernel_full_version }} | grep 'nvidia.*{{ nvidia_driver_version_short }}.*installed'
+  register: dkms_status_check
+  changed_when: false
+  failed_when: false
+  check_mode: no
 
-  - name: Announce DKMS status
-    ansible.builtin.debug:
-      msg: "NVIDIA DKMS modules already installed for kernel {{ kernel_full_version }}. Skipping autoinstall."
-    when: dkms_status_check.rc == 0
+- name: Announce DKMS status
+  ansible.builtin.debug:
+    msg: "NVIDIA DKMS modules already installed for kernel {{ kernel_full_version }}. Skipping autoinstall."
+  when: dkms_status_check.rc == 0
 
-  - name: Build and install NVIDIA modules via DKMS for the custom kernel
-    ansible.builtin.shell:
-      cmd: "dkms autoinstall --kernelsourcedir /usr/src/{{ kernel_source_dir_name }}"
-    environment:
-      IGNORE_MISSING_MODULE_SYMVERS: 1
-    when: dkms_status_check.rc != 0
-    register: dkms_build_result
+- name: Build and install NVIDIA modules via DKMS for the custom kernel
+  ansible.builtin.shell:
+    cmd: "dkms autoinstall --kernelsourcedir /usr/src/{{ kernel_source_dir_name }}"
+  environment:
+    IGNORE_MISSING_MODULE_SYMVERS: 1
+  when: dkms_status_check.rc != 0
+  register: dkms_build_result
 
-  - name: Check if reboot is required
-    ansible.builtin.set_fact:
-      sev_reboot_required: "{{ (kernel_install_result | default({'changed': false})).changed or (dkms_build_result | default({'changed': false})).changed }}"
+- name: Check if reboot is required
+  ansible.builtin.set_fact:
+    sev_reboot_required: "{{ (kernel_install_result | default({'changed': false})).changed or (dkms_build_result | default({'changed': false})).changed }}"

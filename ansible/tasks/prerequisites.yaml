@@ -1,268 +1,267 @@
-tasks:
-  - name: Update apt cache
-    apt:
-      update_cache: yes
+- name: Update apt cache
+  apt:
+    update_cache: yes
 
-  - name: Gather package facts
-    package_facts:
-      manager: auto
+- name: Gather package facts
+  package_facts:
+    manager: auto
 
-  - name: Stop and disable unattended upgrades
-    systemd:
-      name: unattended-upgrades
-      state: stopped
-      enabled: no
-    ignore_errors: true
+- name: Stop and disable unattended upgrades
+  systemd:
+    name: unattended-upgrades
+    state: stopped
+    enabled: no
+  ignore_errors: true
 
-  - name: Create user
-    user:
-      name: "{{ username }}"
-      shell: /bin/bash
-      create_home: yes
-      state: present
+- name: Create user
+  user:
+    name: "{{ username }}"
+    shell: /bin/bash
+    create_home: yes
+    state: present
 
-  - name: Create SSH directories
-    file:
-      path: "{{ item }}"
-      state: directory
-      mode: '0700'
-    with_items:
-      - "/home/{{ username }}/.ssh"
-      - "/root/.ssh"
+- name: Create SSH directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0700'
+  with_items:
+    - "/home/{{ username }}/.ssh"
+    - "/root/.ssh"
 
-  - name: Add authorized SSH keys
-    authorized_key:
-      user: "{{ user }}"
-      state: present
-      key: "{{ item }}"
-    with_items: "{{ ssh_public_keys }}"
-    become: yes
+- name: Add authorized SSH keys
+  authorized_key:
+    user: "{{ user }}"
+    state: present
+    key: "{{ item }}"
+  with_items: "{{ ssh_public_keys }}"
+  become: yes
 
-  - name: Set correct ownership for user home
-    file:
-      path: "/home/{{ username }}"
-      owner: "{{ username }}"
-      group: "{{ username }}"
-      recurse: yes
+- name: Set correct ownership for user home
+  file:
+    path: "/home/{{ username }}"
+    owner: "{{ username }}"
+    group: "{{ username }}"
+    recurse: yes
 
-  - name: Add user to sudoers
-    lineinfile:
-      path: /etc/sudoers
-      line: '{{ username }} ALL=(ALL) NOPASSWD:ALL'
-      validate: 'visudo -cf %s'
+- name: Add user to sudoers
+  lineinfile:
+    path: /etc/sudoers
+    line: '{{ username }} ALL=(ALL) NOPASSWD:ALL'
+    validate: 'visudo -cf %s'
 
-  - name: Remove old containerd if exists
-    apt:
-      name: containerd.io
-      state: absent
+- name: Remove old containerd if exists
+  apt:
+    name: containerd.io
+    state: absent
 
-  - name: Remove unwanted files in sources.list.d
-    find:
-      paths: /etc/apt/sources.list.d
-      patterns:
-        - "*"
-      excludes:
-        - "ubuntu.sources"
-        - "cuda-*.list"
-        - "deadsnakes.list"
-        - "docker.list"
-        - "nvidia-docker-container.list"
-      file_type: file
-    register: apt_files_to_remove
+- name: Remove unwanted files in sources.list.d
+  find:
+    paths: /etc/apt/sources.list.d
+    patterns:
+      - "*"
+    excludes:
+      - "ubuntu.sources"
+      - "cuda-*.list"
+      - "deadsnakes.list"
+      - "docker.list"
+      - "nvidia-docker-container.list"
+    file_type: file
+  register: apt_files_to_remove
 
-  - name: Delete found files
-    file:
-      path: "{{ item.path }}"
-      state: absent
-    with_items: "{{ apt_files_to_remove.files }}"
+- name: Delete found files
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  with_items: "{{ apt_files_to_remove.files }}"
 
-  - name: Remove proxy configuration files
-    file:
-      path: "{{ item }}"
-      state: absent
-    with_fileglob:
-      - "/etc/apt/apt.conf.d/*proxy*"
+- name: Remove proxy configuration files
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_fileglob:
+    - "/etc/apt/apt.conf.d/*proxy*"
 
-  - name: Remove proxy settings from apt.conf
-    lineinfile:
-      path: /etc/apt/apt.conf
-      regexp: "{{ item }}"
-      state: absent
-    with_items:
-      - 'Acquire::http::Proxy'
-      - 'Acquire::https::Proxy'
-    when: ansible_path_apt_conf.stat.exists is defined and ansible_path_apt_conf.stat.exists
+- name: Remove proxy settings from apt.conf
+  lineinfile:
+    path: /etc/apt/apt.conf
+    regexp: "{{ item }}"
+    state: absent
+  with_items:
+    - 'Acquire::http::Proxy'
+    - 'Acquire::https::Proxy'
+  when: ansible_path_apt_conf.stat.exists is defined and ansible_path_apt_conf.stat.exists
 
-  - name: Unset all snap proxy settings
-    command: snap unset system {{ item }}
-    loop:
-      - proxy.http
-      - proxy.https
-      - proxy.no-proxy
-    changed_when: true
-    ignore_errors: true
+- name: Unset all snap proxy settings
+  command: snap unset system {{ item }}
+  loop:
+    - proxy.http
+    - proxy.https
+    - proxy.no-proxy
+  changed_when: true
+  ignore_errors: true
 
-  - name: Install basic system prerequisites
-    apt:
-      name:
-        - socat
-        - vim
-        - jq
-        - bc
-        - libclang-dev
-        - npm
-        - clang
-        - libssl-dev
-        - llvm
-        - libudev1
-        - protobuf-compiler
-        - python3
-        - python3-pip
-        - python3-venv
-        - docker.io
-        - docker-compose
-        - build-essential
-        - nginx
-        - redis
-        - net-tools
-        - ffmpeg
-        - rsyslog
-        - libpq-dev
-        - snapd
-        - iputils-ping
-        - systemd-timesyncd
-      state: present
+- name: Install basic system prerequisites
+  apt:
+    name:
+      - socat
+      - vim
+      - jq
+      - bc
+      - libclang-dev
+      - npm
+      - clang
+      - libssl-dev
+      - llvm
+      - libudev1
+      - protobuf-compiler
+      - python3
+      - python3-pip
+      - python3-venv
+      - docker.io
+      - docker-compose
+      - build-essential
+      - nginx
+      - redis
+      - net-tools
+      - ffmpeg
+      - rsyslog
+      - libpq-dev
+      - snapd
+      - iputils-ping
+      - systemd-timesyncd
+    state: present
 
-  - name: Set vim as default editor
-    alternatives:
-      name: editor
-      path: /usr/bin/vim
-      priority: 1
+- name: Set vim as default editor
+  alternatives:
+    name: editor
+    path: /usr/bin/vim
+    priority: 1
 
-  - name: Get list of installed lambda packages
-    shell: dpkg --list | grep lambda | awk '{print $2}'
-    register: lambda_packages
-    changed_when: false
+- name: Get list of installed lambda packages
+  shell: dpkg --list | grep lambda | awk '{print $2}'
+  register: lambda_packages
+  changed_when: false
 
-  - name: Check if lambda version file exists
-    stat:
-      path: /etc/lambda-version
-    register: lambda_version_file
+- name: Check if lambda version file exists
+  stat:
+    path: /etc/lambda-version
+  register: lambda_version_file
 
-  - name: Check if another lambda package file exists, backup
-    stat:
-      path: /etc/systemd/system/lambda-jupyter.service
-    register: lambda_file_backup
+- name: Check if another lambda package file exists, backup
+  stat:
+    path: /etc/systemd/system/lambda-jupyter.service
+  register: lambda_file_backup
 
-  - name: Remove lambda packages
-    apt:
-      name: "{{ lambda_packages.stdout_lines }}"
-      state: absent
-      purge: yes
-    when:
-      - lambda_version_file.stat.exists or lambda_file_backup.stat.exists
-      - lambda_packages.stdout_lines | length > 0
+- name: Remove lambda packages
+  apt:
+    name: "{{ lambda_packages.stdout_lines }}"
+    state: absent
+    purge: yes
+  when:
+    - lambda_version_file.stat.exists or lambda_file_backup.stat.exists
+    - lambda_packages.stdout_lines | length > 0
 
-  - name: Configure file limits
-    blockinfile:
-      path: /etc/security/limits.conf
-      block: |
-        * soft nofile 40000
-        * hard nofile 40001
+- name: Configure file limits
+  blockinfile:
+    path: /etc/security/limits.conf
+    block: |
+      * soft nofile 40000
+      * hard nofile 40001
 
-  - name: Configure PAM limits
-    lineinfile:
-      path: "{{ item }}"
-      line: "session required pam_limits.so"
-    with_items:
-      - /etc/pam.d/common-session
-      - /etc/pam.d/common-session-noninteractive
+- name: Configure PAM limits
+  lineinfile:
+    path: "{{ item }}"
+    line: "session required pam_limits.so"
+  with_items:
+    - /etc/pam.d/common-session
+    - /etc/pam.d/common-session-noninteractive
 
-  - name: Set hostname
-    hostname:
-      name: "{{ inventory_hostname }}"
-      use: systemd
+- name: Set hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+    use: systemd
 
-  - name: Update /etc/hostname
-    copy:
-      content: "{{ inventory_hostname }}"
-      dest: /etc/hostname
+- name: Update /etc/hostname
+  copy:
+    content: "{{ inventory_hostname }}"
+    dest: /etc/hostname
 
-  - name: Ensure preserve_hostname is set to true
-    lineinfile:
-      path: /etc/cloud/cloud.cfg
-      regexp: '^preserve_hostname:'
-      line: 'preserve_hostname: true'
-      create: true
-      owner: root
-      group: root
-      mode: '0644'
+- name: Ensure preserve_hostname is set to true
+  lineinfile:
+    path: /etc/cloud/cloud.cfg
+    regexp: '^preserve_hostname:'
+    line: 'preserve_hostname: true'
+    create: true
+    owner: root
+    group: root
+    mode: '0644'
 
-  - name: Create hostname script
-    copy:
-      dest: /usr/local/bin/set-hostname.sh
-      mode: '0755'
-      content: |
-        #!/bin/bash
-        hostnamectl set-hostname "{{ inventory_hostname }}"
-        hostname "{{ inventory_hostname }}"
-        echo -n "{{ inventory_hostname }}" > /etc/hostname
+- name: Create hostname script
+  copy:
+    dest: /usr/local/bin/set-hostname.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      hostnamectl set-hostname "{{ inventory_hostname }}"
+      hostname "{{ inventory_hostname }}"
+      echo -n "{{ inventory_hostname }}" > /etc/hostname
 
-  - name: Create systemd service
-    copy:
-      dest: /etc/systemd/system/set-hostname.service
-      content: |
-        [Unit]
-        Description=Set system hostname on boot
-        After=network.target
+- name: Create systemd service
+  copy:
+    dest: /etc/systemd/system/set-hostname.service
+    content: |
+      [Unit]
+      Description=Set system hostname on boot
+      After=network.target
 
-        [Service]
-        Type=oneshot
-        ExecStart=/usr/local/bin/set-hostname.sh
-        RemainAfterExit=yes
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/set-hostname.sh
+      RemainAfterExit=yes
 
-        [Install]
-        WantedBy=multi-user.target
+      [Install]
+      WantedBy=multi-user.target
 
-  - name: Enable and start hostname service
-    systemd:
-      name: set-hostname
-      enabled: yes
-      state: started
-      daemon_reload: yes
+- name: Enable and start hostname service
+  systemd:
+    name: set-hostname
+    enabled: yes
+    state: started
+    daemon_reload: yes
 
-  - name: Configure and ensure time synchronization
-    block:
-      - name: Ensure timesyncd is installed and enabled
-        systemd:
-          name: systemd-timesyncd
-          state: started
-          enabled: yes
+- name: Configure and ensure time synchronization
+  block:
+    - name: Ensure timesyncd is installed and enabled
+      systemd:
+        name: systemd-timesyncd
+        state: started
+        enabled: yes
 
-      - name: Configure NTP servers
-        lineinfile:
-          path: /etc/systemd/timesyncd.conf
-          regexp: '^#?NTP='
-          line: 'NTP=pool.ntp.org'
+    - name: Configure NTP servers
+      lineinfile:
+        path: /etc/systemd/timesyncd.conf
+        regexp: '^#?NTP='
+        line: 'NTP=pool.ntp.org'
 
-      - name: Force time synchronization
-        shell: |
-          timedatectl set-ntp true
-          systemctl restart systemd-timesyncd
+    - name: Force time synchronization
+      shell: |
+        timedatectl set-ntp true
+        systemctl restart systemd-timesyncd
 
-  - name: Disable IPv6
-    block:
-      - name: Set sysctl parameters for IPv6
-        sysctl:
-          name: "{{ item.key }}"
-          value: "{{ item.value }}"
-          state: present
-          sysctl_file: /etc/sysctl.d/99-disable-ipv6.conf
-          reload: yes
-        with_items:
-          - { key: "net.ipv6.conf.all.disable_ipv6", value: "1" }
-          - { key: "net.ipv6.conf.default.disable_ipv6", value: "1" }
-          - { key: "net.ipv6.conf.lo.disable_ipv6", value: "1" }
-        register: ipv6_disabled
-    become: yes
-    when: not ipv6_enabled | bool
+- name: Disable IPv6
+  block:
+    - name: Set sysctl parameters for IPv6
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        sysctl_file: /etc/sysctl.d/99-disable-ipv6.conf
+        reload: yes
+      with_items:
+        - { key: "net.ipv6.conf.all.disable_ipv6", value: "1" }
+        - { key: "net.ipv6.conf.default.disable_ipv6", value: "1" }
+        - { key: "net.ipv6.conf.lo.disable_ipv6", value: "1" }
+      register: ipv6_disabled
+  become: yes
+  when: not ipv6_enabled | bool

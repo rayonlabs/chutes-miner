@@ -23,7 +23,7 @@
     required_cpu_flags:
       - sev
       - sev_es
-      - sev_snp
+      #- sev_snp ?? shows up after kernel updates I think?
 
   tasks:
     - name: System prerequisites and base config
