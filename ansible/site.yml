@@ -18,8 +18,8 @@
     kernel_base_version: 5.19.0-rc6
     cc_nvidia_cuda_keyring_url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
     cc_nvidia_cuda_keyring_deb: /tmp/cuda-keyring_1.1-1_all.deb
-    cc_cuda_version: "12-8"
-    cc_nvidia_driver_version_short: "570"
+    cc_cuda_version: "12-4"
+    cc_nvidia_driver_version_short: "550"
     required_cpu_flags:
       - sev
       - sev_es
