@@ -1,0 +1,75 @@
+tasks:
+  - name: Check CUDA installation
+    apt:
+      name: cuda-toolkit-{{ cuda_version }}
+      state: present
+    check_mode: yes
+    register: cuda_check
+    ignore_errors: yes
+    when: enable_gpu | bool
+
+  - name: Purge existing NVIDIA/CUDA packages
+    shell: |
+      export DEBIAN_FRONTEND=noninteractive
+      export NEEDRESTART_SUSPEND=y
+      PKGS=$(dpkg --list | egrep -i 'cuda|nvidia' | egrep -v 'nvidia-kernel|linux-(nvidia|modules|headers|image)' | awk '{print $2}' )
+      if [ ! -z "$PKGS" ]; then
+        echo "$PKGS" | xargs apt -y remove --allow-change-held-packages
+        echo "$PKGS" | xargs dpkg --purge
+      fi
+    ignore_errors: yes
+    register: gpu_setup
+    when: not skip_cuda | bool and (gpu_enabled | bool) and (cuda_check.failed or cuda_check.changed)
+
+  - name: Download and install CUDA keyring
+    block:
+      - get_url:
+          url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu{{ ubuntu_major }}{{ ubuntu_minor }}/x86_64/cuda-keyring_1.1-1_all.deb
+          dest: /tmp/cuda-keyring.deb
+      - apt:
+          deb: /tmp/cuda-keyring.deb
+    when: gpu_enabled | bool
+
+  - name: Update apt cache
+    apt:
+      update_cache: yes
+    when: gpu_enabled | bool
+
+  - name: GPU Setup Tasks
+    when: enable_gpu | bool and not skip_cuda | bool
+    block:
+      - name: Install NVIDIA packages
+        apt:
+          name:
+            - cuda-toolkit-{{ cuda_version }}
+            - cuda-drivers-{{ nvidia_version }}
+            - nvidia-fabricmanager-{{ nvidia_version }}
+          state: present
+
+      - name: Configure NVIDIA Fabric Manager
+        systemd:
+          name: nvidia-fabricmanager
+          enabled: yes
+          masked: no
+
+  - name: Set NVIDIA device permissions
+    file:
+      path: "{{ item }}"
+      mode: '0666'
+    with_fileglob:
+      - /dev/nvidia*
+      - /dev/nvidiactl
+      - /dev/nvidia-uvm
+      - /dev/nvidia-uvm-tools
+
+  - name: Create NVIDIA character device symlinks
+    when: gpu_enabled | bool
+    shell: |
+      ls /dev/nvidia? | egrep 'nvidia[0-9]' | while read i
+      do
+        N=$(echo $i | sed 's/\/dev\/nvidia//');
+        MAJ=$(ls -l $i | awk '{print $5}' | cut -d, -f1)
+        MIN=$(ls -l $i | awk '{print $6}')
+        mkdir -p /dev/char/$MAJ:$MIN
+        ln -sf $i /dev/char/$MAJ:$MIN
+      done
