@@ -1,0 +1,32 @@
+- name: GPU CC Helper | Parse GPU BDF and Compute Capability from info line
+  ansible.builtin.set_fact:
+    gpu_bdf: "{{ (gpu_info_line | split(','))[0] | trim }}"
+    gpu_compute_cap: "{{ (gpu_info_line | split(','))[1] | trim | float }}"
+
+- name: GPU CC Helper | Check if GPU {{ gpu_bdf }} (CC {{ gpu_compute_cap }}) supports CC mode based on Compute Capability
+  ansible.builtin.set_fact:
+    gpu_supports_cc: "{{ gpu_compute_cap is defined and gpu_compute_cap >= cc_min_compute_capability }}"
+
+- name: GPU CC Helper | Debug GPU CC support status
+  ansible.builtin.debug:
+    msg: "GPU {{ gpu_bdf }} (CC {{ gpu_compute_cap }}) - CC Mode Support Required >= {{ cc_min_compute_capability }}: {{ gpu_supports_cc }}"
+  verbosity: 1
+
+- name: GPU CC Helper | Manage CC mode for supported GPU {{ gpu_bdf }}
+  when: gpu_supports_cc | default(false)
+  block:
+    - name: "Check current CC mode for GPU {{ gpu_bdf }}"
+      ansible.builtin.command:
+        cmd: "python3 ./nvidia_gpu_tools.py --gpu-bdf={{ gpu_bdf }} --get-cc-mode"
+        chdir: "{{ shared_dir }}/nvtrust/host_tools/python/gpu-admin-tools"
+      become: yes
+      register: current_gpu_mode
+      changed_when: false
+      failed_when: false
+
+    - name: "Set CC mode to devtools for GPU {{ gpu_bdf }} if not already set"
+      ansible.builtin.command:
+        cmd: "python3 ./nvidia_gpu_tools.py --gpu-bdf={{ gpu_bdf }} --set-cc-mode=devtools --reset-after-cc-mode-switch"
+        chdir: "{{ shared_dir }}/nvtrust/host_tools/python/gpu-admin-tools"
+      become: yes
+      when: current_gpu_mode.failed or 'devtools' not in current_gpu_mode.stdout | default('')

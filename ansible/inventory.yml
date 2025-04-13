@@ -35,6 +35,8 @@ all:
     wireguard_mtu: 1380
     # Flag indicating if this is an AMD chip and we want to enable TEE (AMD-SEV with nvidia CC)
     amd_sev: false
+    # Minimum compute capability version for nvidia-CC
+    cc_min_compute_capability: 9.0
 
   hosts:
     # This would be the main node, which runs postgres, redis, gepetto, etc.

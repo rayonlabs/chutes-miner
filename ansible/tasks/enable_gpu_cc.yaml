@@ -1,0 +1,20 @@
+- name: GPU CC | Clone NVIDIA GPU Admin Tools repository if needed
+  ansible.builtin.git:
+    repo: https://github.com/nvidia/gpu-admin-tools
+    dest: "{{ shared_dir }}/gpu-admin-tools"
+    version: main
+    force: no
+
+- name: GPU CC | Detect NVIDIA GPU PCI BDF addresses and Compute Capability
+  ansible.builtin.shell: nvidia-smi --query-gpu=pci.bus_id,compute_cap --format=csv,noheader,nounits
+  register: nvidia_gpu_info_result
+  changed_when: false
+  failed_when: nvidia_gpu_info_result.rc != 0
+  check_mode: no
+
+- name: GPU CC | Configure TEE Mode for each supported GPU
+  ansible.builtin.include_tasks: tasks/set_gpu_cc_mode.yaml
+  loop: "{{ nvidia_gpu_info_result.stdout_lines | default([]) }}"
+  loop_control:
+    loop_var: gpu_info_line
+  when: nvidia_gpu_info_result.stdout_lines | default([]) | length > 0 
