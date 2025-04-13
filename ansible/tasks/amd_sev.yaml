@@ -124,28 +124,57 @@
     backup: yes
     remote_src: yes
 
-- name: Build AMDSEV kernel (first pass - ensures source/tools are ready)
+- name: Build AMDSEV kernel (first pass)
   ansible.builtin.shell:
-    cmd: ./build.sh --package
+    cmd: bash -lc './build.sh --package 2>&1 | tee /tmp/firstpass.log'
     chdir: "{{ amdsev_dir }}"
+  become: yes
+  async: 7200
+  poll: 0
   args:
     creates: "{{ amdsev_dir }}/snp-release-{{ kernel_base_version }}*"
+  register: build_async_result_first_pass
 
-- name: Apply IOMMU pagefault patch
-  ansible.builtin.patch:
-    src: "{{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagefault.patch"
-    dest: "{{ amdsev_dir }}/linux/host/"
-    strip: 1
-    state: present
-    backup: yes
+- name: Wait for AMDSEV kernel first pass to finish building
+  ansible.builtin.async_status:
+    jid: "{{ build_async_result_first_pass.ansible_job_id }}"
+  register: job_result
+  until: job_result.finished
+  retries: 120
+  delay: 60
+  become: yes
 
-- name: Apply IOMMU pagesize patch
-  ansible.builtin.patch:
-    src: "{{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagesize.patch"
-    dest: "{{ amdsev_dir }}/linux/host/"
-    strip: 1
-    state: present
-    backup: yes
+- name: SEV | Dry-run IOMMU pagefault patch
+  ansible.builtin.shell:
+    cmd: "patch -p1 -l --dry-run < {{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagefault.patch"
+    chdir: "{{ amdsev_dir }}/linux/host"
+  register: iommu_pagefault_dry_run
+  changed_when: false
+  failed_when: false
+  become: yes
+
+- name: SEV | Apply IOMMU pagefault patch if dry-run succeeded
+  ansible.builtin.shell:
+    cmd: "patch -p1 -l < {{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagefault.patch"
+    chdir: "{{ amdsev_dir }}/linux/host"
+  when: iommu_pagefault_dry_run.rc == 0
+  become: yes
+
+- name: SEV | Dry-run IOMMU pagesize patch
+  ansible.builtin.shell:
+    cmd: "patch -p1 -l --dry-run < {{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagesize.patch"
+    chdir: "{{ amdsev_dir }}/linux/host"
+  register: iommu_pagesize_dry_run
+  changed_when: false
+  failed_when: false
+  become: yes
+
+- name: SEV | Apply IOMMU pagesize patch if dry-run succeeded
+  ansible.builtin.shell:
+    cmd: "patch -p1 -l < {{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagesize.patch"
+    chdir: "{{ amdsev_dir }}/linux/host"
+  when: iommu_pagesize_dry_run.rc == 0
+  become: yes
 
 - name: Extract kernel local version suffix from .config
   ansible.builtin.shell:
@@ -190,11 +219,25 @@
     msg: "Kernel {{ kernel_full_version }} already installed. Skipping rebuild and install steps."
   when: kernel_already_installed
 
-- name: Rebuild AMDSEV kernel (second pass, generates final debs)
+- name: Build AMDSEV kernel (second pass)
   ansible.builtin.shell:
-    cmd: ./build.sh --package
+    cmd: bash -lc './build.sh --package 2>&1 | tee /tmp/secondpass.log'
     chdir: "{{ amdsev_dir }}"
-  when: not kernel_already_installed
+  become: yes
+  async: 7200
+  poll: 0
+  args:
+    creates: "{{ amdsev_dir }}/snp-release-{{ kernel_base_version }}*"
+  register: build_async_result_second_pass
+
+- name: Wait for AMDSEV kernel second pass to finish building
+  ansible.builtin.async_status:
+    jid: "{{ build_async_result_second_pass.ansible_job_id }}"
+  register: job_result
+  until: job_result.finished
+  retries: 120
+  delay: 60
+  become: yes
 
 - name: Copy kvm.conf to modprobe.d
   ansible.builtin.copy:

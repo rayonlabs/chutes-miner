@@ -168,6 +168,8 @@
     block: |
       * soft nofile 40000
       * hard nofile 40001
+      root soft nofile 40000
+      root hard nofile 40000
 
 - name: Configure PAM limits
   lineinfile:
