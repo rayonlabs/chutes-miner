@@ -69,7 +69,7 @@
     - name: Create NVIDIA character device symlinks
       when: gpu_enabled | bool
       shell: |
-        ls /dev/nvidia? | egrep 'nvidia[0-9]' | while read i
+        ls /dev/nvidia* | egrep 'nvidia[0-9]$' | while read i
         do
           N=$(echo $i | sed 's/\/dev\/nvidia//');
           MAJ=$(ls -l $i | awk '{print $5}' | cut -d, -f1)
@@ -181,6 +181,6 @@
         fi
 
     - name: Include GPU CC Mode Enablement tasks if enable_gpu_cc_mode is true
-      ansible.builtin.include_tasks: tasks/enable_gpu_cc.yml
+      ansible.builtin.include_tasks: tasks/enable_gpu_cc.yaml
       when: amd_sev | default(false)
       register: gpu_cc_setup_result

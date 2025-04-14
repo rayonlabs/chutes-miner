@@ -321,11 +321,17 @@
   changed_when: "'Number of files transferred: 0' not in rsync_result.stdout"
   register: rsync_result
 
-- name: Download NVIDIA CUDA keyring deb
-  ansible.builtin.get_url:
-    url: "{{ cc_nvidia_cuda_keyring_url }}"
-    dest: "{{ cc_nvidia_cuda_keyring_deb }}"
-    mode: '0644'
+- name: Reboot
+  reboot:
+    msg: "Rebooting..."
+    reboot_command: "reboot"
+    connect_timeout: 5
+    reboot_timeout: 900
+    pre_reboot_delay: 0
+    post_reboot_delay: 30
+    test_command: uptime
+  when: build_async_result_second_pass.changed | default(false)
+  register: rebooted_sev
 
 - name: Install NVIDIA CUDA keyring
   ansible.builtin.apt:
@@ -354,9 +360,4 @@
     cmd: "dkms autoinstall --kernelsourcedir /usr/src/{{ kernel_source_dir_name }}"
   environment:
     IGNORE_MISSING_MODULE_SYMVERS: 1
-  when: dkms_status_check.rc != 0
   register: dkms_build_result
-
-- name: Check if reboot is required
-  ansible.builtin.set_fact:
-    sev_reboot_required: "{{ (kernel_install_result | default({'changed': false})).changed or (dkms_build_result | default({'changed': false})).changed }}"
