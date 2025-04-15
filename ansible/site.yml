@@ -18,8 +18,8 @@
     kernel_base_version: 5.19.0-rc6
     cc_nvidia_cuda_keyring_url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
     cc_nvidia_cuda_keyring_deb: /tmp/cuda-keyring_1.1-1_all.deb
-    cc_cuda_version: "12-4"
-    cc_nvidia_driver_version_short: "550"
+    cc_cuda_version: "12-8"
+    cc_nvidia_driver_version_short: "570"
     required_cpu_flags:
       - sev
       - sev_es
@@ -51,8 +51,7 @@
         test_command: uptime
       when: >
         (gpu_setup is defined and gpu_setup.changed) or
-        (ipv6_disabled is defined and ipv6_disabled.changed) or
-        (sev_reboot_required | default(false))
+        (ipv6_disabled is defined and ipv6_disabled.changed)
       register: rebooted
 
     - name: Set NVIDIA device permissions

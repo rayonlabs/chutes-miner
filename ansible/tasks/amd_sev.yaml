@@ -333,6 +333,12 @@
   when: build_async_result_second_pass.changed | default(false)
   register: rebooted_sev
 
+- name: Download NVIDIA CUDA keyring package
+  ansible.builtin.get_url:
+    url: "{{ cc_nvidia_cuda_keyring_url }}"
+    dest: "{{ cc_nvidia_cuda_keyring_deb }}"
+    mode: '0644'
+
 - name: Install NVIDIA CUDA keyring
   ansible.builtin.apt:
     deb: "{{ cc_nvidia_cuda_keyring_deb }}"
@@ -346,9 +352,15 @@
   ansible.builtin.apt:
     name:
       - cuda-toolkit-{{ cc_cuda_version }}
-      - cuda-drivers-{{ cc_nvidia_driver_version_short }}
+      - nvidia-driver-{{ cc_nvidia_driver_version_short }}-server-open
       - nvidia-fabricmanager-{{ cc_nvidia_driver_version_short }}
     state: present
+
+- name: Configure NVIDIA Fabric Manager
+  systemd:
+    name: nvidia-fabricmanager
+    enabled: yes
+    masked: no
 
 - name: Prevent deleting required build files
   ansible.builtin.shell:
@@ -361,3 +373,27 @@
   environment:
     IGNORE_MISSING_MODULE_SYMVERS: 1
   register: dkms_build_result
+
+- name: Ensure GRUB has AMD IOMMU enabled
+  lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="amd_iommu=on iommu=pt"'
+    backup: true
+
+- name: Update grub
+  ansible.builtin.shell:
+    cmd: update-grub
+  become: yes
+  register: grub_iommu_changed
+
+- name: Reboot
+  reboot:
+    msg: "Rebooting..."
+    reboot_command: "reboot"
+    connect_timeout: 5
+    reboot_timeout: 900
+    pre_reboot_delay: 0
+    post_reboot_delay: 30
+    test_command: uptime
+  when: grub_iommu_changed.changed
