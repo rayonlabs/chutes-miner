@@ -11,11 +11,11 @@
     # TEE flags for AMD.
     shared_dir: /shared
     amdsev_repo_url: https://github.com/AMDESE/AMDSEV.git
-    amdsev_branch: sev-snp-devel
+    amdsev_branch: snp-latest
     nvtrust_repo_url: https://github.com/NVIDIA/nvtrust.git
     amdsev_dir: "{{ shared_dir }}/AMDSEV"
     nvtrust_dir: "{{ shared_dir }}/nvtrust"
-    kernel_base_version: 5.19.0-rc6
+    kernel_base_version: 6.11.0-rc3
     cc_nvidia_cuda_keyring_url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
     cc_nvidia_cuda_keyring_deb: /tmp/cuda-keyring_1.1-1_all.deb
     cc_cuda_version: "12-8"
@@ -26,8 +26,8 @@
       #- sev_snp ?? shows up after kernel updates I think?
 
   tasks:
-    - name: System prerequisites and base config
-      ansible.builtin.include_tasks: tasks/prerequisites.yaml
+    #- name: System prerequisites and base config
+    #  ansible.builtin.include_tasks: tasks/prerequisites.yaml
 
     - name: AMD SEV setup and configuration
       ansible.builtin.include_tasks: tasks/amd_sev.yaml
@@ -36,9 +36,6 @@
     - name: Non-TEE CUDA installation
       ansible.builtin.include_tasks: tasks/non_tee_gpu_setup.yaml
       when: not amd_sev | default(false) and enable_gpu | bool
-
-    - name: Microk8s installation and configuration
-      ansible.builtin.include_tasks: tasks/microk8s.yaml
 
     - name: Reboot
       reboot:
@@ -90,48 +87,6 @@
         daemon_reload: yes
       when: rebooted.changed
 
-    - name: Wait for microk8s to be ready
-      shell: microk8s status | grep -E "microk8s is running|acting as a node in a cluster"
-      register: result
-      until: result.rc == 0
-      retries: 30
-      delay: 10
-      ignore_errors: yes
-      when: rebooted.changed
-
-    - name: Install NVIDIA Container Toolkit
-      apt:
-        name: nvidia-container-toolkit
-        state: present
-      when: gpu_enabled | bool
-
-    - name: Configure NVIDIA Container Toolkit
-      shell: |
-        nvidia-ctk runtime configure --runtime=docker --set-as-default
-        nvidia-ctk runtime configure --runtime=containerd --set-as-default
-        nvidia-ctk runtime configure --runtime=crio --set-as-default --config=/etc/crio/crio.conf.d/99-nvidia.conf
-      register: container_runtime
-      when: gpu_enabled | bool
-
-    - name: Find all microk8s services
-      shell: systemctl list-units --full --all "snap.microk8s.*" --plain --no-legend | awk '{print $1}'
-      register: microk8s_services
-
-    - name: Restart all microk8s services
-      systemd:
-        name: "{{ item }}"
-        state: restarted
-      loop: "{{ microk8s_services.stdout_lines }}"
-      when: container_runtime.changed
-
-    - name: Install iptables-persistent
-      package:
-        name:
-          - iptables-persistent
-          - netfilter-persistent
-        state: present
-      when: is_primary | bool
-
     - name: Add forwarding rule
       iptables:
         chain: FORWARD
@@ -170,14 +125,6 @@
         sysctl_set: yes
         reload: yes
       when: is_primary | bool
-
-    - name: Fix containerd
-      shell: |
-        DISABLED=$(egrep 'disabled_plugins' /etc/containerd/config.toml | grep -v 'disabled_plugins = \[\]')
-        if [ ! -z "$PKGS" ]; then
-          perl -pi -e 's/^\s*disabled_plugins\s*=/##disabled_plugins = []/g' /etc/containerd/config.toml
-          systemctl restart containerd
-        fi
 
     - name: Include GPU CC Mode Enablement tasks if enable_gpu_cc_mode is true
       ansible.builtin.include_tasks: tasks/enable_gpu_cc.yaml

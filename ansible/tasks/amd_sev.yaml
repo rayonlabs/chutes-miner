@@ -1,7 +1,7 @@
 - name: Preflight | Check OS Distribution and Version
   ansible.builtin.fail:
-    msg: "This playbook requires Ubuntu 22.04. Detected {{ ansible_distribution }} {{ ansible_distribution_version }}."
-  when: ansible_distribution != 'Ubuntu' or ansible_distribution_version != '22.04'
+    msg: "This playbook requires Ubuntu 24.04. Detected {{ ansible_distribution }} {{ ansible_distribution_version }}."
+  when: ansible_distribution != 'Ubuntu' or ansible_distribution_version != '24.04'
 
 - name: Preflight | Get CPU information
   ansible.builtin.command: lscpu
@@ -27,7 +27,7 @@
 
 - name: Preflight | Checks passed
   ansible.builtin.debug:
-    msg: "OS and CPU checks passed (Ubuntu 22.04, AMD CPU with SEV/SEV-ES/SEV-SNP)."
+    msg: "OS and CPU checks passed (Ubuntu 24.04, AMD CPU with SEV/SEV-ES/SEV-SNP)."
 
 - name: Update apt cache
   ansible.builtin.apt:
@@ -72,9 +72,9 @@
     - rsync
     - wget
     - git
-    - libsdl-console
-    - libsdl-console-dev
-    - libsocket++-dev
+    - debhelper-compat
+    - libslirp-dev
+    - libslirp0
 
 - name: Ensure shared directory exists
   ansible.builtin.file:
@@ -116,15 +116,25 @@
     dest: /tmp/common.patch
     mode: '0644'
 
-- name: SEV | Apply patch to common.sh
+- name: Dry-run common.sh patch
+  ansible.builtin.shell:
+    cmd: "patch -p1 -l --dry-run < /tmp/common.patch"
+    chdir: "{{ amdsev_dir }}"
+  register: common_sh_patch_dry_run
+  changed_when: false
+  failed_when: false
+  become: yes
+
+- name: Apply patch to common.sh
   ansible.builtin.patch:
     src: /tmp/common.patch
     dest: "{{ amdsev_dir }}/common.sh"
     state: present
     backup: yes
     remote_src: yes
+  when: common_sh_patch_dry_run.rc == 0
 
-- name: Build AMDSEV kernel (first pass)
+- name: Build AMDSEV kernel
   ansible.builtin.shell:
     cmd: bash -lc './build.sh --package 2>&1 | tee /tmp/firstpass.log'
     chdir: "{{ amdsev_dir }}"
@@ -133,47 +143,15 @@
   poll: 0
   args:
     creates: "{{ amdsev_dir }}/snp-release-{{ kernel_base_version }}*"
-  register: build_async_result_first_pass
+  register: build_async_result
 
 - name: Wait for AMDSEV kernel first pass to finish building
   ansible.builtin.async_status:
-    jid: "{{ build_async_result_first_pass.ansible_job_id }}"
+    jid: "{{ build_async_result.ansible_job_id }}"
   register: job_result
   until: job_result.finished
   retries: 120
   delay: 60
-  become: yes
-
-- name: SEV | Dry-run IOMMU pagefault patch
-  ansible.builtin.shell:
-    cmd: "patch -p1 -l --dry-run < {{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagefault.patch"
-    chdir: "{{ amdsev_dir }}/linux/host"
-  register: iommu_pagefault_dry_run
-  changed_when: false
-  failed_when: false
-  become: yes
-
-- name: SEV | Apply IOMMU pagefault patch if dry-run succeeded
-  ansible.builtin.shell:
-    cmd: "patch -p1 -l < {{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagefault.patch"
-    chdir: "{{ amdsev_dir }}/linux/host"
-  when: iommu_pagefault_dry_run.rc == 0
-  become: yes
-
-- name: SEV | Dry-run IOMMU pagesize patch
-  ansible.builtin.shell:
-    cmd: "patch -p1 -l --dry-run < {{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagesize.patch"
-    chdir: "{{ amdsev_dir }}/linux/host"
-  register: iommu_pagesize_dry_run
-  changed_when: false
-  failed_when: false
-  become: yes
-
-- name: SEV | Apply IOMMU pagesize patch if dry-run succeeded
-  ansible.builtin.shell:
-    cmd: "patch -p1 -l < {{ nvtrust_dir }}/infrastructure/patches/linux/iommu_pagesize.patch"
-    chdir: "{{ amdsev_dir }}/linux/host"
-  when: iommu_pagesize_dry_run.rc == 0
   become: yes
 
 - name: Extract kernel local version suffix from .config
@@ -218,26 +196,6 @@
   ansible.builtin.debug:
     msg: "Kernel {{ kernel_full_version }} already installed. Skipping rebuild and install steps."
   when: kernel_already_installed
-
-- name: Build AMDSEV kernel (second pass)
-  ansible.builtin.shell:
-    cmd: bash -lc './build.sh --package 2>&1 | tee /tmp/secondpass.log'
-    chdir: "{{ amdsev_dir }}"
-  become: yes
-  async: 7200
-  poll: 0
-  args:
-    creates: "{{ amdsev_dir }}/snp-release-{{ kernel_base_version }}*"
-  register: build_async_result_second_pass
-
-- name: Wait for AMDSEV kernel second pass to finish building
-  ansible.builtin.async_status:
-    jid: "{{ build_async_result_second_pass.ansible_job_id }}"
-  register: job_result
-  until: job_result.finished
-  retries: 120
-  delay: 60
-  become: yes
 
 - name: Copy kvm.conf to modprobe.d
   ansible.builtin.copy:
@@ -330,7 +288,7 @@
     pre_reboot_delay: 0
     post_reboot_delay: 30
     test_command: uptime
-  when: build_async_result_second_pass.changed | default(false)
+  when: build_async_result.changed | default(false)
   register: rebooted_sev
 
 - name: Download NVIDIA CUDA keyring package
@@ -378,7 +336,7 @@
   lineinfile:
     path: /etc/default/grub
     regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
-    line: 'GRUB_CMDLINE_LINUX_DEFAULT="amd_iommu=on iommu=pt"'
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="amd_iommu=on iommu=on mem_encrypt=on kvm_amd.sev=1 kvm_amd.sev_es=1 kvm_amd.sev_snp=1"'
     backup: true
 
 - name: Update grub
