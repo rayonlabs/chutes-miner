@@ -277,6 +277,7 @@ class Gepetto:
         chute_values = []
         for validator, chutes in self.remote_chutes.items():
             for chute_id, chute_info in chutes.items():
+                chute_name = chute_info["name"]
                 try:
                     chute = await self.load_chute(chute_id, chute_info["version"], validator)
                     if not chute:
@@ -287,25 +288,25 @@ class Gepetto:
                         chute_id, chute_info["version"], validator
                     )
                     if local_count > 3:
-                        logger.warning(f"Too many instances of {chute_id=}, scaling down!")
+                        logger.warning(f"Too many instances of {chute_id=}/{chute_name}, scaling down!")
                         await self.scale_chute(chute, 3)
                         continue
 
                     if local_count >= 3:
-                        logger.info(f"Already have max instances of {chute_id=}")
+                        logger.info(f"Already have max instances of {chute_id=}/{chute_name}")
                         continue
 
                     # If there are no metrics, it means the chute is not being actively used, so don't scale.
                     metrics = self.remote_metrics.get(validator, {}).get(chute_id, {})
                     if not metrics:
-                        logger.info(f"No metrics for {chute_id=}, scaling would be unproductive...")
+                        logger.info(f"No metrics for {chute_id=}/{chute_name}, scaling would be unproductive...")
                         continue
 
                     # If we have all deployments already (no other miner has this) then no need to scale.
                     total_count = metrics["instance_count"]
                     if local_count and local_count >= total_count:
                         logger.info(
-                            f"We have all deployments for {chute_id=}, scaling would be unproductive..."
+                            f"We have all deployments for {chute_id=}/{chute_name}, scaling would be unproductive..."
                         )
                         continue
 
@@ -319,7 +320,7 @@ class Gepetto:
                     # See if we have a server that could even handle it.
                     potential_server = await self.optimal_scale_up_server(chute)
                     if not potential_server:
-                        logger.info(f"No viable server to scale {chute_id=}")
+                        logger.info(f"No viable server to scale {chute_id=}/{chute_name}")
                         continue
 
                     # Calculate value ratio
@@ -334,7 +335,7 @@ class Gepetto:
                     chute_values.append((validator, chute_id, chute_value))
 
                 except Exception as e:
-                    logger.error(f"Error processing chute {chute_id}: {e}")
+                    logger.error(f"Error processing chute {chute_id}/{chute_name}: {e}")
                     continue
 
         if not chute_values:
