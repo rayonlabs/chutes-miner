@@ -285,6 +285,47 @@ def purge_deployments(
 
     asyncio.run(_purge_deployments())
 
+def purge_node(
+    hotkey: str = typer.Option(..., help="Path to the hotkey file for your miner"),
+    miner_api: str = typer.Option("http://127.0.0.1:32000", help="Miner API base URL"),
+    name: str = typer.Option(..., help="Name or ID of the server/node"),
+):
+    """
+    Purge chutes deployed to specified server/node
+    """
+
+    async def _purge_node_deployment():
+        nonlocal hotkey, miner_api, name
+        async with aiohttp.ClientSession(raise_for_status=True) as session:
+            headers, payload_string = sign_request(hotkey, purpose="management")
+            async with session.delete(
+                f"{miner_api.rstrip('/')}/deployments/purge/node/{name}",
+                headers=headers,
+            ) as resp:
+                print(json.dumps(await resp.json(), indent=2))
+
+    asyncio.run(_purge_node_deployment())
+
+def purge_deployment(
+    hotkey: str = typer.Option(..., help="Path to the hotkey file for your miner"),
+    miner_api: str = typer.Option("http://127.0.0.1:32000", help="Miner API base URL"),
+    deployment_id: str = typer.Option(..., help="ID of the deployment"),
+):
+    """
+    Purge specific chutes deployed to a node
+    """
+
+    async def _purge_deployment():
+        nonlocal hotkey, miner_api, deployment_id
+        async with aiohttp.ClientSession(raise_for_status=True) as session:
+            headers, payload_string = sign_request(hotkey, purpose="management")
+            async with session.delete(
+                f"{miner_api.rstrip('/')}/deployments/purge/deployment/{deployment_id}",
+                headers=headers,
+            ) as resp:
+                print(json.dumps(await resp.json(), indent=2))
+
+    asyncio.run(_purge_deployment())
 
 def scorch_remote(
     hotkey: str = typer.Option(..., help="Path to the hotkey file for your miner"),
@@ -388,6 +429,12 @@ app.command(name="delete-node", help="Delete a kubernetes node from your cluster
 app.command(
     name="purge-deployments", help="Purge all deployments, allowing autoscale from scratch"
 )(purge_deployments)
+app.command(
+    name="purge-deployment", help="Purge single deployment, allowing autoscale from scratch"
+)(purge_deployment)
+app.command(
+    name="purge-node", help="Purge all deployments from a given node, allowing autoscale from scratch"
+)(purge_node)
 app.command(name="local-inventory", help="Show local inventory")(local_inventory)
 app.command(name="remote-inventory", help="Show remote inventory")(remote_inventory)
 app.command(name="scorch-remote", help="Purge all GPUs/instances/etc. from validator")(
