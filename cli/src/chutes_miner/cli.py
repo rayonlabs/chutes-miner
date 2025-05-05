@@ -429,6 +429,12 @@ app.command(name="delete-node", help="Delete a kubernetes node from your cluster
 app.command(
     name="purge-deployments", help="Purge all deployments, allowing autoscale from scratch"
 )(purge_deployments)
+app.command(
+    name="purge-node", help="Purge all deployments from a given node, allowing autoscale from scratch"
+)(purge_node)
+app.command(
+    name="purge-deployment", help="Purge single deployment, allowing autoscale from scratch"
+)(purge_deployment)
 app.command(name="local-inventory", help="Show local inventory")(local_inventory)
 app.command(name="remote-inventory", help="Show remote inventory")(remote_inventory)
 app.command(name="scorch-remote", help="Purge all GPUs/instances/etc. from validator")(
