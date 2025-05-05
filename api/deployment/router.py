@@ -46,7 +46,7 @@ async def purge(
 
 @router.delete("/purge/node/{node_id_or_name}")
 async def purge_node(
-    id_or_name: str,
+    node_id_or_name: str,
     db: AsyncSession = Depends(get_db_session),
     _: None = Depends(authorize(allow_miner=True, purpose="management")),
 ):
@@ -58,7 +58,7 @@ async def purge_node(
     for deployment in (
         await db.execute(
             select(Deployment).filter(
-                (Deployment.server.name == id_or_name) | (Deployment.server_id == id_or_name)
+                (Deployment.server.name == node_id_or_name) | (Deployment.server_id == node_id_or_name)
             )
         )
     ).unique().scalars().all():
