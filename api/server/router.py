@@ -176,6 +176,7 @@ async def purge_server(
                 .where((Deployment.server_id == id_or_name) | (Server.name == id_or_name))
             )
         )
+        .unique()
         .scalars()
         .all()
     ):
