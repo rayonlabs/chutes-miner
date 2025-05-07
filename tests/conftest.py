@@ -8,8 +8,8 @@ from constants import CHUTE_ID, CHUTE_NAME, SERVER_ID, SERVER_NAME, GPU_COUNT
 
 def pytest_configure(config):
     """Set up environment variables before any modules are imported."""
-    os.environ["MINER_SS58"] = "test_miner_ss58_address"
-    os.environ["MINER_SEED"] = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+    os.environ["MINER_SS58"] = "5E6xfU3oNU7y1a7pQwoc31fmUjwBZ2gKcNCw8EXsdtCQieUQ"
+    os.environ["MINER_SEED"] = "0xe031170f32b4cda05df2f3cf6bc8d7687b683bbce23d9fa960c0b3fc21641b8a"
 
     validators_json = {
         "supported": [
@@ -52,7 +52,7 @@ def mock_hotkey_content():
     return json.dumps(
         {
             "ss58Address": "test_miner_address",
-            "secretSeed": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            "secretSeed": "0xe031170f32b4cda05df2f3cf6bc8d7687b683bbce23d9fa960c0b3fc21641b8a",
         }
     )
 
