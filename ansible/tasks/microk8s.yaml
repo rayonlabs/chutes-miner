@@ -1,0 +1,115 @@
+- name: Install MicroK8s
+  community.general.snap:
+    name: microk8s
+    channel: "{{ microk8s_channel }}"
+    classic: yes
+
+- name: Start MicroK8s
+  shell: microk8s status | grep "microk8s is running" || microk8s start
+  changed_when: false
+
+- name: Configure wireguard IP for k8s comms
+  block:
+    - name: Get current kubelet args
+      slurp:
+        src: /var/snap/microk8s/current/args/kubelet
+      register: kubelet_args
+
+    - name: Get current kube-apiserver args
+      slurp:
+        src: /var/snap/microk8s/current/args/kube-apiserver
+      register: kubeapi_args
+
+    - name: Check if node-ip is already configured
+      set_fact:
+        has_node_ip: "{{ (kubelet_args.content | b64decode) is regex('--node-ip=') }}"
+
+    - name: Check if advertise-addr is already configured
+      set_fact:
+        has_adv_ip: "{{ (kubeapi_args.content | b64decode) is regex('--advertise-address=') }}"
+
+    - name: Add node-ip to kubelet args
+      lineinfile:
+        path: /var/snap/microk8s/current/args/kubelet
+        line: "--node-ip={{ wireguard_ip }}"
+        create: yes
+      when: not has_node_ip
+      register: kubelet_modified
+
+    - name: Add advertise-address to kubeapi args
+      lineinfile:
+        path: /var/snap/microk8s/current/args/kube-apiserver
+        line: "--advertise-address={{ wireguard_ip }}"
+        create: yes
+      when: not has_adv_ip
+      register: kubeapi_modified
+
+    - name: Restart kubelet if config changed
+      systemd:
+        name: snap.microk8s.daemon-kubelite
+        state: restarted
+      when: kubelet_modified.changed or kubeapi_modified.changed
+
+- name: Setup Kubernetes access for user
+  block:
+    - name: Add user to microk8s group
+      user:
+        name: "{{ item }}"
+        groups: microk8s
+        append: yes
+      with_items:
+        - "{{ username }}"
+        - "{{ ansible_user }}"
+
+    - name: Ensure .kube directory exists for user
+      file:
+        path: "/home/{{ username }}/.kube"
+        state: directory
+        mode: '0755'
+        owner: "{{ username }}"
+        group: "{{ username }}"
+
+    - name: Generate kubeconfig from microk8s
+      shell: microk8s config > /home/{{ username }}/.kube/config
+      args:
+        creates: "/home/{{ username }}/.kube/config"
+
+    - name: Set kubeconfig permissions
+      file:
+        path: "/home/{{ username }}/.kube/config"
+        mode: '0600'
+        owner: "{{ username }}"
+        group: "{{ username }}"
+
+- name: Create containerd config directory
+  file:
+    path: /var/snap/microk8s/current/args/certs.d
+    state: directory
+    mode: '0755'
+
+- name: Set registry hostname
+  set_fact:
+    registry_hostname: "{{ validator | lower }}.localregistry.chutes.ai"
+
+- name: Create certs.d directory for registry
+  file:
+    path: "/var/snap/microk8s/current/args/certs.d/{{ registry_hostname }}:{{ registry_port }}"
+    state: directory
+    mode: '0755'
+
+- name: Create hosts.toml for registry
+  template:
+    src: hosts.toml.j2
+    dest: "/var/snap/microk8s/current/args/certs.d/{{ registry_hostname }}:{{ registry_port }}/hosts.toml"
+    mode: '0644'
+
+- name: Update DNS resolution config
+  template:
+    src: resolved.conf.j2
+    dest: "/etc/systemd/resolved.conf"
+    mode: '0644'
+
+- name: Restart systemd-resolved
+  systemd:
+    name: systemd-resolved
+    state: restarted

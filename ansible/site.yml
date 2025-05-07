@@ -8,465 +8,37 @@
     microk8s_channel: "1.31/stable"
     enable_gpu: "{{ gpu_enabled | default(false) }}"
 
+    # TEE flags for AMD.
+    shared_dir: /shared
+    amdsev_repo_url: https://github.com/AMDESE/AMDSEV.git
+    amdsev_branch: sev-snp-devel
+    nvtrust_repo_url: https://github.com/NVIDIA/nvtrust.git
+    amdsev_dir: "{{ shared_dir }}/AMDSEV"
+    nvtrust_dir: "{{ shared_dir }}/nvtrust"
+    kernel_base_version: 5.19.0-rc6
+    cc_nvidia_cuda_keyring_url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+    cc_nvidia_cuda_keyring_deb: /tmp/cuda-keyring_1.1-1_all.deb
+    cc_cuda_version: "12-8"
+    cc_nvidia_driver_version_short: "570"
+    required_cpu_flags:
+      - sev
+      - sev_es
+      #- sev_snp ?? shows up after kernel updates I think?
+
   tasks:
-    - name: Update apt cache
-      apt:
-        update_cache: yes
+    - name: System prerequisites and base config
+      ansible.builtin.include_tasks: tasks/prerequisites.yaml
 
-    - name: Gather package facts
-      package_facts:
-        manager: auto
+    - name: AMD SEV setup and configuration
+      ansible.builtin.include_tasks: tasks/amd_sev.yaml
+      when: amd_sev | default(false)
 
-    - name: Stop and disable unattended upgrades
-      systemd:
-        name: unattended-upgrades
-        state: stopped
-        enabled: no
-      ignore_errors: true
+    - name: Non-TEE CUDA installation
+      ansible.builtin.include_tasks: tasks/non_tee_gpu_setup.yaml
+      when: not amd_sev | default(false) and enable_gpu | bool
 
-    - name: Create user
-      user:
-        name: "{{ username }}"
-        shell: /bin/bash
-        create_home: yes
-        state: present
-
-    - name: Create SSH directories
-      file:
-        path: "{{ item }}"
-        state: directory
-        mode: '0700'
-      with_items:
-        - "/home/{{ username }}/.ssh"
-        - "/root/.ssh"
-
-    - name: Add authorized SSH keys
-      authorized_key:
-        user: "{{ user }}"
-        state: present
-        key: "{{ item }}"
-      with_items: "{{ ssh_public_keys }}"
-      become: yes
-
-    - name: Set correct ownership for user home
-      file:
-        path: "/home/{{ username }}"
-        owner: "{{ username }}"
-        group: "{{ username }}"
-        recurse: yes
-
-    - name: Add user to sudoers
-      lineinfile:
-        path: /etc/sudoers
-        line: '{{ username }} ALL=(ALL) NOPASSWD:ALL'
-        validate: 'visudo -cf %s'
-
-    - name: Remove old containerd if exists
-      apt:
-        name: containerd.io
-        state: absent
-
-    - name: Remove unwanted files in sources.list.d
-      find:
-        paths: /etc/apt/sources.list.d
-        patterns:
-          - "*"
-        excludes:
-          - "ubuntu.sources"
-          - "cuda-*.list"
-          - "deadsnakes.list"
-          - "docker.list"
-          - "nvidia-docker-container.list"
-        file_type: file
-      register: apt_files_to_remove
-
-    - name: Delete found files
-      file:
-        path: "{{ item.path }}"
-        state: absent
-      with_items: "{{ apt_files_to_remove.files }}"
-
-    - name: Remove proxy configuration files
-      file:
-        path: "{{ item }}"
-        state: absent
-      with_fileglob:
-        - "/etc/apt/apt.conf.d/*proxy*"
-
-    - name: Remove proxy settings from apt.conf
-      lineinfile:
-        path: /etc/apt/apt.conf
-        regexp: "{{ item }}"
-        state: absent
-      with_items:
-        - 'Acquire::http::Proxy'
-        - 'Acquire::https::Proxy'
-      when: ansible_path_apt_conf.stat.exists is defined and ansible_path_apt_conf.stat.exists
-
-    - name: Unset all snap proxy settings
-      command: snap unset system {{ item }}
-      loop:
-        - proxy.http
-        - proxy.https
-        - proxy.no-proxy
-      changed_when: true
-      ignore_errors: true
-
-    - name: Install basic system prerequisites
-      apt:
-        name:
-          - socat
-          - vim
-          - jq
-          - bc
-          - libclang-dev
-          - npm
-          - clang
-          - libssl-dev
-          - llvm
-          - libudev1
-          - protobuf-compiler
-          - python3
-          - python3-pip
-          - python3-venv
-          - docker.io
-          - docker-compose
-          - build-essential
-          - nginx
-          - redis
-          - net-tools
-          - ffmpeg
-          - rsyslog
-          - libpq-dev
-          - snapd
-          - iputils-ping
-          - systemd-timesyncd
-        state: present
-
-    - name: Set vim as default editor
-      alternatives:
-        name: editor
-        path: /usr/bin/vim
-        priority: 1
-
-    - name: Get list of installed lambda packages
-      shell: dpkg --list | grep lambda | awk '{print $2}'
-      register: lambda_packages
-      changed_when: false
-
-    - name: Check if lambda version file exists
-      stat:
-        path: /etc/lambda-version
-      register: lambda_version_file
-
-    - name: Check if another lambda package file exists, backup
-      stat:
-        path: /etc/systemd/system/lambda-jupyter.service
-      register: lambda_file_backup
-
-    - name: Remove lambda packages
-      apt:
-        name: "{{ lambda_packages.stdout_lines }}"
-        state: absent
-        purge: yes
-      when:
-        - lambda_version_file.stat.exists or lambda_file_backup.stat.exists
-        - lambda_packages.stdout_lines | length > 0
-
-    - name: Check CUDA installation
-      apt:
-        name: cuda-toolkit-{{ cuda_version }}
-        state: present
-      check_mode: yes
-      register: cuda_check
-      ignore_errors: yes
-      when: enable_gpu | bool
-
-    - name: Purge existing NVIDIA/CUDA packages
-      shell: |
-        export DEBIAN_FRONTEND=noninteractive
-        export NEEDRESTART_SUSPEND=y
-        PKGS=$(dpkg --list | egrep -i 'cuda|nvidia' | egrep -v 'nvidia-kernel|linux-(nvidia|modules|headers|image)' | awk '{print $2}' )
-        if [ ! -z "$PKGS" ]; then
-          echo "$PKGS" | xargs apt -y remove --allow-change-held-packages
-          echo "$PKGS" | xargs dpkg --purge
-        fi
-      ignore_errors: yes
-      register: gpu_setup
-      when: not skip_cuda | bool and (gpu_enabled | bool) and (cuda_check.failed or cuda_check.changed)
-
-    - name: Download and install CUDA keyring
-      block:
-        - get_url:
-            url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu{{ ubuntu_major }}{{ ubuntu_minor }}/x86_64/cuda-keyring_1.1-1_all.deb
-            dest: /tmp/cuda-keyring.deb
-        - apt:
-            deb: /tmp/cuda-keyring.deb
-      when: gpu_enabled | bool
-
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-      when: gpu_enabled | bool
-
-    - name: GPU Setup Tasks
-      when: enable_gpu | bool and not skip_cuda | bool
-      block:
-        - name: Install NVIDIA packages
-          apt:
-            name:
-              - cuda-toolkit-{{ cuda_version }}
-              - cuda-drivers-{{ nvidia_version }}
-              - nvidia-fabricmanager-{{ nvidia_version }}
-            state: present
-
-        - name: Configure NVIDIA Fabric Manager
-          systemd:
-            name: nvidia-fabricmanager
-            enabled: yes
-            masked: no
-
-    - name: Set NVIDIA device permissions
-      file:
-        path: "{{ item }}"
-        mode: '0666'
-      with_fileglob:
-        - /dev/nvidia*
-        - /dev/nvidiactl
-        - /dev/nvidia-uvm
-        - /dev/nvidia-uvm-tools
-
-    - name: Create NVIDIA character device symlinks
-      when: gpu_enabled | bool
-      shell: |
-        ls /dev/nvidia? | egrep 'nvidia[0-9]' | while read i
-        do
-          N=$(echo $i | sed 's/\/dev\/nvidia//');
-          MAJ=$(ls -l $i | awk '{print $5}' | cut -d, -f1)
-          MIN=$(ls -l $i | awk '{print $6}')
-          mkdir -p /dev/char/$MAJ:$MIN
-          ln -sf $i /dev/char/$MAJ:$MIN
-        done
-
-    - name: Configure file limits
-      blockinfile:
-        path: /etc/security/limits.conf
-        block: |
-          * soft nofile 40000
-          * hard nofile 40001
-
-    - name: Configure PAM limits
-      lineinfile:
-        path: "{{ item }}"
-        line: "session required pam_limits.so"
-      with_items:
-        - /etc/pam.d/common-session
-        - /etc/pam.d/common-session-noninteractive
-
-    - name: Set hostname
-      hostname:
-        name: "{{ inventory_hostname }}"
-        use: systemd
-
-    - name: Update /etc/hostname
-      copy:
-        content: "{{ inventory_hostname }}"
-        dest: /etc/hostname
-
-    - name: Ensure preserve_hostname is set to true
-      lineinfile:
-        path: /etc/cloud/cloud.cfg
-        regexp: '^preserve_hostname:'
-        line: 'preserve_hostname: true'
-        create: true
-        owner: root
-        group: root
-        mode: '0644'
-
-    - name: Create hostname script
-      copy:
-        dest: /usr/local/bin/set-hostname.sh
-        mode: '0755'
-        content: |
-          #!/bin/bash
-          hostnamectl set-hostname "{{ inventory_hostname }}"
-          hostname "{{ inventory_hostname }}"
-          echo -n "{{ inventory_hostname }}" > /etc/hostname
-
-    - name: Create systemd service
-      copy:
-        dest: /etc/systemd/system/set-hostname.service
-        content: |
-          [Unit]
-          Description=Set system hostname on boot
-          After=network.target
-
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/local/bin/set-hostname.sh
-          RemainAfterExit=yes
-
-          [Install]
-          WantedBy=multi-user.target
-
-    - name: Enable and start hostname service
-      systemd:
-        name: set-hostname
-        enabled: yes
-        state: started
-        daemon_reload: yes
-
-    - name: Configure and ensure time synchronization
-      block:
-        - name: Ensure timesyncd is installed and enabled
-          systemd:
-            name: systemd-timesyncd
-            state: started
-            enabled: yes
-
-        - name: Configure NTP servers
-          lineinfile:
-            path: /etc/systemd/timesyncd.conf
-            regexp: '^#?NTP='
-            line: 'NTP=pool.ntp.org'
-
-        - name: Force time synchronization
-          shell: |
-            timedatectl set-ntp true
-            systemctl restart systemd-timesyncd
-
-    - name: Disable IPv6
-      block:
-        - name: Set sysctl parameters for IPv6
-          sysctl:
-            name: "{{ item.key }}"
-            value: "{{ item.value }}"
-            state: present
-            sysctl_file: /etc/sysctl.d/99-disable-ipv6.conf
-            reload: yes
-          with_items:
-            - { key: "net.ipv6.conf.all.disable_ipv6", value: "1" }
-            - { key: "net.ipv6.conf.default.disable_ipv6", value: "1" }
-            - { key: "net.ipv6.conf.lo.disable_ipv6", value: "1" }
-          register: ipv6_disabled
-      become: yes
-      when: not ipv6_enabled | bool
-
-    - name: Install MicroK8s
-      community.general.snap:
-        name: microk8s
-        channel: "{{ microk8s_channel }}"
-        classic: yes
-
-    - name: Start MicroK8s
-      shell: microk8s status | grep "microk8s is running" || microk8s start
-      changed_when: false
-
-    - name: Configure wireguard IP for k8s comms
-      block:
-        - name: Get current kubelet args
-          slurp:
-            src: /var/snap/microk8s/current/args/kubelet
-          register: kubelet_args
-
-        - name: Get current kube-apiserver args
-          slurp:
-            src: /var/snap/microk8s/current/args/kube-apiserver
-          register: kubeapi_args
-
-        - name: Check if node-ip is already configured
-          set_fact:
-            has_node_ip: "{{ (kubelet_args.content | b64decode) is regex('--node-ip=') }}"
-
-        - name: Check if advertise-addr is already configured
-          set_fact:
-            has_adv_ip: "{{ (kubeapi_args.content | b64decode) is regex('--advertise-address=') }}"
-
-        - name: Add node-ip to kubelet args
-          lineinfile:
-            path: /var/snap/microk8s/current/args/kubelet
-            line: "--node-ip={{ wireguard_ip }}"
-            create: yes
-          when: not has_node_ip
-          register: kubelet_modified
-
-        - name: Add advertise-address to kubeapi args
-          lineinfile:
-            path: /var/snap/microk8s/current/args/kube-apiserver
-            line: "--advertise-address={{ wireguard_ip }}"
-            create: yes
-          when: not has_adv_ip
-          register: kubeapi_modified
-
-        - name: Restart kubelet if config changed
-          systemd:
-            name: snap.microk8s.daemon-kubelite
-            state: restarted
-          when: kubelet_modified.changed or kubeapi_modified.changed
-
-    - name: Setup Kubernetes access for user
-      block:
-        - name: Add user to microk8s group
-          user:
-            name: "{{ item }}"
-            groups: microk8s
-            append: yes
-          with_items:
-            - "{{ username }}"
-            - "{{ ansible_user }}"
-
-        - name: Ensure .kube directory exists for user
-          file:
-            path: "/home/{{ username }}/.kube"
-            state: directory
-            mode: '0755'
-            owner: "{{ username }}"
-            group: "{{ username }}"
-
-        - name: Generate kubeconfig from microk8s
-          shell: microk8s config > /home/{{ username }}/.kube/config
-          args:
-            creates: "/home/{{ username }}/.kube/config"
-
-        - name: Set kubeconfig permissions
-          file:
-            path: "/home/{{ username }}/.kube/config"
-            mode: '0600'
-            owner: "{{ username }}"
-            group: "{{ username }}"
-
-    - name: Create containerd config directory
-      file:
-        path: /var/snap/microk8s/current/args/certs.d
-        state: directory
-        mode: '0755'
-
-    - name: Set registry hostname
-      set_fact:
-        registry_hostname: "{{ validator | lower }}.localregistry.chutes.ai"
-
-    - name: Create certs.d directory for registry
-      file:
-        path: "/var/snap/microk8s/current/args/certs.d/{{ registry_hostname }}:{{ registry_port }}"
-        state: directory
-        mode: '0755'
-
-    - name: Create hosts.toml for registry
-      template:
-        src: hosts.toml.j2
-        dest: "/var/snap/microk8s/current/args/certs.d/{{ registry_hostname }}:{{ registry_port }}/hosts.toml"
-        mode: '0644'
-
-    - name: Update DNS resolution config
-      template:
-        src: resolved.conf.j2
-        dest: "/etc/systemd/resolved.conf"
-        mode: '0644'
-
-    - name: Restart systemd-resolved
-      systemd:
-        name: systemd-resolved
-        state: restarted
+    - name: Microk8s installation and configuration
+      ansible.builtin.include_tasks: tasks/microk8s.yaml
 
     - name: Reboot
       reboot:
@@ -477,8 +49,33 @@
         pre_reboot_delay: 0
         post_reboot_delay: 30
         test_command: uptime
-      when: gpu_setup.changed or ipv6_disabled.changed
+      when: >
+        (gpu_setup is defined and gpu_setup.changed) or
+        (ipv6_disabled is defined and ipv6_disabled.changed)
       register: rebooted
+
+    - name: Set NVIDIA device permissions
+      file:
+        path: "{{ item }}"
+        mode: '0666'
+      with_fileglob:
+        - /dev/nvidia*
+        - /dev/nvidiactl
+        - /dev/nvidia-uvm
+        - /dev/nvidia-uvm-tools
+      when: gpu_enabled | bool
+
+    - name: Create NVIDIA character device symlinks
+      when: gpu_enabled | bool
+      shell: |
+        ls /dev/nvidia* | egrep 'nvidia[0-9]$' | while read i
+        do
+          N=$(echo $i | sed 's/\/dev\/nvidia//');
+          MAJ=$(ls -l $i | awk '{print $5}' | cut -d, -f1)
+          MIN=$(ls -l $i | awk '{print $6}')
+          mkdir -p /dev/char/$MAJ:$MIN
+          ln -sf $i /dev/char/$MAJ:$MIN
+        done
 
     - name: Wait for system to be ready
       wait_for_connection:
@@ -581,3 +178,8 @@
           perl -pi -e 's/^\s*disabled_plugins\s*=/##disabled_plugins = []/g' /etc/containerd/config.toml
           systemctl restart containerd
         fi
+
+    - name: Include GPU CC Mode Enablement tasks if enable_gpu_cc_mode is true
+      ansible.builtin.include_tasks: tasks/enable_gpu_cc.yaml
+      when: amd_sev | default(false)
+      register: gpu_cc_setup_result
