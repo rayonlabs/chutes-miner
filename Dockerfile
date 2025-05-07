@@ -23,6 +23,17 @@ ADD --chown=chutes gepetto.py /app/gepetto.py
 ENV PYTHONPATH=/app
 ENTRYPOINT ["poetry", "run", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
+FROM api AS sql
+USER root
+RUN apt-get update
+RUN apt-get install -y postgresql-client
+USER chutes
+WORKDIR /app
+ADD --chown=chutes scripts /app/scripts
+RUN chmod +x /app/scripts/*.sh
+RUN poetry add psycopg2-binary
+ENTRYPOINT ["/app/scripts/seed.sh"]
+
 # Cache cleaner.
 FROM python:3.10-slim AS cacheclean
 RUN pip install --no-cache-dir transformers==4.46.3

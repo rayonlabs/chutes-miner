@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: chutes
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d chutes"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: api
+    environment:
+      - POSTGRESQL=postgresql+asyncpg://user:password@postgres:5432/chutes
+      - REDIS_URL=redis://redis:6379/0
+      - MINER_SS58=5E6xfU3oNU7y1a7pQwoc31fmUjwBZ2gKcNCw8EXsdtCQieUQ
+      - MINER_SEED=e031170f32b4cda05df2f3cf6bc8d7687b683bbce23d9fa960c0b3fc21641b8a
+      - >-
+        VALIDATORS={"supported": [{"hotkey": "test_validator", "registry": "test-registry", "api": "http://test-api", "socket": "ws://test-socket"}]}
+      - DEBUG=true
+    ports:
+      - "8080:8000"
+    volumes:
+      - ../api:/app/api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  db-seed:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: sql
+    environment:
+      - PGPASSWORD=password
+      - PGHOST=postgres
+      - PGUSER=user
+      - PGDATABASE=chutes
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
