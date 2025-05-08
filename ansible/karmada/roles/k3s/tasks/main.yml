@@ -1,0 +1,12 @@
+---
+- name: Install k3s
+  ansible.builtin.include_tasks: install.yml
+  tags: k3s-install
+
+- name: Setup node
+  ansible.builtin.include_tasks: setup_node.yml
+  tags: k3s-node
+
+- name: Setup k3s kubectl
+  ansible.builtin.include_tasks: setup_kubectl.yml
+  tags: k3s-kubectl

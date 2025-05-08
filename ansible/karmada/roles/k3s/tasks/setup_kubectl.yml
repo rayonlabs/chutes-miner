@@ -1,0 +1,121 @@
+---
+- name: Check whether kubectl is installed on control node
+  delegate_to: 127.0.0.1
+  become: false
+  ansible.builtin.command: kubectl
+  register: kubectl_installed
+  ignore_errors: true
+  changed_when: false
+
+- name: Verify kubeconfig dir exists
+  when: kubectl_installed.rc == 0
+  delegate_to: 127.0.0.1
+  become: false
+  ansible.builtin.file:
+    path: "{{ kubeconfig_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Apply K3S kubeconfig to control node
+  when: kubectl_installed.rc == 0
+  vars:
+    cluster_context: "{{ inventory_hostname }}"
+    kubeconfig: "{{ kubeconfig_dir }}/{{ inventory_hostname }}"
+  block:
+    - name: Copy kubeconfig to control node
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ kubeconfig }}"
+        flat: true
+
+    - name: Change server address in kubeconfig on control node
+      ansible.builtin.shell: |
+        KUBECONFIG={{ kubeconfig }} kubectl config set-cluster default --server=https://{{ ansible_host }}:{{ api_port | default('6443') }}
+      delegate_to: 127.0.0.1
+      become: false
+      register: csa_result
+      changed_when:
+        - csa_result.rc == 0
+
+    # Add task to rename context
+
+    - name: Change context name in kubeconfig on control node
+      ansible.builtin.replace:
+        path: "{{ kubeconfig }}"
+        regexp: ": default"
+        replace: ": {{ cluster_context }}"
+      delegate_to: 127.0.0.1
+      become: false
+
+    - name: Merge with any existing kubeconfig on control node
+      ansible.builtin.shell: |
+        TFILE=$(mktemp)
+        mkdir -p ~/.kube
+        touch ~/.kube/config
+        KUBECONFIG={{ kubeconfig }}:~/.kube/config kubectl config view --flatten > ${TFILE}
+        mv ${TFILE} ~/.kube/config
+      delegate_to: 127.0.0.1
+      become: false
+      register: mv_result
+      changed_when:
+        - mv_result.rc == 0
+
+- name: Setup kubectl for user
+  when: user_kubectl | default(true)
+  block:
+    - name: Create directory .kube
+      ansible.builtin.file:
+        path: ~{{ ansible_user }}/.kube
+        state: directory
+        owner: "{{ ansible_user }}"
+        mode: u=rwx,g=rx,o=
+
+    - name: Copy config file to user home directory
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: ~{{ ansible_user }}/.kube/config
+        remote_src: true
+        owner: "{{ ansible_user }}"
+        mode: u=rw,g=,o=
+
+    - name: Configure default KUBECONFIG for user
+      ansible.builtin.lineinfile:
+        path: ~{{ ansible_user }}/.bashrc
+        regexp: export KUBECONFIG=~/.kube/config
+        line: "export KUBECONFIG=~/.kube/config # Added by k3s-ansible"
+        state: present
+
+    - name: Configure kubectl autocomplete
+      ansible.builtin.lineinfile:
+        path: ~{{ ansible_user }}/.bashrc
+        regexp: \.\s+<\(kubectl completion bash\)
+        line: ". <(kubectl completion bash)  # Added by k3s-ansible"
+
+- name: Setup kubectl for sudo
+  block:
+    - name: Create directory .kube
+      ansible.builtin.file:
+        path: ~/.kube
+        state: directory
+        owner: "{{ ansible_user }}"
+        mode: u=rwx,g=rx,o=
+
+    - name: Copy config file to user home directory
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: ~/.kube/config
+        remote_src: true
+        mode: u=rw,g=,o=
+
+    - name: Configure default KUBECONFIG for user
+      ansible.builtin.lineinfile:
+        path: ~/.bashrc
+        regexp: export KUBECONFIG=~/.kube/config
+        line: "export KUBECONFIG=~/.kube/config # Added by k3s-ansible"
+        state: present
+
+    - name: Configure kubectl autocomplete
+      ansible.builtin.lineinfile:
+        path: ~/.bashrc
+        regexp: \.\s+<\(kubectl completion bash\)
+        line: ". <(kubectl completion bash)  # Added by k3s-ansible"

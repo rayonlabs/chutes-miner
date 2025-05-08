@@ -1,0 +1,23 @@
+---
+{% set helm_release_namespace = '{{ .Release.Namespace }}' %}
+{% set helm_values_domain = '{{ .Values.clusterDomain }}' %}
+installMode: {{ karmada_install_mode }}
+
+apiServer:
+  nodePort: {{ karmada_api_server_node_port }}
+  serviceType: NodePort
+  extraArgs:
+    - --bind-address={{ karmada_apiserver_bind_address }}
+    - --secure-port={{ karmada_api_secure_port }}
+
+certs:
+  auto:
+    hosts: [
+      "kubernetes.default.svc",
+      "*.etcd.{{ helm_release_namespace }}.svc.{{ helm_values_domain }}",
+      "*.{{ helm_release_namespace }}.svc.{{ helm_values_domain }}",
+      "*.{{ helm_release_namespace }}.svc",
+      "localhost",
+      "127.0.0.1",
+      "{{ ansible_host }}"
+    ]

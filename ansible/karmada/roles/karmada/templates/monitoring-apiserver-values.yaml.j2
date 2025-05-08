@@ -1,0 +1,16 @@
+---
+grafana:
+  deploy: false
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30090
+  serviceAccount:
+    createSecret: true
+  propagationPolicies:
+    create: true
+  networkPolicies:
+    create: true
+    allowedCIDRs:
+      - "{{ ansible_host }}/32"

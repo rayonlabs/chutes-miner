@@ -1,0 +1,54 @@
+---
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Update /etc/hostname
+  ansible.builtin.copy:
+    content: "{{ inventory_hostname }}"
+    dest: /etc/hostname
+    mode: "0644"
+
+- name: Ensure preserve_hostname is set to true
+  ansible.builtin.lineinfile:
+    path: /etc/cloud/cloud.cfg
+    regexp: "^preserve_hostname:"
+    line: "preserve_hostname: true"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create hostname script
+  ansible.builtin.copy:
+    dest: /usr/local/bin/set-hostname.sh
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      hostnamectl set-hostname "{{ inventory_hostname }}"
+      hostname "{{ inventory_hostname }}"
+      echo -n "{{ inventory_hostname }}" > /etc/hostname
+
+- name: Create systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/set-hostname.service
+    content: |
+      [Unit]
+      Description=Set system hostname on boot
+      After=network.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/set-hostname.sh
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0644"
+
+- name: Enable and start hostname service
+  ansible.builtin.systemd:
+    name: set-hostname
+    enabled: true
+    state: started
+    daemon_reload: true

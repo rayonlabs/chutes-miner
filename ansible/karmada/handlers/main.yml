@@ -1,0 +1,22 @@
+---
+- name: Restart k3s
+  ansible.builtin.service:
+    name: k3s
+    state: restarted
+  listen: restart k3s
+
+- name: Restart k3s agent
+  ansible.builtin.service:
+    name: k3s-agent
+    state: restarted
+  listen: restart k3s agent
+
+- name: Restart containerd
+  ansible.builtin.service:
+    name: containerd
+    state: restarted
+
+- name: Restart timesyncd service
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: restarted

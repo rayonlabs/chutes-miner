@@ -1,0 +1,37 @@
+---
+# Common variables for all hosts
+
+# System configuration
+ansible_port: 22
+ansible_user: ubuntu
+# ansible_ssh_private_key_file: ~/path/to/your/key.pem
+ansible_ssh_common_args: -o StrictHostKeyChecking=no
+timezone: UTC
+swap_disable: true
+
+# Local kubectl setup
+kubeconfig_dir: "{{ '~/.kube' | expanduser }}/chutes" # noqa var-naming[no-role-prefix]
+
+# System packages to install
+system_packages:
+  - curl
+  - wget
+  - git
+  - vim
+  - net-tools
+  - socat
+  - conntrack
+  - ipset
+  - jq
+  - apt-transport-https
+  - ca-certificates
+  - gnupg-agent
+  - software-properties-common
+
+# Networking configuration (used by all)
+api_port: "6443"
+cluster_cidr: 10.42.0.0/16
+service_cidr: 10.43.0.0/16
+
+# K3s Configuration
+k3s_version: v1.31.7+k3s1

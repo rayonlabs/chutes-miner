@@ -1,0 +1,31 @@
+---
+# Karmada version
+karmada_chart_version: v1.13.0
+karmada_version: v1.13.1
+karmada_chart_repo: https://raw.githubusercontent.com/karmada-io/karmada/master/charts
+
+# Karmada namespace
+karmada_namespace: karmada-system
+
+# Helm version
+karmada_helm_version: v3.11.3
+
+# kubectl-karmada version
+karmada_kubectl_version: "{{ karmada_version }}"
+
+# Karmada configurations
+karmada_install_mode: host
+karmada_api_server_node_port: 32443
+karmada_api_secure_port: 5443
+
+# Temp directory for kubeconfigs
+karmada_kubeconfig_temp_dir: /tmp/karmada-kubeconfigs
+
+# Networking
+karmada_apiserver_bind_address: 0.0.0.0
+
+# Monitoring configuration
+karmada_monitoring_chart_repo: https://kylewidmann.github.io/k8s-cluster/
+karmada_monitoring_chart_version: 0.2.0
+karmada_monitoring_namespace: monitoring
+karmada_grafana_password: chutethis # Should be overridden in group_vars with vault

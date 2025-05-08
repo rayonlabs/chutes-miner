@@ -1,0 +1,14 @@
+# Registry mirrors configuration
+mirrors:
+  "{{ registry_hostname }}:{{ registry_port | default('5000') }}":
+    endpoint:
+      - "{{ registry_protocol | default('http') }}://{{ registry_hostname }}:{{ registry_port | default('5000') }}"
+
+# Configure registry authentication if needed
+configs:
+  "{{ registry_hostname }}:{{ registry_port | default('5000') }}":
+{% if use_registry_auth | default(false) %}
+    auth:
+      username: "{{ registry_username }}"
+      password: "{{ registry_password }}"
+{% endif %}

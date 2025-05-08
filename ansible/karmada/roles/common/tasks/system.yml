@@ -1,0 +1,192 @@
+---
+- name: Clean sources and proxy
+  block:
+    - name: Remove old containerd if exists
+      ansible.builtin.apt:
+        name: containerd.io
+        state: absent
+
+    - name: Remove unwanted files in sources.list.d
+      ansible.builtin.find:
+        paths: /etc/apt/sources.list.d
+        patterns:
+          - "*"
+        excludes:
+          - "ubuntu.sources"
+          - "cuda-*.list"
+          - "deadsnakes.list"
+          - "docker.list"
+          - "nvidia-docker-container.list"
+        file_type: file
+      register: apt_files_to_remove
+
+    - name: Delete found files
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      with_items: "{{ apt_files_to_remove.files }}"
+
+    - name: Remove proxy configuration files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_fileglob:
+        - "/etc/apt/apt.conf.d/*proxy*"
+
+    - name: Remove proxy settings from apt.conf
+      ansible.builtin.lineinfile:
+        path: /etc/apt/apt.conf
+        regexp: "{{ item }}"
+        state: absent
+      with_items:
+        - "Acquire::http::Proxy"
+        - "Acquire::https::Proxy"
+      when: ansible_path_apt_conf.stat.exists is defined and ansible_path_apt_conf.stat.exists
+
+    - name: Unset all snap proxy settings
+      ansible.builtin.command: snap unset system {{ item }}
+      loop:
+        - proxy.http
+        - proxy.https
+        - proxy.no-proxy
+      register: snap_unset_result
+      changed_when: true
+      failed_when: false
+
+- name: Setup system packages
+  block:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Stop and disable unattended upgrades
+      ansible.builtin.systemd:
+        name: unattended-upgrades
+        state: stopped
+        enabled: false
+      failed_when:
+        - unattended_upgrades_result.failed is defined
+        - unattended_upgrades_result.failed
+        - "'Could not find the requested service' not in unattended_upgrades_result.msg"
+
+    - name: Install system packages
+      ansible.builtin.package:
+        name: "{{ system_packages }}"
+        state: present
+
+    - name: Install Ubuntu-specific packages
+      ansible.builtin.apt:
+        name:
+          - socat
+          - vim
+          - jq
+          - bc
+          - libclang-dev
+          - npm
+          - clang
+          - libssl-dev
+          - llvm
+          - libudev1
+          - protobuf-compiler
+          - python3
+          - python3-pip
+          - python3-venv
+          - docker.io
+          - docker-compose
+          - build-essential
+          - nginx
+          - redis
+          - net-tools
+          - ffmpeg
+          - rsyslog
+          - libpq-dev
+          - snapd
+          - iputils-ping
+          - systemd-timesyncd
+        update_cache: true
+
+    - name: Set vim as default editor
+      community.general.alternatives:
+        name: editor
+        path: /usr/bin/vim
+        priority: 1
+
+- name: Check Lambda packages
+  block:
+    - name: Get list of installed lambda packages
+      ansible.builtin.package_facts:
+        manager: apt
+      when: ansible_facts.packages is not defined
+
+    - name: Set fact for lambda packages
+      ansible.builtin.set_fact:
+        lambda_packages_list: >-
+          {{ ansible_facts.packages | dict2items | selectattr('key', 'match', 'lambda') | map(attribute='key') | list }}
+
+    - name: Check if lambda version file exists
+      ansible.builtin.stat:
+        path: /etc/lambda-version
+      register: lambda_version_file
+
+    - name: Check if another lambda package file exists, backup
+      ansible.builtin.stat:
+        path: /etc/systemd/system/lambda-jupyter.service
+      register: lambda_file_backup
+
+    - name: Remove lambda packages
+      ansible.builtin.apt:
+        name: "{{ lambda_packages_list }}"
+        state: absent
+        purge: true
+      when:
+        - lambda_version_file.stat.exists or lambda_file_backup.stat.exists
+        - lambda_packages_list | length > 0
+
+- name: Disable swap
+  block:
+    - name: Disable swap - command
+      ansible.builtin.command: swapoff -a
+      when: swap_disable
+      changed_when: false
+
+    - name: Disable swap - fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: ^([^#].*\sswap\s+.*)$
+        replace: "# \\1"
+      when: swap_disable
+
+- name: Configure and ensure time synchronization
+  block:
+    - name: Set timezone
+      community.general.timezone:
+        name: "{{ timezone }}"
+
+    - name: Ensure timesyncd is installed and enabled
+      ansible.builtin.systemd:
+        name: systemd-timesyncd
+        state: started
+        enabled: true
+
+    - name: Configure NTP servers
+      ansible.builtin.lineinfile:
+        path: /etc/systemd/timesyncd.conf
+        regexp: "^#?NTP="
+        line: "NTP=pool.ntp.org"
+
+    - name: Enable NTP time synchronization
+      ansible.builtin.command: timedatectl set-ntp true
+      changed_when: false
+      notify: Restart timesyncd service
+
+    - name: Make sure timesyncd service is enabled
+      ansible.builtin.systemd:
+        name: systemd-timesyncd
+        enabled: true
+        state: started
+      notify: Restart timesyncd service
