@@ -1,0 +1,146 @@
+---
+- name: Add Karmada Helm repository
+  ansible.builtin.command: helm repo add karmada {{ karmada_chart_repo }}
+  register: helm_repo_result
+  changed_when: "'has been added' in helm_repo_result.stdout"
+
+- name: Update Helm repositories
+  ansible.builtin.command: helm repo update
+  register: helm_update_result
+  changed_when: "'Update Complete' in helm_update_result.stdout"
+
+- name: Check if Karmada namespace exists
+  ansible.builtin.command: kubectl get namespace {{ karmada_namespace }}
+  register: namespace_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Create Karmada namespace if not exists
+  ansible.builtin.command: kubectl create namespace {{ karmada_namespace }}
+  register: create_ns_result
+  when: namespace_result.rc != 0
+  changed_when: namespace_result.rc != 0 and create_ns_result.rc == 0
+
+- name: Check if Karmada is already installed
+  ansible.builtin.command: helm status karmada -n {{ karmada_namespace }}
+  register: karmada_status
+  ignore_errors: true
+  changed_when: false
+
+- name: Generate Karmada Helm values
+  ansible.builtin.template:
+    src: karmada-values.yaml.j2
+    dest: /tmp/karmada-values.yaml
+    mode: "0644"
+
+- name: Get current Karmada values
+  ansible.builtin.command: >
+    helm get values karmada  --kubeconfig /etc/rancher/k3s/k3s.yaml
+    --namespace {{ karmada_namespace }}
+    -o yaml
+  register: current_values
+  when: karmada_status.rc == 0
+  changed_when: false
+  ignore_errors: true
+
+- name: Compare current and new values
+  ansible.builtin.copy:
+    content: "{{ current_values.stdout | default('') }}"
+    dest: /tmp/karmada-current-values.yaml
+    mode: "0644"
+  when: karmada_status.rc == 0 and current_values is defined and current_values.rc == 0
+  changed_when: false
+
+- name: Check if values have changed
+  ansible.builtin.command: diff -q /tmp/karmada-current-values.yaml /tmp/karmada-values.yaml
+  register: values_diff
+  failed_when: false
+  changed_when: false
+  when: karmada_status.rc == 0 and current_values is defined and current_values.rc == 0
+
+- name: Install or upgrade Karmada using Helm
+  ansible.builtin.command: >
+    helm upgrade --install karmada karmada/karmada  --kubeconfig /etc/rancher/k3s/k3s.yaml
+    --namespace {{ karmada_namespace }}
+    --version {{ karmada_chart_version }}
+    -f /tmp/karmada-values.yaml
+  register: karmada_deployment
+  changed_when: karmada_deployment.rc == 0
+  when: karmada_status.rc != 0 or (values_diff is defined and values_diff.rc != 0)
+
+- name: Wait for Karmada components to be ready
+  ansible.builtin.command: >
+    kubectl -n {{ karmada_namespace }} wait --for=condition=Ready pod
+    --selector="app=karmada-apiserver"  --timeout=300s
+  register: karmada_wait
+  changed_when: false
+  retries: 10
+  delay: 30
+  until: karmada_wait.rc == 0
+
+- name: Get Karmada kubeconfig
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      kubectl -n {{ karmada_namespace }} get secret karmada-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d
+    executable: /bin/bash
+  register: karmada_kubeconfig
+  changed_when: false
+
+- name: Setup Karmada API kubeconfig
+  vars:
+    kubeconfig: "{{ karmada_kubeconfig_temp_dir }}/karmada-apiserver"
+  block:
+    - name: Save Karmada kubeconfig to file
+      ansible.builtin.copy:
+        content: "{{ karmada_kubeconfig.stdout }}"
+        dest: "{{ kubeconfig }}"
+        mode: "0600"
+
+    - name: Change server address in kubeconfig for API server
+      ansible.builtin.shell: |
+        KUBECONFIG={{ kubeconfig }} kubectl config set-cluster karmada-apiserver --server=https://127.0.0.1:{{ karmada_api_server_node_port }}
+      register: csa_result
+      changed_when:
+        - csa_result.rc == 0
+
+- name: Check whether kubectl is installed on control node
+  delegate_to: 127.0.0.1
+  become: false
+  ansible.builtin.command: kubectl
+  register: kubectl_installed
+  ignore_errors: true
+  changed_when: false
+
+- name: Apply karmada-apiserver kubeconfig to control node
+  when: kubectl_installed.rc == 0 and inventory_hostname == groups['control'][0]
+  vars:
+    kubeconfig: "{{ kubeconfig_dir }}/karmada-apiserver"
+  block:
+    - name: Copy kubeconfig to control node
+      ansible.builtin.fetch:
+        src: "{{ karmada_kubeconfig_temp_dir }}/karmada-apiserver"
+        dest: "{{ kubeconfig }}"
+        flat: true
+
+    - name: Change server address in kubeconfig on control node
+      ansible.builtin.shell: |
+        KUBECONFIG={{ kubeconfig }} kubectl config set-cluster karmada-apiserver --server=https://{{ ansible_host }}:{{ karmada_api_server_node_port }}
+      delegate_to: 127.0.0.1
+      become: false
+      register: csa_result
+      changed_when:
+        - csa_result.rc == 0
+
+    - name: Merge with any existing kubeconfig on control node
+      ansible.builtin.shell: |
+        TFILE=$(mktemp)
+        mkdir -p ~/.kube
+        touch ~/.kube/config
+        KUBECONFIG={{ kubeconfig }}:~/.kube/config kubectl config view --flatten > ${TFILE}
+        mv ${TFILE} ~/.kube/config
+      delegate_to: 127.0.0.1
+      become: false
+      register: mv_result
+      changed_when:
+        - mv_result.rc == 0
