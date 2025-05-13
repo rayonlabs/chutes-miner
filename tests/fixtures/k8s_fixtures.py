@@ -1,9 +1,65 @@
 
 # Fixtures for commonly used objects
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from api.chute.schemas import Chute
+from api.gpu.schemas import GPU
+from api.server.schemas import Server
+
+@pytest.fixture
+def mock_k8s_core_client():
+    with patch("api.k8s.k8s_core_client") as mock_client:
+        mock_client.return_value = mock_client
+        yield mock_client
+
+@pytest.fixture
+def mock_k8s_app_client():
+    with patch("api.k8s.k8s_app_client") as mock_client:
+        yield mock_client
+
+@pytest.fixture
+def sample_server():
+    server = Server(
+        server_id="test-server-id",
+        name="test-node",
+        validator="TEST123",
+        ip_address="192.168.1.100",
+        cpu_per_gpu=4,
+        memory_per_gpu=16,
+        seed=12345,
+        deployments=[],
+    )
+    
+    # Add GPUs to the server
+    server.gpus = [
+        GPU(gpu_id=f"gpu-{i}", server_id="test-server-id", verified=True)
+        for i in range(4)
+    ]
+    
+    return server
+
+
+@pytest.fixture
+def sample_chute():
+    return Chute(
+        chute_id="test-chute-id",
+        version="1.0.0",
+        filename="app.py",
+        code="print('Hello World')",
+        image="test/image:latest",
+        gpu_count=2,
+        ref_str="test-ref-str"
+    )
+
+
+@pytest.fixture
+def mock_watch():
+    with patch("api.k8s.watch.Watch") as mock_watch:
+        watch_instance = MagicMock()
+        mock_watch.return_value = watch_instance
+        yield watch_instance
 
 @pytest.fixture
 def mock_deployment():

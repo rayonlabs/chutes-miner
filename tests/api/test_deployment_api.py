@@ -33,14 +33,14 @@ def mock_deployment():
 
 
 @pytest.mark.asyncio
-async def test_purge_endpoint(mock_db_session, mock_deployment):
+async def test_purge_endpoint(mock_session, mock_deployment):
     """Test the purge endpoint."""
     # Set up mock query result
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
     mock_result.scalars.return_value = mock_result
     mock_result.all.return_value = [mock_deployment]
-    mock_db_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.execute = AsyncMock(return_value=mock_result)
 
     # Mock Gepetto
     mock_gepetto = MagicMock()
@@ -49,7 +49,7 @@ async def test_purge_endpoint(mock_db_session, mock_deployment):
     with patch("api.deployment.router.Gepetto", return_value=mock_gepetto):
         with patch("api.deployment.router.logger") as mock_logger:
             # Call the function
-            response = await purge(db=mock_db_session)
+            response = await purge(db=mock_session)
 
             # Assertions
             assert response["status"] == "initiated"
@@ -64,20 +64,20 @@ async def test_purge_endpoint(mock_db_session, mock_deployment):
             mock_logger.warning.assert_called_once()
 
             # Verify create_task was called to undeploy
-            mock_db_session.execute.assert_called_once()
+            mock_session.execute.assert_called_once()
             # Note: We can't directly verify asyncio.create_task was called because
             # it's a built-in that's hard to mock, but we can verify the gepetto instance
             # and method were called correctly
 
 
 @pytest.mark.asyncio
-async def test_purge_deployment_endpoint(mock_db_session, mock_deployment):
+async def test_purge_deployment_endpoint(mock_session, mock_deployment):
     """Test the purge_deployment endpoint."""
     # Set up mock query result for a single deployment
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
     mock_result.scalar_one_or_none.return_value = mock_deployment
-    mock_db_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.execute = AsyncMock(return_value=mock_result)
 
     # Mock Gepetto
     mock_gepetto = MagicMock()
@@ -87,7 +87,7 @@ async def test_purge_deployment_endpoint(mock_db_session, mock_deployment):
         with patch("api.deployment.router.logger") as mock_logger:
             # Call the function
             response = await purge_deployment(
-                deployment_id="test-deployment-id", db=mock_db_session
+                deployment_id="test-deployment-id", db=mock_session
             )
 
             # Assertions
@@ -98,22 +98,22 @@ async def test_purge_deployment_endpoint(mock_db_session, mock_deployment):
             mock_logger.warning.assert_called_once()
 
             # Verify db.execute was called with the right query
-            mock_db_session.execute.assert_called_once()
+            mock_session.execute.assert_called_once()
             # Get the first positional argument of the first call
-            call_args = mock_db_session.execute.call_args[0][0]
+            call_args = mock_session.execute.call_args[0][0]
             # Check that it's a select query
             assert isinstance(call_args, Select)
 
 
 @pytest.mark.asyncio
-async def test_purge_server_endpoint(mock_db_session, mock_deployment):
+async def test_purge_server_endpoint(mock_session, mock_deployment):
     """Test the purge_server endpoint."""
     # Set up mock query result for a single deployment
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
     mock_result.scalars.return_value = mock_result
     mock_result.all.return_value = [mock_deployment]
-    mock_db_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.execute = AsyncMock(return_value=mock_result)
 
     # Mock Gepetto
     mock_gepetto = MagicMock()
@@ -122,7 +122,7 @@ async def test_purge_server_endpoint(mock_db_session, mock_deployment):
     with patch("api.server.router.Gepetto", return_value=mock_gepetto):
         with patch("api.server.router.logger") as mock_logger:
             # Call the function
-            response = await purge_server(id_or_name="test-deployment-id", db=mock_db_session)
+            response = await purge_server(id_or_name="test-deployment-id", db=mock_session)
 
             # Assertions
             assert response["status"] == "initiated"
@@ -137,21 +137,21 @@ async def test_purge_server_endpoint(mock_db_session, mock_deployment):
             mock_logger.warning.assert_called_once()
 
             # Verify db.execute was called with the right query
-            mock_db_session.execute.assert_called_once()
+            mock_session.execute.assert_called_once()
             # Get the first positional argument of the first call
-            call_args = mock_db_session.execute.call_args[0][0]
+            call_args = mock_session.execute.call_args[0][0]
             # Check that it's a select query
             assert isinstance(call_args, Select)
 
 
 @pytest.mark.asyncio
-async def test_purge_invalid_deployment_id(mock_db_session):
+async def test_purge_invalid_deployment_id(mock_session):
     """Test purge_deployment with an invalid deployment ID."""
     # Set up mock query result for no deployments
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
     mock_result.scalar_one_or_none.return_value = None
-    mock_db_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.execute = AsyncMock(return_value=mock_result)
 
     # Mock Gepetto
     mock_gepetto = MagicMock()
@@ -159,25 +159,25 @@ async def test_purge_invalid_deployment_id(mock_db_session):
     with patch("api.deployment.router.Gepetto", return_value=mock_gepetto):
         # This should raise an HTTPException because the deployment is None
         with pytest.raises(HTTPException):
-            await purge_deployment(deployment_id="nonexistent-id", db=mock_db_session)
+            await purge_deployment(deployment_id="nonexistent-id", db=mock_session)
 
 
 @pytest.mark.asyncio
-async def test_purge_empty_deployments(mock_db_session):
+async def test_purge_empty_deployments(mock_session):
     """Test purge with no deployments."""
     # Set up mock query result for no deployments
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
     mock_result.scalars.return_value = mock_result
     mock_result.all.return_value = []
-    mock_db_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.execute = AsyncMock(return_value=mock_result)
 
     # Mock Gepetto
     mock_gepetto = MagicMock()
 
     with patch("api.deployment.router.Gepetto", return_value=mock_gepetto):
         # Call the function
-        response = await purge(db=mock_db_session)
+        response = await purge(db=mock_session)
 
         # Assertions
         assert response["status"] == "initiated"
