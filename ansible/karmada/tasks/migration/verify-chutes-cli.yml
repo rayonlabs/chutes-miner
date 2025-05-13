@@ -1,0 +1,226 @@
+---
+# Ansible tasks to verify chutes-miner installation and functionality
+
+- name: Verify and test chutes-miner CLI
+  when: not run_locally | default(false) and ('microk8s' or 'control') in group_names
+  delegate_to: "{{ target_host | default(inventory_hostname) }}"
+  tags: chutes-cli
+
+  block:
+    # Check if chutes-miner package is installed
+    - name: Check if chutes-miner CLI is installed
+      ansible.builtin.command: which chutes-miner
+      register: chutes_miner_which
+      changed_when: false
+      failed_when: false
+
+    - name: Check chutes-miner package version
+      ansible.builtin.command: pip show chutes-miner-cli
+      register: chutes_miner_pip
+      changed_when: false
+      failed_when: false
+      when: chutes_miner_which.rc == 0
+
+    - name: Display chutes-miner package information
+      ansible.builtin.debug:
+        msg: "{{ chutes_miner_pip.stdout_lines }}"
+      when: chutes_miner_which.rc == 0 and chutes_miner_pip.rc == 0
+
+    # Install chutes-miner if not present
+    # Create virtual environment for chutes-miner
+    - name: Create virtual environment for chutes-miner
+      ansible.builtin.command: python3 -m venv /opt/chutes-miner-venv
+      args:
+        creates: /opt/chutes-miner-venv
+      when: chutes_miner_which.rc != 0
+
+    # Install chutes-miner by properly activating the venv first
+    - name: Install chutes-miner with activated venv
+      ansible.builtin.shell: |
+        source /opt/chutes-miner-venv/bin/activate
+        pip install chutes-miner-cli
+        deactivate
+      register: venv_install
+      args:
+        executable: /bin/bash
+      changed_when: venv_install.rc == 0
+
+    # Create symlink to make chutes-miner command available
+    - name: Create symlink for chutes-miner command
+      ansible.builtin.file:
+        src: /opt/chutes-miner-venv/bin/chutes-miner
+        dest: /usr/local/bin/chutes-miner
+        state: link
+      when: venv_install is defined and venv_install.changed
+
+    # Check for hotkey file
+    - name: Check if hotkey file exists
+      ansible.builtin.stat:
+        path: "{{ remote_hotkey_path | default('/etc/chutes-miner/hotkey.json') }}"
+      register: hotkey_file
+
+    - name: Display hotkey file status
+      ansible.builtin.debug:
+        msg: "Hotkey file {{ 'exists' if hotkey_file.stat.exists else 'does not exist' }}"
+
+    - name: Copy hotkey
+      when: not run_locally | default(false) and copy_hotkey_to_ansible_host | default(false)
+
+      # Test miner API connection
+      block:
+        - name: Check if hotkey file exists on Ansible controller
+          ansible.builtin.stat:
+            path: "{{ hotkey_path }}"
+          register: controller_hotkey_file
+          delegate_to: localhost
+          become: false
+
+        - name: Show Ansible controller hotkey file status
+          ansible.builtin.debug:
+            msg: "Hotkey file on Ansible controller {{ 'exists' if controller_hotkey_file.stat.exists else 'does not exist' }} at {{ hotkey_path }}"
+
+        - name: Fail if hotkey file doesn't exist on Ansible controller
+          ansible.builtin.fail:
+            msg: "Hotkey file not found at {{ hotkey_path }} on Ansible controller"
+          when: not controller_hotkey_file.stat.exists
+
+        # Ensure the destination directory exists on the remote host
+        - name: Ensure hotkey directory exists on remote host
+          ansible.builtin.file:
+            path: "{{ remote_hotkey_dir | default('/etc/chutes-miner') }}"
+            state: directory
+            mode: "0700"
+          when: controller_hotkey_file.stat.exists
+
+        # Copy the hotkey file from the Ansible controller to the remote host
+        - name: Copy hotkey file from Ansible controller to remote host
+          ansible.builtin.copy:
+            src: "{{ hotkey_path }}"
+            dest: "{{ remote_hotkey_path | default('/etc/chutes-miner/hotkey.json') }}"
+            mode: "0600"
+            backup: true
+          when: controller_hotkey_file.stat.exists
+          register: hotkey_copy
+
+        # Verify the file was copied successfully
+        - name: Verify hotkey file on remote host
+          ansible.builtin.stat:
+            path: "{{ remote_hotkey_path | default('/etc/chutes-miner/hotkey.json') }}"
+          register: remote_hotkey_file
+          when: hotkey_copy is defined and hotkey_copy.changed
+
+        - name: Show hotkey copy status
+          ansible.builtin.debug:
+            msg: >-
+              Hotkey file  {{ 'successfully copied to' if remote_hotkey_file.stat.exists | default(false) else 'failed to copy to' }}
+              remote host at {{ remote_hotkey_path | default('/etc/chutes-miner/hotkey.json') }}
+          when: hotkey_copy is defined
+
+    - name: Test connection to miner API
+      ansible.builtin.uri:
+        url: http://127.0.0.1:32000/ping"
+        method: GET
+        validate_certs: false
+        status_code: 200
+      register: api_connection
+      failed_when: false
+      changed_when: false
+
+    - name: Display miner API connection status
+      ansible.builtin.debug:
+        msg: "Miner API {{ 'is reachable' if api_connection.status == 200 else 'is not reachable' }}"
+
+    # Test CLI commands if prerequisites are met
+    - name: Run local-inventory command
+      ansible.builtin.command: >
+        chutes-miner local-inventory  --hotkey {{ remote_hotkey_path }}
+      register: local_inventory_result
+      failed_when: false
+      changed_when: false
+      when: hotkey_file.stat.exists and api_connection.status is defined and api_connection.status == 200
+
+    - name: Display local-inventory results
+      ansible.builtin.debug:
+        msg: "{{ local_inventory_result.stdout_lines }}"
+      when: local_inventory_result is defined and local_inventory_result.rc == 0
+
+# This block runs remotely by default
+- name: Verify and test chutes-miner CLI (locally)
+  become: false
+  when: run_locally | default(false)
+  tags: chutes-cli
+  block:
+    # Check if chutes-miner package is installed locally
+    - name: Check if chutes-miner CLI is installed locally
+      ansible.builtin.command: which chutes-miner
+      register: chutes_miner_which_local
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Check chutes-miner package version locally
+      ansible.builtin.command: pip show chutes-miner-cli
+      register: chutes_miner_pip_local
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      when: chutes_miner_which_local.rc == 0
+
+    - name: Display chutes-miner package information locally
+      ansible.builtin.debug:
+        msg: "{{ chutes_miner_pip_local.stdout_lines }}"
+      when: chutes_miner_which_local.rc == 0 and chutes_miner_pip_local.rc == 0
+
+    # Install chutes-miner locally if not present
+    - name: Install chutes-miner package locally
+      ansible.builtin.pip:
+        name: chutes-miner-cli
+        state: present
+      delegate_to: localhost
+      when: chutes_miner_which_local.rc != 0
+      register: package_install_local
+
+    # Check for hotkey file locally
+    - name: Check if hotkey file exists locally
+      ansible.builtin.stat:
+        path: "{{ hotkey_path }}"
+      register: hotkey_file_local
+      delegate_to: localhost
+
+    - name: Display local hotkey file status
+      ansible.builtin.debug:
+        msg: "Local hotkey file {{ 'exists' if hotkey_file_local.stat.exists else 'does not exist' }}"
+
+    # Test miner API connection from localhost
+    - name: Test connection to miner API from localhost
+      ansible.builtin.uri:
+        url: "{{ miner_api_url }}/ping"
+        method: GET
+        validate_certs: false
+        status_code: 200
+      register: api_connection_local
+      failed_when: false
+      changed_when: false
+      delegate_to: localhost
+
+    - name: Display miner API connection status from localhost
+      ansible.builtin.debug:
+        msg: "Miner API {{ 'is reachable' if api_connection_local.status == 200 else 'is not reachable' }} from localhost"
+
+    # Test CLI commands locally if prerequisites are met
+    - name: Run local-inventory command locally
+      ansible.builtin.command: >
+        chutes-miner local-inventory  --hotkey {{ hotkey_path }}
+        --miner-api {{ miner_api_url }}
+      register: local_inventory_result_local
+      failed_when: false
+      changed_when: false
+      delegate_to: localhost
+      when: hotkey_file_local.stat.exists and api_connection_local.status is defined and api_connection_local.status == 200
+
+    - name: Display local-inventory results (local execution)
+      ansible.builtin.debug:
+        msg: "{{ local_inventory_result_local.stdout_lines }}"
+      when: local_inventory_result_local is defined and local_inventory_result_local.rc == 0
+
+  # This block only runs when run_locally is set to true
