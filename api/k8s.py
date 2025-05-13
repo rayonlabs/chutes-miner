@@ -325,17 +325,17 @@ async def deploy_chute(chute_id: str, server_id: str):
         if not chute or not server:
             raise DeploymentFailure(f"Failed to find chute or server: {chute_id=} {server_id=}")
 
-        # Make sure the node has capacity.
-        # used_ports = get_used_ports(server.name)
-        gpus_allocated = 0
-        available_gpus = {gpu.gpu_id for gpu in server.gpus if gpu.verified}
-        for deployment in server.deployments:
-            gpus_allocated += len(deployment.gpus)
-            available_gpus -= {gpu.gpu_id for gpu in deployment.gpus}
-        if len(server.gpus) - gpus_allocated - chute.gpu_count < 0:
-            raise DeploymentFailure(
-                f"Server {server.server_id} name={server.name} cannot allocate {chute.gpu_count} GPUs, already using {gpus_allocated} of {len(server.gpus)}"
-            )
+    # Make sure the node has capacity.
+    # used_ports = get_used_ports(server.name)
+    gpus_allocated = 0
+    available_gpus = {gpu.gpu_id for gpu in server.gpus if gpu.verified}
+    for deployment in server.deployments:
+        gpus_allocated += len(deployment.gpus)
+        available_gpus -= {gpu.gpu_id for gpu in deployment.gpus}
+    if len(available_gpus) - chute.gpu_count < 0:
+        raise DeploymentFailure(
+            f"Server {server.server_id} name={server.name} cannot allocate {chute.gpu_count} GPUs, already using {gpus_allocated} of {len(server.gpus)}"
+        )
 
         # Immediately track this deployment (before actually creating it) to avoid allocation contention.
         deployment_id = str(uuid.uuid4())
