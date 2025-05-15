@@ -90,7 +90,7 @@ async def test_get_kubernetes_nodes_exception(mock_k8s_core_client):
         await k8s.get_kubernetes_nodes()
 
 
-# Tests for is_deployment_ready
+# # Tests for is_deployment_ready
 def test_is_deployment_ready_true():
     """Test deployment is ready when all conditions are met."""
     deployment = MagicMock()
@@ -99,7 +99,7 @@ def test_is_deployment_ready_true():
     deployment.status.updated_replicas = 1
     deployment.spec.replicas = 1
     
-    assert k8s.is_deployment_ready(deployment) is True
+    assert k8s.K8sOperator()._is_deployment_ready(deployment) is True
 
 
 def test_is_deployment_ready_false_available_replicas_none():
@@ -110,7 +110,7 @@ def test_is_deployment_ready_false_available_replicas_none():
     deployment.status.updated_replicas = 1
     deployment.spec.replicas = 1
     
-    assert k8s.is_deployment_ready(deployment) is False
+    assert k8s.K8sOperator()._is_deployment_ready(deployment) is False
 
 
 def test_is_deployment_ready_false_not_matching():
@@ -121,7 +121,7 @@ def test_is_deployment_ready_false_not_matching():
     deployment.status.updated_replicas = 1
     deployment.spec.replicas = 1
     
-    assert k8s.is_deployment_ready(deployment) is False
+    assert k8s.K8sOperator()._is_deployment_ready(deployment) is False
 
 
 # Tests for extract_deployment_info
@@ -174,7 +174,7 @@ def test_extract_deployment_info(mock_k8s_core_client):
     
     mock_k8s_core_client.list_namespaced_pod.return_value = MagicMock(items=[pod])
 
-    result = k8s._extract_deployment_info(deployment)
+    result = k8s.K8sOperator()._extract_deployment_info(deployment)
     
     # Assertions
     assert result["uuid"] == "test-uid"
@@ -208,17 +208,17 @@ async def test_get_deployment(mock_k8s_app_client):
         "chutes/version": "1.0.0"
     }
     
-    mock_k8s_app_client().read_namespaced_deployment.return_value = deployment
+    mock_k8s_app_client.read_namespaced_deployment.return_value = deployment
     
     # Setup extract_deployment_info mock
-    with patch("api.k8s._extract_deployment_info") as mock_extract:
+    with patch("api.k8s.operator.K8sOperator._extract_deployment_info") as mock_extract:
         mock_extract.return_value = {"name": "test-deployment"}
         
         # Call the function
         result = await k8s.get_deployment("test-deployment-id")
         
         # Assertions
-        mock_k8s_app_client().read_namespaced_deployment.assert_called_once()
+        mock_k8s_app_client.read_namespaced_deployment.assert_called_once()
         mock_extract.assert_called_once_with(deployment)
         assert result == {"name": "test-deployment"}
 
@@ -237,10 +237,10 @@ async def test_get_deployed_chutes(mock_k8s_app_client):
     
     deployment_list = MagicMock()
     deployment_list.items = [deployment1, deployment2]
-    mock_k8s_app_client().list_namespaced_deployment.return_value = deployment_list
+    mock_k8s_app_client.list_namespaced_deployment.return_value = deployment_list
     
     # Setup extract_deployment_info mock
-    with patch("api.k8s._extract_deployment_info") as mock_extract:
+    with patch("api.k8s.operator.K8sOperator._extract_deployment_info") as mock_extract:
         mock_extract.side_effect = [
             {"name": "chute-1", "chute_id": "id1"},
             {"name": "chute-2", "chute_id": "id2"}
@@ -250,7 +250,7 @@ async def test_get_deployed_chutes(mock_k8s_app_client):
         result = await k8s.get_deployed_chutes()
         
         # Assertions
-        mock_k8s_app_client().list_namespaced_deployment.assert_called_once()
+        mock_k8s_app_client.list_namespaced_deployment.assert_called_once()
         assert mock_extract.call_count == 2
         assert len(result) == 2
         assert result[0]["name"] == "chute-1"
@@ -341,13 +341,13 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
 async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
     """Test successful undeployment of a chute."""
     # Setup mocks
-    with patch("api.k8s.wait_for_deletion") as mock_wait:
+    with patch("api.k8s.operator.SingleClusterK8sOperator.wait_for_deletion") as mock_wait:
         # Call the function
         await k8s.undeploy("test-deployment-id")
         
         # Assertions
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
-        mock_k8s_app_client().delete_namespaced_deployment.assert_called_once()
+        mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
 
 @pytest.mark.asyncio
@@ -357,13 +357,13 @@ async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_cl
     mock_k8s_core_client.delete_namespaced_service.side_effect = Exception("Service error")
     
     # Setup remaining mocks
-    with patch("api.k8s.wait_for_deletion") as mock_wait:
+    with patch("api.k8s.operator.SingleClusterK8sOperator.wait_for_deletion") as mock_wait:
         # Call the function - should not raise exception
         await k8s.undeploy("test-deployment-id")
         
         # Assertions
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
-        mock_k8s_app_client().delete_namespaced_deployment.assert_called_once()
+        mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
 
 
@@ -436,7 +436,7 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
     mock_service = MagicMock()
     mock_service.spec.ports = [MagicMock(node_port=30000)]
     
-    mock_k8s_app_client().create_namespaced_deployment.return_value = mock_deployment
+    mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
     
     # Setup session mock for deployment retrieval
@@ -449,14 +449,14 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
     # mock_session.execute.return_value.unique.return_value.scalar_one_or_none.return_value = mock_deployment_db
     
     # Call the function
-    with patch("api.k8s.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
+    with patch("api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
         result, created_deployment, created_service = await k8s.deploy_chute(sample_chute, sample_server)
     
     # Assertions
     assert mock_session.add.call_count == 1
     assert mock_session.commit.call_count == 2
     mock_k8s_core_client.create_namespaced_service.assert_called_once()
-    mock_k8s_app_client().create_namespaced_deployment.assert_called_once()
+    mock_k8s_app_client.create_namespaced_deployment.assert_called_once()
     assert result == mock_deployment_db
     assert created_deployment == mock_deployment
     assert created_service == mock_service
@@ -484,7 +484,7 @@ async def test_deploy_chute_deployment_disappeared(mock_k8s_core_client, mock_k8
     mock_service = MagicMock()
     mock_service.spec.ports = [MagicMock(node_port=30000)]
     
-    mock_k8s_app_client().create_namespaced_deployment.return_value = mock_deployment
+    mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
     
     # Setup session mock to return None for deployment
@@ -502,7 +502,7 @@ async def test_deploy_chute_api_exception(mock_k8s_core_client, mock_k8s_app_cli
     """Test handling of API exception during deployment."""
     # Setup mock to raise ApiException
     error = ApiException(status=500, reason="Internal error")
-    mock_k8s_app_client().create_namespaced_deployment.side_effect = error
+    mock_k8s_app_client.create_namespaced_deployment.side_effect = error
     
     # Setup service creation to succeed
     mock_service = MagicMock()
