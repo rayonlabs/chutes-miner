@@ -287,22 +287,7 @@ async def create_code_config_map(chute: Chute):
             raise
 
 
-# def get_used_ports(node_name):
-#    ports = set()
-#    pods = k8s_core_client().list_pod_for_all_namespaces(field_selector=f'spec.nodeName={node_name}')
-#    for pod in pods.items:
-#        if pod.spec.host_network:
-#            for container in pod.spec.containers:
-#                if container.ports:
-#                    for port in container.ports:
-#                        if port.container_port:
-#                            ports.add(port.container_port)
-#                        if port.host_port:
-#                            ports.add(port.host_port)
-#    return sorted(list(ports))
-
-
-async def deploy_chute(chute_id: str, server_id: str):
+async def deploy_chute(chute_id: str, server_id: str, extra_service_ports: list[int] = []):
     """
     Deploy a chute!
     """
@@ -326,7 +311,6 @@ async def deploy_chute(chute_id: str, server_id: str):
             raise DeploymentFailure(f"Failed to find chute or server: {chute_id=} {server_id=}")
 
         # Make sure the node has capacity.
-        # used_ports = get_used_ports(server.name)
         gpus_allocated = 0
         available_gpus = {gpu.gpu_id for gpu in server.gpus if gpu.verified}
         for deployment in server.deployments:
@@ -573,7 +557,7 @@ async def deploy_chute(chute_id: str, server_id: str):
         ),
     )
 
-    # And the service that exposes it.
+    # And the primary chutes service.
     service = V1Service(
         metadata=V1ObjectMeta(
             name=f"chute-service-{deployment_id}",
@@ -594,10 +578,41 @@ async def deploy_chute(chute_id: str, server_id: str):
         ),
     )
 
+    # Add any additional service port ranges.
+    extra_services = [
+        V1Service(
+            metadata=V1ObjectMeta(
+                name=f"chute-service-{deployment_id}-{port}",
+                labels={
+                    "chutes/deployment-id": deployment_id,
+                    "chutes/chute": "true",
+                    "chutes/chute-id": chute.chute_id,
+                    "chutes/version": chute.version,
+                    "chutes/real-port": str(port),
+                },
+            ),
+            spec=V1ServiceSpec(
+                type="NodePort",
+                external_traffic_policy="Local",
+                selector={
+                    "chutes/deployment-id": deployment_id,
+                },
+                ports=[V1ServicePort(port=port, target_port=port, protocol="TCP")],
+            ),
+        )
+        for port in extra_service_ports
+    ]
+
     try:
         created_service = k8s_core_client().create_namespaced_service(
             namespace=settings.namespace, body=service
         )
+        extra_created_services = [
+            k8s_core_client().create_namespaced_service(
+                namespace=settings.namespace, body=extra_service
+            )
+            for extra_service in extra_services
+        ]
         created_deployment = k8s_app_client().create_namespaced_deployment(
             namespace=settings.namespace, body=deployment
         )
@@ -620,14 +635,23 @@ async def deploy_chute(chute_id: str, server_id: str):
             await session.commit()
             await session.refresh(deployment)
 
-        return deployment, created_deployment, created_service
+        return deployment, created_deployment, created_service, extra_created_services
     except ApiException as exc:
         try:
             k8s_core_client().delete_namespaced_service(
                 name=f"chute-service-{deployment_id}",
                 namespace=settings.namespace,
             )
-        except Exception:
+            for port in extra_service_ports:
+                try:
+                    k8s_core_client().delete_namespaced_service(
+                        name=f"chute-service-{deployment_id}-{port}",
+                        namespace=settings.namespace,
+                    )
+                except Exception as exc2:
+                    logger.error(f"Error removing extra service {port=}: {exc2}")
+        except Exception as exc:
+            logger.error(f"Error removing primary chutes serivce: {exc}")
             ...
         try:
             k8s_core_client().delete_namespaced_deployment(
