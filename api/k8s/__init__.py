@@ -36,6 +36,7 @@ from sqlalchemy import select
 from api.exceptions import DeploymentFailure
 from api.config import settings
 from api.database import get_session
+from api.k8s.operator import K8sOperator
 from api.server.schemas import Server
 from api.chute.schemas import Chute
 from api.deployment.schemas import Deployment
@@ -43,52 +44,8 @@ from api.config import k8s_core_client, k8s_app_client
 
 
 async def get_kubernetes_nodes() -> List[Dict]:
-    """
-    Get all Kubernetes nodes via k8s client, optionally filtering by GPU nodes.
-    """
-    nodes = []
-    try:
-        node_list = k8s_core_client().list_node(field_selector=None, label_selector="chutes/worker")
-        for node in node_list.items:
-            if not node.status.capacity or not node.status.capacity.get("nvidia.com/gpu"):
-                logger.warning(f"Node has no GPU capacity: {node.metadata.name=}")
-                continue
-            gpu_count = int(node.status.capacity["nvidia.com/gpu"])
-            gpu_mem_mb = int(node.metadata.labels.get("nvidia.com/gpu.memory", "32"))
-            gpu_mem_gb = int(gpu_mem_mb / 1024)
-            cpu_count = (
-                int(node.status.capacity["cpu"]) - 2
-            )  # leave 2 CPUs for incidentals, daemon sets, etc.
-            cpus_per_gpu = (
-                1 if cpu_count <= gpu_count else min(4, math.floor(cpu_count / gpu_count))
-            )
-            raw_mem = node.status.capacity["memory"]
-            if raw_mem.endswith("Ki"):
-                total_memory_gb = int(int(raw_mem.replace("Ki", "")) / 1024 / 1024) - 6
-            elif raw_mem.endswith("Mi"):
-                total_memory_gb = int(int(raw_mem.replace("Mi", "")) / 1024) - 6
-            elif raw_mem.endswith("Gi"):
-                total_memory_gb = int(raw_mem.replace("Gi", "")) - 6
-            memory_gb_per_gpu = (
-                1
-                if total_memory_gb <= gpu_count
-                else min(gpu_mem_gb, math.floor(total_memory_gb * 0.8 / gpu_count))
-            )
-            node_info = {
-                "name": node.metadata.name,
-                "validator": node.metadata.labels.get("chutes/validator"),
-                "server_id": node.metadata.uid,
-                "status": node.status.phase,
-                "ip_address": node.metadata.labels.get("chutes/external-ip"),
-                "cpu_per_gpu": cpus_per_gpu,
-                "memory_gb_per_gpu": memory_gb_per_gpu,
-            }
-            nodes.append(node_info)
-    except Exception as e:
-        logger.error(f"Failed to get Kubernetes nodes: {e}")
-        raise
-    return nodes
-
+    return await K8sOperator().get_kubernetes_nodes()
+    
 
 def is_deployment_ready(deployment):
     """

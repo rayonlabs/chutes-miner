@@ -21,6 +21,8 @@ def pytest_configure(config):
     # Print confirmation for debugging
     print("Environment variables set up for testing!")
 
+pytest_configure(None)
+
 from fixtures.api_fixtures import *
 from fixtures.cli_fixtures import *
 from fixtures.db_fixtures import *

@@ -12,6 +12,29 @@ from kubernetes.client.rest import ApiException
 from api.deployment.schemas import Deployment
 import api.k8s as k8s
 from api.exceptions import DeploymentFailure
+from api.k8s.operator import K8sOperator, SingleClusterK8sOperator
+
+@pytest.fixture(autouse=True, scope="function")
+def mock_k8s_operator_single_cluster():
+    # Save the original __new__ method
+    original_new = K8sOperator.__new__
+    
+    # Create a mock implementation that always returns SingleClusterK8sOperator
+    def mock_new(cls, *args, **kwargs):
+        return super(K8sOperator, cls).__new__(SingleClusterK8sOperator)
+    
+    # Apply the mock
+    K8sOperator.__new__ = mock_new
+    
+    # Clear any singleton instance that might exist
+    K8sOperator._instance = None
+    
+    yield
+    
+    # Restore the original method after test
+    K8sOperator.__new__ = original_new
+    K8sOperator._instance = None
+    
 
 # Tests for get_kubernetes_nodes
 @pytest.mark.asyncio
@@ -35,14 +58,14 @@ async def test_get_kubernetes_nodes_success(mock_k8s_core_client):
     node1.metadata.labels["nvidia.com/gpu.memory"] = "16384"  # 16GB
     
     node_list.items = [node1]
-    mock_k8s_core_client().list_node.return_value = node_list
+    mock_k8s_core_client.list_node.return_value = node_list
     
     # Call the function
     # k8s_core_client.cache_clear()
     result = await k8s.get_kubernetes_nodes()
     
     # Assertions
-    mock_k8s_core_client().list_node.assert_called_once_with(
+    mock_k8s_core_client.list_node.assert_called_once_with(
         field_selector=None, label_selector="chutes/worker"
     )
     
@@ -60,7 +83,7 @@ async def test_get_kubernetes_nodes_success(mock_k8s_core_client):
 async def test_get_kubernetes_nodes_exception(mock_k8s_core_client):
     """Test exception handling when retrieving kubernetes nodes."""
     # Setup mock to raise an exception
-    mock_k8s_core_client().list_node.side_effect = Exception("API Error")
+    mock_k8s_core_client.list_node.side_effect = Exception("API Error")
     
     # Call the function and expect exception
     with pytest.raises(Exception, match="API Error"):
@@ -242,29 +265,29 @@ async def test_delete_code_success(mock_k8s_core_client):
     await k8s.delete_code("test-chute-id", "1.0.0")
     
     # Assertions
-    mock_k8s_core_client().delete_namespaced_config_map.assert_called_once()
+    mock_k8s_core_client.delete_namespaced_config_map.assert_called_once()
     # Verify the name is based on the UUID generated from chute_id and version
-    assert "chute-code-" in mock_k8s_core_client().delete_namespaced_config_map.call_args[1]["name"]
+    assert "chute-code-" in mock_k8s_core_client.delete_namespaced_config_map.call_args[1]["name"]
 
 @pytest.mark.asyncio
 async def test_delete_code_not_found(mock_k8s_core_client):
     """Test handling of 404 error when deleting configmap."""
     # Setup mock to raise ApiException with 404
     error = ApiException(status=404)
-    mock_k8s_core_client().delete_namespaced_config_map.side_effect = error
+    mock_k8s_core_client.delete_namespaced_config_map.side_effect = error
     
     # Call the function - should not raise exception
     await k8s.delete_code("test-chute-id", "1.0.0")
     
     # Assertions
-    mock_k8s_core_client().delete_namespaced_config_map.assert_called_once()
+    mock_k8s_core_client.delete_namespaced_config_map.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_delete_code_other_error(mock_k8s_core_client):
     """Test handling of non-404 error when deleting configmap."""
     # Setup mock to raise ApiException with 500
     error = ApiException(status=500)
-    mock_k8s_core_client().delete_namespaced_config_map.side_effect = error
+    mock_k8s_core_client.delete_namespaced_config_map.side_effect = error
     
     # Call the function and expect exception
     with pytest.raises(ApiException):
@@ -278,13 +301,13 @@ async def test_wait_for_deletion_no_pods(mock_k8s_core_client):
     # Setup mock to return empty list
     pod_list = MagicMock()
     pod_list.items = []
-    mock_k8s_core_client().list_namespaced_pod.return_value = pod_list
+    mock_k8s_core_client.list_namespaced_pod.return_value = pod_list
     
     # Call the function
     await k8s.wait_for_deletion("app=test")
     
     # Assertions
-    mock_k8s_core_client().list_namespaced_pod.assert_called_once()
+    mock_k8s_core_client.list_namespaced_pod.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
@@ -296,7 +319,7 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
     pod_list_empty = MagicMock()
     pod_list_empty.items = []
     
-    mock_k8s_core_client().list_namespaced_pod.side_effect = [
+    mock_k8s_core_client.list_namespaced_pod.side_effect = [
         pod_list_with_pods,  # Initial check - pods exist
         pod_list_empty       # Check in the watch loop - pods gone
     ]
@@ -308,7 +331,7 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
     await k8s.wait_for_deletion("app=test")
     
     # Assertions
-    assert mock_k8s_core_client().list_namespaced_pod.call_count == 2
+    assert mock_k8s_core_client.list_namespaced_pod.call_count == 2
     mock_watch.stream.assert_called_once()
     mock_watch.stop.assert_called_once()
 
@@ -323,7 +346,7 @@ async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
         await k8s.undeploy("test-deployment-id")
         
         # Assertions
-        mock_k8s_core_client().delete_namespaced_service.assert_called_once()
+        mock_k8s_core_client.delete_namespaced_service.assert_called_once()
         mock_k8s_app_client().delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
 
@@ -331,7 +354,7 @@ async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
 async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_client):
     """Test undeployment when service deletion fails."""
     # Setup service deletion to fail
-    mock_k8s_core_client().delete_namespaced_service.side_effect = Exception("Service error")
+    mock_k8s_core_client.delete_namespaced_service.side_effect = Exception("Service error")
     
     # Setup remaining mocks
     with patch("api.k8s.wait_for_deletion") as mock_wait:
@@ -339,7 +362,7 @@ async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_cl
         await k8s.undeploy("test-deployment-id")
         
         # Assertions
-        mock_k8s_core_client().delete_namespaced_service.assert_called_once()
+        mock_k8s_core_client.delete_namespaced_service.assert_called_once()
         mock_k8s_app_client().delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
 
@@ -359,9 +382,9 @@ async def test_create_code_config_map_success(mock_k8s_core_client):
     await k8s.create_code_config_map(chute)
     
     # Assertions
-    mock_k8s_core_client().create_namespaced_config_map.assert_called_once()
+    mock_k8s_core_client.create_namespaced_config_map.assert_called_once()
     # Check configmap data
-    called_config_map = mock_k8s_core_client().create_namespaced_config_map.call_args[1]["body"]
+    called_config_map = mock_k8s_core_client.create_namespaced_config_map.call_args[1]["body"]
     assert called_config_map.data["app.py"] == "print('Hello World')"
 
 @pytest.mark.asyncio
@@ -369,7 +392,7 @@ async def test_create_code_config_map_conflict(mock_k8s_core_client):
     """Test handling of 409 conflict when creating configmap."""
     # Setup mock to raise ApiException with 409
     error = ApiException(status=409)
-    mock_k8s_core_client().create_namespaced_config_map.side_effect = error
+    mock_k8s_core_client.create_namespaced_config_map.side_effect = error
     
     # Setup mock chute
     chute = MagicMock()
@@ -382,7 +405,7 @@ async def test_create_code_config_map_conflict(mock_k8s_core_client):
     await k8s.create_code_config_map(chute)
     
     # Assertions
-    mock_k8s_core_client().create_namespaced_config_map.assert_called_once()
+    mock_k8s_core_client.create_namespaced_config_map.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -390,7 +413,7 @@ async def test_create_code_config_map_other_error(mock_k8s_core_client):
     """Test handling of non-409 error when creating configmap."""
     # Setup mock to raise ApiException with 500
     error = ApiException(status=500)
-    mock_k8s_core_client().create_namespaced_config_map.side_effect = error
+    mock_k8s_core_client.create_namespaced_config_map.side_effect = error
     
     # Setup mock chute
     chute = MagicMock()
@@ -414,7 +437,7 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
     mock_service.spec.ports = [MagicMock(node_port=30000)]
     
     mock_k8s_app_client().create_namespaced_deployment.return_value = mock_deployment
-    mock_k8s_core_client().create_namespaced_service.return_value = mock_service
+    mock_k8s_core_client.create_namespaced_service.return_value = mock_service
     
     # Setup session mock for deployment retrieval
     mock_deployment_db = MagicMock(spec=Deployment)
@@ -432,7 +455,7 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
     # Assertions
     assert mock_session.add.call_count == 1
     assert mock_session.commit.call_count == 2
-    mock_k8s_core_client().create_namespaced_service.assert_called_once()
+    mock_k8s_core_client.create_namespaced_service.assert_called_once()
     mock_k8s_app_client().create_namespaced_deployment.assert_called_once()
     assert result == mock_deployment_db
     assert created_deployment == mock_deployment
@@ -462,7 +485,7 @@ async def test_deploy_chute_deployment_disappeared(mock_k8s_core_client, mock_k8
     mock_service.spec.ports = [MagicMock(node_port=30000)]
     
     mock_k8s_app_client().create_namespaced_deployment.return_value = mock_deployment
-    mock_k8s_core_client().create_namespaced_service.return_value = mock_service
+    mock_k8s_core_client.create_namespaced_service.return_value = mock_service
     
     # Setup session mock to return None for deployment
     mock_result = MagicMock()
@@ -484,11 +507,11 @@ async def test_deploy_chute_api_exception(mock_k8s_core_client, mock_k8s_app_cli
     # Setup service creation to succeed
     mock_service = MagicMock()
     mock_service.spec.ports = [MagicMock(node_port=30000)]
-    mock_k8s_core_client().create_namespaced_service.return_value = mock_service
+    mock_k8s_core_client.create_namespaced_service.return_value = mock_service
     
     # Call the function and expect exception
     with pytest.raises(DeploymentFailure, match="Failed to deploy chute"):
         await k8s.deploy_chute(sample_chute, sample_server)
     
     # Verify cleanup was attempted
-    mock_k8s_core_client().delete_namespaced_service.assert_called_once()
+    mock_k8s_core_client.delete_namespaced_service.assert_called_once()

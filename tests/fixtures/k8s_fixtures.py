@@ -10,9 +10,29 @@ from api.server.schemas import Server
 
 @pytest.fixture
 def mock_k8s_core_client():
-    with patch("api.k8s.k8s_core_client") as mock_client:
-        mock_client.return_value = mock_client
-        yield mock_client
+     # Create a list of paths where k8s_core_client is imported
+    import_paths = [
+        "api.k8s.k8s_core_client",
+        "api.k8s.operator.k8s_core_client"
+    ]
+    
+    # Create a single mock object
+    mock_client = MagicMock()
+    # mock_client.list_node.return_value = MagicMock(items=None)
+    
+    # Create and start patches for each import path, all returning the same mock
+    patches = []
+    for path in import_paths:
+        patcher = patch(path, return_value=mock_client)
+        patcher.start()
+        patches.append(patcher)
+    
+    # Yield the shared mock for use in tests
+    yield mock_client
+    
+    # Stop all patches when done
+    for patcher in patches:
+        patcher.stop()
 
 @pytest.fixture
 def mock_k8s_app_client():
