@@ -7,7 +7,6 @@ def mock_session():
     
     # Create a list of paths where k8s_core_client is imported
     import_paths = [
-        "api.k8s.get_session",
         "api.k8s.operator.get_session"
     ]
 

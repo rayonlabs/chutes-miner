@@ -8,11 +8,17 @@ from api.chute.schemas import Chute
 from api.gpu.schemas import GPU
 from api.server.schemas import Server
 
+from kubernetes.client import ApiClient
+import uuid
+import random
+from datetime import datetime, timezone
+import json
+from dateutil.tz import tzutc
+
 @pytest.fixture
 def mock_k8s_core_client():
      # Create a list of paths where k8s_core_client is imported
     import_paths = [
-        "api.k8s.k8s_core_client",
         "api.k8s.operator.k8s_core_client"
     ]
     
@@ -37,7 +43,6 @@ def mock_k8s_core_client():
 @pytest.fixture
 def mock_k8s_app_client():
     import_paths = [
-        "api.k8s.k8s_app_client",
         "api.k8s.operator.k8s_app_client"
     ]
     
@@ -54,6 +59,55 @@ def mock_k8s_app_client():
     
     # Yield the shared mock for use in tests
     yield mock_client
+    
+    # Stop all patches when done
+    for patcher in patches:
+        patcher.stop()
+
+@pytest.fixture
+def mock_k8s_api_client():
+    import_paths = [
+        "api.k8s.operator.k8s_api_client"
+    ]
+    
+    # Create a single mock object
+    client = ApiClient()
+    client.call_api = MagicMock(wraps=client.call_api)
+    # mock_client.list_node.return_value = MagicMock(items=None)
+    
+    # Create and start patches for each import path, all returning the same mock
+    patches = []
+    for path in import_paths:
+        patcher = patch(path, return_value=client)
+        patcher.start()
+        patches.append(patcher)
+    
+    # Yield the shared mock for use in tests
+    yield client
+    
+    # Stop all patches when done
+    for patcher in patches:
+        patcher.stop()
+
+@pytest.fixture
+def mock_k8s_custom_objects_client():
+    import_paths = [
+        "api.k8s.operator.k8s_custom_objects_client"
+    ]
+    
+    # Create a single mock object
+    client = MagicMock()
+    # mock_client.list_node.return_value = MagicMock(items=None)
+    
+    # Create and start patches for each import path, all returning the same mock
+    patches = []
+    for path in import_paths:
+        patcher = patch(path, return_value=client)
+        patcher.start()
+        patches.append(patcher)
+    
+    # Yield the shared mock for use in tests
+    yield client
     
     # Stop all patches when done
     for patcher in patches:
@@ -96,7 +150,7 @@ def sample_chute():
 
 @pytest.fixture
 def mock_watch():
-    with patch("api.k8s.watch.Watch") as mock_watch:
+    with patch("api.k8s.operator.watch.Watch") as mock_watch:
         watch_instance = MagicMock()
         mock_watch.return_value = watch_instance
         yield watch_instance
@@ -366,3 +420,321 @@ def mock_pod():
         }
     
     return pod
+
+@pytest.fixture
+def create_api_test_pods():
+    """
+    Fixture to create a specified number of pod dictionaries with proper Kubernetes
+    camelCase/PascalCase naming convention that are JSON serializable.
+    
+    Args:
+        num_pods (int): Number of pods to create
+        namespace (str, optional): Namespace for the pods. Defaults to "default"
+        base_name (str, optional): Base name for the pods. Defaults to "test-pod"
+        phase (str, optional): Pod phase. Defaults to "Running"
+        
+    Returns:
+        list: List of pod dictionaries that are JSON serializable with Kubernetes naming convention
+    """
+    def _create_pods(num_pods, namespace="chutes", base_name="chute", phase="Running"):
+        pods = []
+        
+        for i in range(num_pods):
+            # Generate unique identifiers
+            pod_name = f"{base_name}-{i}"
+            pod_uid = str(uuid.uuid4())
+            rs_uid = str(uuid.uuid4())
+            container_id = f"containerd://{uuid.uuid4().hex}"
+            
+            # Format current time in ISO format for JSON compatibility
+            current_time = datetime.now(timezone.utc).isoformat()
+            start_time = current_time
+            
+            # Base pod template with camelCase/PascalCase keys
+            pod = {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "metadata": {
+                    "annotations": {
+                        "resource.karmada.io/cached-from-cluster": f"member{random.randint(1, 5)}"
+                    },
+                    "creationTimestamp": current_time,
+                    "deletionTimestamp": None,
+                    "deletionGracePeriodSeconds": None,
+                    "finalizers": None,
+                    "generateName": f"{base_name}-",
+                    "generation": None,
+                    "labels": {
+                        "app": base_name,
+                        "pod-template-hash": "5bf549858c"
+                    },
+                    "name": pod_name,
+                    "namespace": namespace,
+                    "ownerReferences": [{
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": True,
+                        "controller": True,
+                        "kind": "ReplicaSet",
+                        "name": f"{base_name}-5bf549858c",
+                        "uid": rs_uid
+                    }],
+                    "resourceVersion": str(random.randint(100, 999)),
+                    "uid": pod_uid
+                },
+                "spec": {
+                    "containers": [{
+                        "args": None,
+                        "command": None,
+                        "env": None,
+                        "image": "docker.io/example/app:latest",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "main-container",
+                        "ports": [{
+                            "containerPort": 8080,
+                            "hostIP": None,
+                            "hostPort": None,
+                            "name": "http",
+                            "protocol": "TCP"
+                        }],
+                        "resources": {
+                            "limits": None,
+                            "requests": None
+                        },
+                        "volumeMounts": [{
+                            "mountPath": "/etc/config",
+                            "name": "config-volume",
+                            "readOnly": True,
+                            "subPath": None
+                        }]
+                    }],
+                    "nodeName": f"node-{random.randint(1, 5)}",
+                    "restartPolicy": "Always",
+                    "serviceAccount": f"{base_name}-sa",
+                    "serviceAccountName": f"{base_name}-sa",
+                    "tolerations": [{
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }],
+                    "volumes": [{
+                        "name": "config-volume",
+                        "configMap": {
+                            "name": f"{base_name}-config",
+                            "defaultMode": 420
+                        }
+                    }]
+                },
+                "status": {
+                    "conditions": [
+                        {
+                            "lastProbeTime": None,
+                            "lastTransitionTime": current_time,
+                            "message": None,
+                            "reason": None,
+                            "status": "True",
+                            "type": "Initialized"
+                        },
+                        {
+                            "lastProbeTime": None,
+                            "lastTransitionTime": current_time,
+                            "message": None,
+                            "reason": None,
+                            "status": "True" if phase == "Running" else "False",
+                            "type": "Ready"
+                        },
+                        {
+                            "lastProbeTime": None,
+                            "lastTransitionTime": current_time,
+                            "message": None,
+                            "reason": None,
+                            "status": "True" if phase == "Running" else "False",
+                            "type": "ContainersReady"
+                        },
+                        {
+                            "lastProbeTime": None,
+                            "lastTransitionTime": current_time,
+                            "message": None,
+                            "reason": None,
+                            "status": "True",
+                            "type": "PodScheduled"
+                        }
+                    ],
+                    "containerStatuses": [{
+                        "containerId": container_id,
+                        "image": "docker.io/example/app:latest",
+                        "imageID": f"docker.io/example/app@sha256:{uuid.uuid4().hex}",
+                        "name": "main-container",
+                        "ready": phase == "Running",
+                        "restartCount": random.randint(0, 3),
+                        "started": phase == "Running",
+                        "state": {
+                            "running": {"startedAt": current_time} if phase == "Running" else None,
+                            "terminated": {
+                                "exitCode": 1,
+                                "reason": "Error",
+                                "startedAt": current_time,
+                                "finishedAt": current_time
+                            } if phase == "Failed" else None,
+                            "waiting": {
+                                "reason": "ContainerCreating"
+                            } if phase == "Pending" else None
+                        },
+                        "lastState": {
+                            "running": None,
+                            "terminated": {
+                                "exitCode": random.choice([0, 1]),
+                                "reason": random.choice(["Completed", "Error", "OOMKilled"]),
+                                "startedAt": current_time,
+                                "finishedAt": current_time
+                            } if random.random() > 0.5 else None,
+                            "waiting": None
+                        }
+                    }],
+                    "hostIP": f"172.26.0.{random.randint(2, 10)}",
+                    "phase": phase,
+                    "podIP": f"10.14.{random.randint(0, 255)}.{random.randint(1, 254)}",
+                    "podIPs": [{"ip": f"10.14.{random.randint(0, 255)}.{random.randint(1, 254)}"}],
+                    "qosClass": "BestEffort",
+                    "startTime": start_time
+                }
+            }
+            
+            # Verify JSON serializability
+            try:
+                json.dumps(pod)
+            except TypeError as e:
+                raise ValueError(f"Pod is not JSON serializable: {e}")
+                
+            pods.append(pod)
+        
+        return pods
+    
+    return _create_pods
+
+@pytest.fixture
+def create_api_test_deployments():
+    """
+    Create a specified number of test Kubernetes deployments as dictionaries with camel case keys.
+    
+    Usage:
+        def test_something(test_deployments):
+            deployments = test_deployments(3)  # Creates 3 test deployments
+    """
+    def _generate_deployments(count=1, name="test-app", namespace="default"):
+        deployments = []
+        
+        for i in range(count):
+            app_name = f"{name}-{i}"
+            current_timestamp = datetime.now(tzutc()).isoformat()
+            # Create deployment directly with camelCase keys
+            deployment = {
+                'apiVersion': 'apps/v1',
+                'kind': 'Deployment',
+                'metadata': {
+                    'annotations': {
+                        'deployment.kubernetes.io/revision': '1',
+                        'kubectl.kubernetes.io/last-applied-configuration': f'{{"apiVersion":"apps/v1","kind":"Deployment","metadata":{{"name":"{app_name}","namespace":"default"}}}}',
+                    },
+                    'creationTimestamp': current_timestamp,
+                    'generation': 1,
+                    'name': app_name,
+                    'namespace': 'default',
+                    'resourceVersion': str(1000 + i),
+                    'uid': str(uuid.uuid4()),
+                    'labels': {
+                          'app': app_name,
+                          'chutes/deployment-id': f'chute-{app_name}',
+                          'chutes/chute-id': f'chute-{uuid.uuid4()}',
+                          'chutes/version': "1",
+                          'chutes/chute': 'true'
+                      }
+              },
+                'spec': {
+                    'progressDeadlineSeconds': 600,
+                    'replicas': i + 1,
+                    'revisionHistoryLimit': 10,
+                    'selector': {
+                        'matchLabels': {'app': app_name}
+                    },
+                    'strategy': {
+                        'rollingUpdate': {
+                            'maxSurge': '25%',
+                            'maxUnavailable': '25%'
+                        },
+                        'type': 'RollingUpdate'
+                    },
+                    'template': {
+                        'metadata': {
+                            'labels': { 'app': app_name }
+                        },
+                        'spec': {
+                            'containers': [{
+                                'image': f'docker.io/test/{app_name}:latest',
+                                'imagePullPolicy': 'IfNotPresent',
+                                'name': app_name,
+                                'resources': {},
+                                'terminationMessagePath': '/dev/termination-log',
+                                'terminationMessagePolicy': 'File',
+                                'volumeMounts': [{
+                                    'mountPath': '/etc/config/',
+                                    'name': 'config-volume'
+                                }]
+                            }],
+                            'dnsPolicy': 'ClusterFirst',
+                            'nodeSelector': {'kubernetes.io/os': 'linux'},
+                            'restartPolicy': 'Always',
+                            'schedulerName': 'default-scheduler',
+                            'securityContext': {},
+                            'serviceAccount': f'{app_name}-service-account',
+                            'serviceAccountName': f'{app_name}-service-account',
+                            'terminationGracePeriodSeconds': 30,
+                            'tolerations': [
+                                {
+                                    'effect': 'NoSchedule',
+                                    'key': 'node-role.kubernetes.io/control-plane',
+                                    'operator': 'Equal'
+                                }
+                            ],
+                            'volumes': [{
+                                'configMap': {
+                                    'defaultMode': 420,
+                                    'name': f'{app_name}-config'
+                                },
+                                'name': 'config-volume'
+                            }]
+                        }
+                    }
+                },
+                'status': {
+                    'availableReplicas': i + 1,
+                    'conditions': [
+                        {
+                            'lastTransitionTime': current_timestamp,
+                            'lastUpdateTime': current_timestamp,
+                            'message': 'Deployment has minimum availability.',
+                            'reason': 'MinimumReplicasAvailable',
+                            'status': 'True',
+                            'type': 'Available'
+                        },
+                        {
+                            'lastTransitionTime': current_timestamp,
+                            'lastUpdateTime': current_timestamp,
+                            'message': f'ReplicaSet "{app_name}-abc123" has successfully progressed.',
+                            'reason': 'NewReplicaSetAvailable',
+                            'status': 'True',
+                            'type': 'Progressing'
+                        }
+                    ],
+                    'observedGeneration': 1,
+                    'readyReplicas': i + 1,
+                    'replicas': i + 1,
+                    'updatedReplicas': i + 1
+                }
+            }
+            
+            deployments.append(deployment)
+        
+        return deployments
+    
+    return _generate_deployments

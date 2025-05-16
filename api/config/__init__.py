@@ -51,7 +51,6 @@ def k8s_api_client(context: Optional[str] = None) -> client.ApiClient:
 def k8s_custom_objects_client(context: Optional[str] = None) -> client.CustomObjectsApi:
     return create_kubernetes_client(cls=client.CustomObjectsApi, context=context)
 
-
 @lru_cache(maxsize=32)
 def validator_by_hotkey(hotkey: str):
     valis = [validator for validator in settings.validators if validator.hotkey == hotkey]

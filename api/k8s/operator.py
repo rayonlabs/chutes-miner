@@ -1,3 +1,4 @@
+from functools import lru_cache
 import math
 import uuid
 import traceback
@@ -8,7 +9,11 @@ from kubernetes import watch
 from kubernetes.client import (
     V1Deployment,
     V1Service,
+    V1Node,
+    V1NodeList,
+    V1PodList,
     V1ObjectMeta,
+    V1DeploymentList,
     V1DeploymentSpec,
     V1DeploymentStrategy,
     V1PodTemplateSpec,
@@ -31,8 +36,10 @@ from kubernetes.client import (
 from kubernetes.client.rest import ApiException
 from sqlalchemy import select
 from api.exceptions import DeploymentFailure
-from api.config import settings
+from api.config import k8s_api_client, k8s_custom_objects_client, settings
 from api.database import get_session
+from api.k8s.constants import SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
+from api.k8s.response import ApiResponse, Node, NodeList
 from api.k8s.util import build_chute_deployment, build_chute_service
 from api.server.schemas import Server
 from api.chute.schemas import Chute
@@ -72,7 +79,7 @@ class K8sOperator(abc.ABC):
             
         return cls._instance
     
-    def _extract_deployment_info(self, deployment: Any) -> Dict:
+    def _extract_deployment_info(self, deployment: V1Deployment) -> Dict:
       """
       Extract deployment info from the deployment objects.
       """
@@ -87,11 +94,8 @@ class K8sOperator(abc.ABC):
           "node_selector": deployment.spec.template.spec.node_selector,
       }
       deploy_info["ready"] = self._is_deployment_ready(deployment)
-      pod_label_selector = ",".join(
-          [f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()]
-      )
-      pods = k8s_core_client().list_namespaced_pod(
-          namespace=deployment.metadata.namespace, label_selector=pod_label_selector
+      pods = self._get_pods(
+          namespace=deployment.metadata.namespace, labels=deployment.spec.selector.match_labels
       )
       deploy_info["pods"] = []
       for pod in pods.items:
@@ -131,11 +135,32 @@ class K8sOperator(abc.ABC):
       return deploy_info
 
     @abc.abstractmethod
-    async def get_kubernetes_nodes(self) -> List[Dict]:
+    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> List[Dict]:
         """Get all Kubernetes nodes via k8s client, optionally filtering by GPU nodes."""
         raise NotImplementedError()
+
+    async def get_kubernetes_nodes(self) -> List[Dict]:
+        """
+        Get all Kubernetes nodes via k8s client, optionally filtering by GPU nodes.
+        """
+        nodes = []
+        try:
+            node_list = self._get_nodes()
+            for node in node_list.items:
+                nodes.append(self._extract_node_info(node))
+        except Exception as e:
+            logger.error(f"Failed to get Kubernetes nodes: {e}")
+            raise
+        return nodes
     
-    def _extract_node_info(self, node):
+    @abc.abstractmethod
+    def _get_nodes(self) -> V1NodeList:
+        """
+        Retrieve all nodes from the environment
+        """
+        raise NotImplementedError()
+
+    def _extract_node_info(self, node: V1Node):
         gpu_count = int(node.status.capacity["nvidia.com/gpu"])
         gpu_mem_mb = int(node.metadata.labels.get("nvidia.com/gpu.memory", "32"))
         gpu_mem_gb = int(gpu_mem_mb / 1024)
@@ -184,16 +209,42 @@ class K8sOperator(abc.ABC):
             and deployment.status.updated_replicas == deployment.spec.replicas
         )
     
-    @abc.abstractmethod
     async def get_deployed_chutes(self) -> List[Dict]:
         """Get all chutes deployments from kubernetes."""
-        raise NotImplementedError()
+        deployments = []
+        deployments_list = self._get_deployments(namespace=settings.namespace, labels={ "chutes/chute": "true"})
+        for deployment in deployments_list.items:
+          deployments.append(self._extract_deployment_info(deployment))
+          logger.info(
+                f"Found chute deployment: {deployment.metadata.name} in namespace {deployment.metadata.namespace}"
+            )
+        return deployments
     
     @abc.abstractmethod
-    async def delete_code(self, chute_id: str, version: str) -> None:
-        """Delete the code configmap associated with a chute & version."""
+    def _get_deployments(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> V1DeploymentList:
+        """
+        Get deployment, optinally filtering by namespace and labels
+        """
         raise NotImplementedError()
     
+    async def delete_code(self, chute_id: str, version: str) -> None:
+        """
+        Delete the code configmap associated with a chute & version.
+        """
+        try:
+            code_uuid = self._get_code_uuid(chute_id, version)
+            k8s_core_client().delete_namespaced_config_map(
+                name=f"chute-code-{code_uuid}", namespace=settings.namespace
+            )
+        except ApiException as exc:
+            if exc.status != 404:
+                logger.error(f"Failed to delete code reference: {exc}")
+                raise
+    
+    @lru_cache(maxsize=5)
+    def _get_code_uuid(self, chute_id: str, version: str) -> str:
+        return str(uuid.uuid5(uuid.NAMESPACE_OID, f"{chute_id}::{version}"))
+
     @abc.abstractmethod
     async def wait_for_deletion(self, label_selector: str, timeout_seconds: int = 120) -> None:
         """Wait for a deleted pod to be fully removed."""
@@ -218,23 +269,21 @@ class K8sOperator(abc.ABC):
 class SingleClusterK8sOperator(K8sOperator):
     """Kubernetes operations for legacy single-cluster setup."""
 
-    async def get_kubernetes_nodes(self) -> List[Dict]:
-        """
-        Get all Kubernetes nodes via k8s client, optionally filtering by GPU nodes.
-        """
-        nodes = []
-        try:
-            node_list = self._get_nodes()
-            for node in node_list.items:
-                nodes.append(self._extract_node_info(node))
-        except Exception as e:
-            logger.error(f"Failed to get Kubernetes nodes: {e}")
-            raise
-        return nodes
-
     def _get_nodes(self):
+        """
+        Retrieve all nodes from the environment
+        """
         node_list = k8s_core_client().list_node(field_selector=None, label_selector="chutes/worker")
         return node_list
+
+    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None):
+        pod_label_selector = ",".join(
+          [f"{k}={v}" for k, v in labels.items()]
+        )
+        pods = k8s_core_client().list_namespaced_pod(
+            namespace=namespace, label_selector=pod_label_selector
+        )
+        return pods
 
     async def get_deployment(self, deployment_id: str) -> Dict:
         """
@@ -246,35 +295,15 @@ class SingleClusterK8sOperator(K8sOperator):
         )
         return self._extract_deployment_info(deployment)
 
-    async def get_deployed_chutes(self) -> List[Dict]:
+    def _get_deployments(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> V1DeploymentList:
         """
-        Get all chutes deployments from kubernetes.
+        Get deployment, optinally filtering by namespace and labels
         """
-        deployments = []
-        label_selector = "chutes/chute=true"
+        label_selector = ",".join([f"{k}={v}" for k, v in labels.items()])
         deployment_list = k8s_app_client().list_namespaced_deployment(
-            namespace=settings.namespace, label_selector=label_selector
+            namespace=namespace, label_selector=label_selector
         )
-        for deployment in deployment_list.items:
-            deployments.append(self._extract_deployment_info(deployment))
-            logger.info(
-                f"Found chute deployment: {deployment.metadata.name} in namespace {deployment.metadata.namespace}"
-            )
-        return deployments
-
-    async def delete_code(self, chute_id: str, version: str) -> None:
-        """
-        Delete the code configmap associated with a chute & version.
-        """
-        try:
-            code_uuid = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{chute_id}::{version}"))
-            k8s_core_client().delete_namespaced_config_map(
-                name=f"chute-code-{code_uuid}", namespace=settings.namespace
-            )
-        except ApiException as exc:
-            if exc.status != 404:
-                logger.error(f"Failed to delete code reference: {exc}")
-                raise
+        return deployment_list
 
     async def wait_for_deletion(self, label_selector: str, timeout_seconds: int = 120) -> None:
         """
@@ -442,66 +471,36 @@ class KarmadaK8sOperator(K8sOperator):
     
     # This class will implement the K8sOperator interface but translate operations
     # to work with Karmada's multi-cluster orchestration
+
+    @property
+    def karmada_api_client(self):
+        return k8s_api_client(context="karmada-apiserver")
     
-    def is_deployment_ready(self, deployment):
-        pass
-
-    def _extract_deployment_info(self, deployment: Any) -> Dict:
-        pass
-
-    async def get_kubernetes_nodes(self) -> List[Dict]:
-        """
-        Get all Kubernetes nodes via k8s client, optionally filtering by GPU nodes.
-        """
-        pass
-
-    def _get_nodes():
-        pass
-
-    def _extract_node_info(node):
-        gpu_count = int(node.status.capacity["nvidia.com/gpu"])
-        gpu_mem_mb = int(node.metadata.labels.get("nvidia.com/gpu.memory", "32"))
-        gpu_mem_gb = int(gpu_mem_mb / 1024)
-        cpu_count = (
-            int(node.status.capacity["cpu"]) - 2
-        )  # leave 2 CPUs for incidentals, daemon sets, etc.
-        cpus_per_gpu = (
-            1 if cpu_count <= gpu_count else min(4, math.floor(cpu_count / gpu_count))
-        )
-        raw_mem = node.status.capacity["memory"]
-        if raw_mem.endswith("Ki"):
-            total_memory_gb = int(int(raw_mem.replace("Ki", "")) / 1024 / 1024) - 6
-        elif raw_mem.endswith("Mi"):
-            total_memory_gb = int(int(raw_mem.replace("Mi", "")) / 1024) - 6
-        elif raw_mem.endswith("Gi"):
-            total_memory_gb = int(raw_mem.replace("Gi", "")) - 6
-        memory_gb_per_gpu = (
-            1
-            if total_memory_gb <= gpu_count
-            else min(gpu_mem_gb, math.floor(total_memory_gb * 0.8 / gpu_count))
-        )
-        node_info = {
-            "name": node.metadata.name,
-            "validator": node.metadata.labels.get("chutes/validator"),
-            "server_id": node.metadata.uid,
-            "status": node.status.phase,
-            "ip_address": node.metadata.labels.get("chutes/external-ip"),
-            "cpu_per_gpu": cpus_per_gpu,
-            "memory_gb_per_gpu": memory_gb_per_gpu,
-        }
-        return node_info
+    @property
+    def karmada_custom_objects_client(self):
+        return k8s_custom_objects_client(context="karmada-apiserver")
+    
+    async def _get_nodes(self) -> V1NodeList:
+        response = self._search(SEARCH_NODES_PATH)
+        node_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1NodeList')
+        return node_list
 
     async def get_deployment(self, deployment_id: str) -> Dict:
         """Get a single deployment by ID."""
-        pass
+        # Initialize query parameters
+        query_params = {}
+        query_params["fieldSelector"] = f"metadata.namespace={settings.namespace},metadata.name=chute-{deployment_id}"
 
-    async def get_deployed_chutes(self) -> List[Dict]:
-        """Get all chutes deployments from kubernetes."""
-        pass
-
+        response =  self._search(SEARCH_DEPLOYMENTS_PATH, query_params)
+        deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1DeploymentList')
+        # Handle case where no deployments found or more than one found
+        return self._extract_deployment_info(deploy_list.items[0])
+    
     async def delete_code(self, chute_id: str, version: str) -> None:
         """Delete the code configmap associated with a chute & version."""
-        pass
+        await super().delete_code(chute_id, version)
+        code_uuid = self._get_code_uuid(chute_id, version)
+        self._delete_propagation_policy(settings.namespace, code_uuid)
 
     async def wait_for_deletion(self, label_selector: str, timeout_seconds: int = 120) -> None:
         """Wait for a deleted pod to be fully removed."""
@@ -518,3 +517,68 @@ class KarmadaK8sOperator(K8sOperator):
     async def deploy_chute(self, chute_id: str, server_id: str) -> Tuple[Deployment, Any, Any]:
         """Deploy a chute!"""
         pass
+    
+    def _create_propagation_policy(self):
+        pass
+
+    def _delete_propagation_policy(self, namespace, pp_name):
+        self.karmada_custom_objects_client.delete_namespaced_custom_object(
+            group="policy.karmada.io",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="propagationpolicies",
+            name=pp_name
+        )
+    
+    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> V1PodList:
+        # Initialize query parameters
+        query_params = {}
+
+        # Add namespace filter if specified
+        if namespace:
+            query_params["fieldSelector"] = f"metadata.namespace={namespace}"
+
+        # Add label selector if specified
+        if labels:
+            # Convert dictionary of labels to string format
+            # Example: {'app': 'nginx', 'tier': 'frontend'} -> 'app=nginx,tier=frontend'
+            label_selector = ",".join([f"{k}={v}" for k, v in labels.items()])
+            query_params["labelSelector"] = label_selector
+
+        response =  self._search(SEARCH_PODS_PATH, query_params)
+        pod_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1PodList')
+        return pod_list
+    
+    def _get_deployments(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None):
+        # Initialize query parameters
+        query_params = {}
+
+        # Add namespace filter if specified
+        if namespace:
+            query_params["fieldSelector"] = f"metadata.namespace={namespace}"
+
+        # Add label selector if specified
+        if labels:
+            # Convert dictionary of labels to string format
+            # Example: {'app': 'nginx', 'tier': 'frontend'} -> 'app=nginx,tier=frontend'
+            label_selector = ",".join([f"{k}={v}" for k, v in labels.items()])
+            query_params["labelSelector"] = label_selector
+
+        response =  self._search(SEARCH_DEPLOYMENTS_PATH, query_params)
+        deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1DeploymentList')
+        return deploy_list
+
+    def _search(self, api_path, query_params = {}):
+        """
+        Search using the Karamada Search API
+        """
+        
+        response = self.karmada_api_client.call_api(
+            api_path, 
+            'GET',
+            query_params=query_params,
+            response_type='object',
+            _return_http_data_only=True,
+        )
+
+        return response

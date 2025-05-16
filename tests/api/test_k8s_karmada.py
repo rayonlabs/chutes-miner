@@ -2,27 +2,70 @@
 Unit tests for kubernetes helper module.
 """
 
+from datetime import datetime
+from typing import Any, Dict
 import uuid
 import math
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from kubernetes.client.rest import ApiException
-from datetime import datetime
+
+from kubernetes.client import (
+    V1NodeList,
+    V1Node
+)
 
 # Import the module under test
 from api.deployment.schemas import Deployment
 import api.k8s as k8s
 from api.exceptions import DeploymentFailure
-from api.k8s.operator import K8sOperator, SingleClusterK8sOperator
+from api.k8s.constants import SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
+from api.k8s.operator import K8sOperator, KarmadaK8sOperator
+from api.config import settings
+
+
+def get_mock_call_api_side_effect(responses: Dict[str, Any]):
+    
+  def _mock_call_api(resource_path, method,
+                  path_params=None, query_params=None, header_params=None,
+                  body=None, post_params=None, files=None,
+                  response_type=None, auth_settings=None, async_req=None,
+                  _return_http_data_only=None, collection_formats=None,
+                  _preload_content=True, _request_timeout=None, _host=None):
+          nonlocal responses
+          if resource_path in responses:
+              response = responses[resource_path]
+          else:
+              raise RuntimeError(f"No response was provided for path {resource_path}")
+          
+          return response
+          
+  return _mock_call_api
+
+def get_api_responses(deployments, pods):
+    responses = {}
+    if deployments:
+      responses[SEARCH_DEPLOYMENTS_PATH] = {
+                  'kind': 'DeploymentList',
+                  'apiVersion': 'v1',
+                  'items': deployments
+              }
+    if pods:
+      responses[SEARCH_PODS_PATH] = {
+                  'kind': 'PodList',
+                  'apiVersion': 'v1',
+                  'items': pods
+              }
+    return responses
 
 @pytest.fixture(autouse=True, scope="function")
-def mock_k8s_operator_single_cluster():
+def mock_karmada_k8s_operator():
     # Save the original __new__ method
     original_new = K8sOperator.__new__
     
-    # Create a mock implementation that always returns SingleClusterK8sOperator
+    # Create a mock implementation that always returns KarmadaK8sOperator
     def mock_new(cls, *args, **kwargs):
-        return super(K8sOperator, cls).__new__(SingleClusterK8sOperator)
+        return super(K8sOperator, cls).__new__(KarmadaK8sOperator)
     
     # Apply the mock
     K8sOperator.__new__ = mock_new
@@ -35,39 +78,50 @@ def mock_k8s_operator_single_cluster():
     # Restore the original method after test
     K8sOperator.__new__ = original_new
     K8sOperator._instance = None
-    
 
 # Tests for get_kubernetes_nodes
 @pytest.mark.asyncio
-async def test_get_kubernetes_nodes_success(mock_k8s_core_client):
+async def test_get_kubernetes_nodes_success(mock_k8s_api_client):
     """Test successful retrieval of kubernetes nodes."""
     # Setup mock response
-    node_list = MagicMock()
-    node1 = MagicMock()
-    node1.metadata.name = "node1"
-    node1.metadata.labels = {
-        "chutes/validator": "TEST123",
-        "chutes/external-ip": "192.168.1.100"
+    mock_k8s_api_client.call_api.return_value = {
+        'kind': 'NodeList',
+        'apiVersion': 'v1',
+        'items': [
+            {
+                'metadata': {
+                    'name': "node1",
+                    'labels': {
+                        "chutes/validator": "TEST123",
+                        "chutes/external-ip": "192.168.1.100",
+                        "nvidia.com/gpu.memory": "16384"
+                    },
+                    "uid": "node1-uid"
+                },
+                "status": {
+                    "phase": "Ready",
+                    "capacity": {
+                        "cpu": "8",
+                        "memory": "32Gi",
+                        "nvidia.com/gpu": "2"
+                    }
+                }
+            }
+        ]
     }
-    node1.metadata.uid = "node1-uid"
-    node1.status.phase = "Ready"
-    node1.status.capacity = {
-        "cpu": "8",
-        "memory": "32Gi",
-        "nvidia.com/gpu": "2"
-    }
-    node1.metadata.labels["nvidia.com/gpu.memory"] = "16384"  # 16GB
-    
-    node_list.items = [node1]
-    mock_k8s_core_client.list_node.return_value = node_list
     
     # Call the function
     # k8s_core_client.cache_clear()
     result = await k8s.get_kubernetes_nodes()
     
     # Assertions
-    mock_k8s_core_client.list_node.assert_called_once_with(
-        field_selector=None, label_selector="chutes/worker"
+    mock_k8s_api_client.call_api.assert_called_once_with(
+        SEARCH_NODES_PATH,
+        "GET",
+        query_params={},
+        response_type='object',
+        _return_http_data_only=True
+        # field_selector=None, label_selector="chutes/worker"
     )
     
     assert len(result) == 1
@@ -81,17 +135,17 @@ async def test_get_kubernetes_nodes_success(mock_k8s_core_client):
 
 
 @pytest.mark.asyncio
-async def test_get_kubernetes_nodes_exception(mock_k8s_core_client):
+async def test_get_kubernetes_nodes_exception(mock_k8s_api_client):
     """Test exception handling when retrieving kubernetes nodes."""
     # Setup mock to raise an exception
-    mock_k8s_core_client.list_node.side_effect = Exception("API Error")
+    mock_k8s_api_client.call_api.side_effect = Exception("API Error")
     
     # Call the function and expect exception
     with pytest.raises(Exception, match="API Error"):
         await k8s.get_kubernetes_nodes()
 
 
-# # Tests for is_deployment_ready
+# Tests for is_deployment_ready
 def test_is_deployment_ready_true():
     """Test deployment is ready when all conditions are met."""
     deployment = MagicMock()
@@ -126,7 +180,7 @@ def test_is_deployment_ready_false_not_matching():
 
 
 # Tests for extract_deployment_info
-def test_extract_deployment_info(mock_k8s_core_client):
+def test_extract_deployment_info(mock_k8s_api_client, create_api_test_pods):
     """Test extracting deployment info from k8s deployment object."""
     # Setup mock deployment
     deployment = MagicMock()
@@ -146,121 +200,191 @@ def test_extract_deployment_info(mock_k8s_core_client):
     deployment.status.ready_replicas = 1
     deployment.status.updated_replicas = 1
     deployment.spec.replicas = 1
+
+    pods = create_api_test_pods(1, "chutes")
     
-    # Setup pod list mock
-    pod = MagicMock()
-    pod.metadata.name = "test-pod"
-    pod.status.phase = "Running"
-    container_status = MagicMock()
-    container_status.restart_count = 0
-    
-    # Add state running
-    state_running = MagicMock()
-    state_running.to_dict.return_value = {"startedAt": datetime.fromisoformat("2023-01-01T00:00:00Z")}
-    container_status.state = MagicMock()
-    container_status.state.running = state_running
-    container_status.state.terminated = None
-    container_status.state.waiting = None
-    
-    # Add last state terminated
-    last_state_terminated = MagicMock()
-    last_state_terminated.to_dict.return_value = {"exitCode": 0, "reason": "Completed"}
-    container_status.last_state = MagicMock()
-    container_status.last_state.running = None
-    container_status.last_state.terminated = last_state_terminated
-    container_status.last_state.waiting = None
-    
-    pod.status.container_statuses = [container_status]
-    pod.spec.node_name = "node1"
-    
-    mock_k8s_core_client.list_namespaced_pod.return_value = MagicMock(items=[pod])
+    mock_k8s_api_client.call_api.return_value = {
+        'kind': 'PodsList',
+        'apiVersion': 'v1',
+        'items': pods
+    }
 
     result = k8s.K8sOperator()._extract_deployment_info(deployment)
-    
+
+    mock_k8s_api_client.call_api.assert_called_once_with(
+        SEARCH_PODS_PATH,
+        "GET",
+        query_params={
+            "fieldSelector": f"metadata.namespace={deployment.metadata.namespace}",
+            "labelSelector": f"app=test"
+        },
+        response_type='object',
+        _return_http_data_only=True
+    )
+
+
+    pod=pods[0]    
     # Assertions
-    assert result["uuid"] == "test-uid"
-    assert result["deployment_id"] == "test-deployment-id"
-    assert result["name"] == "test-deployment"
-    assert result["namespace"] == "test-namespace"
-    assert result["chute_id"] == "test-chute-id"
-    assert result["version"] == "1.0.0"
+    assert result["uuid"] == deployment.metadata.uid
+    assert result["deployment_id"] == deployment.metadata.labels.get("chutes/deployment-id")
+    assert result["name"] == deployment.metadata.name
+    assert result["namespace"] == deployment.metadata.namespace
+    assert result["chute_id"] == deployment.metadata.labels.get("chutes/chute-id")
+    assert result["version"] == deployment.metadata.labels.get("chutes/version")
     assert result["ready"] is True
-    assert result["node"] == "node1"
-    assert len(result["pods"]) == 1
-    assert result["pods"][0]["name"] == "test-pod"
-    assert result["pods"][0]["phase"] == "Running"
-    assert result["pods"][0]["restart_count"] == 0
-    assert result["pods"][0]["state"]["running"] == {"startedAt": datetime.fromisoformat("2023-01-01T00:00:00Z")}
-    assert result["pods"][0]["last_state"]["terminated"] == {"exitCode": 0, "reason": "Completed"}
+    assert result["node"] == pod["spec"]["nodeName"]
+
+    assert len(result["pods"]) == len(pods)
+    assert result["pods"][0]["name"] == pod["metadata"]["name"]
+    assert result["pods"][0]["phase"] == pod["status"]["phase"]
+    assert result["pods"][0]["restart_count"] == pod["status"]["containerStatuses"][0]["restartCount"]
+    if "started_at" in result["pods"][0]["state"]["running"] or "startedAt" in pod["status"]["containerStatuses"][0]["state"]["running"]:  
+      assert result["pods"][0]["state"]["running"]["started_at"].timestamp() == datetime.fromisoformat(pod["status"]["containerStatuses"][0]["state"]["running"]["startedAt"]).timestamp()
+    if result["pods"][0]["last_state"]["terminated"] or pod["status"]["containerStatuses"][0]["lastState"]["terminated"]:  
+      result_terminated = result["pods"][0]["last_state"]["terminated"]
+      pod_terminated = pod["status"]["containerStatuses"][0]["lastState"]["terminated"]
+      assert result_terminated["exit_code"] == pod_terminated["exitCode"]
+      assert result_terminated["reason"] == pod_terminated["reason"]
+      assert result_terminated["started_at"].timestamp() == datetime.fromisoformat(pod_terminated["startedAt"]).timestamp()
+      assert result_terminated["finished_at"].timestamp() == datetime.fromisoformat(pod_terminated["finishedAt"]).timestamp()
 
 
 # Tests for get_deployment
 @pytest.mark.asyncio
-async def test_get_deployment(mock_k8s_app_client):
+async def test_get_deployment(mock_k8s_api_client, create_api_test_deployments, create_api_test_pods):
     """Test getting a single deployment by ID."""
-    # Setup mock
-    deployment = MagicMock()
-    deployment.metadata.uid = "test-uid"
-    deployment.metadata.name = "chute-test-deployment-id"
-    deployment.metadata.namespace = "test-namespace"
-    deployment.metadata.labels = {
-        "chutes/deployment-id": "test-deployment-id",
-        "chutes/chute-id": "test-chute-id",
-        "chutes/version": "1.0.0"
-    }
+    deployments=create_api_test_deployments(1)
+    pods = create_api_test_pods(1)
+    responses = get_api_responses(deployments, pods)
+
+    mock_k8s_api_client.call_api.side_effect = get_mock_call_api_side_effect(responses)
+
+    # Call the function
+    deployment_name = deployments[0]["metadata"]["name"]
+    result = await k8s.get_deployment(deployment_name)
     
-    mock_k8s_app_client.read_namespaced_deployment.return_value = deployment
+    # Assertions
+    api_calls = [
+        call(
+          SEARCH_DEPLOYMENTS_PATH,
+          "GET",
+          query_params={
+              "fieldSelector": f"metadata.namespace={settings.namespace},metadata.name=chute-{deployment_name}"
+          },
+          response_type='object',
+          _return_http_data_only=True
+        ),
+        call(
+          SEARCH_PODS_PATH,
+          "GET",
+          query_params={
+              "fieldSelector": f"metadata.namespace={deployments[0]["metadata"]["namespace"]}",
+              "labelSelector": f"app={deployments[0]["metadata"]["name"]}"
+          },
+          response_type='object',
+          _return_http_data_only=True
+        )
+    ]
+    mock_k8s_api_client.call_api.assert_has_calls(api_calls)
+
+    deployment = deployments[0]
+    pod=pods[0] 
     
-    # Setup extract_deployment_info mock
-    with patch("api.k8s.operator.K8sOperator._extract_deployment_info") as mock_extract:
-        mock_extract.return_value = {"name": "test-deployment"}
-        
-        # Call the function
-        result = await k8s.get_deployment("test-deployment-id")
-        
-        # Assertions
-        mock_k8s_app_client.read_namespaced_deployment.assert_called_once()
-        mock_extract.assert_called_once_with(deployment)
-        assert result == {"name": "test-deployment"}
+    assert result["uuid"] == deployment["metadata"]["uid"]
+    assert result["deployment_id"] == deployment["metadata"]["labels"].get("chutes/deployment-id")
+    assert result["name"] == deployment["metadata"]["name"]
+    assert result["namespace"] == deployment["metadata"]["namespace"]
+    assert result["chute_id"] == deployment["metadata"]["labels"].get("chutes/chute-id")
+    assert result["version"] == deployment["metadata"]["labels"].get("chutes/version")
+    assert result["ready"] is True
+    assert result["node"] == pod["spec"]["nodeName"]
+
+    assert len(result["pods"]) == len(pods)
+    assert result["pods"][0]["name"] == pod["metadata"]["name"]
+    assert result["pods"][0]["phase"] == pod["status"]["phase"]
+    assert result["pods"][0]["restart_count"] == pod["status"]["containerStatuses"][0]["restartCount"]
+    if "started_at" in result["pods"][0]["state"]["running"] or "startedAt" in pod["status"]["containerStatuses"][0]["state"]["running"]:  
+      assert result["pods"][0]["state"]["running"]["started_at"].timestamp() == datetime.fromisoformat(pod["status"]["containerStatuses"][0]["state"]["running"]["startedAt"]).timestamp()
+    if result["pods"][0]["last_state"]["terminated"] or pod["status"]["containerStatuses"][0]["lastState"]["terminated"]:  
+      result_terminated = result["pods"][0]["last_state"]["terminated"]
+      pod_terminated = pod["status"]["containerStatuses"][0]["lastState"]["terminated"]
+      assert result_terminated["exit_code"] == pod_terminated["exitCode"]
+      assert result_terminated["reason"] == pod_terminated["reason"]
+      assert result_terminated["started_at"].timestamp() == datetime.fromisoformat(pod_terminated["startedAt"]).timestamp()
+      assert result_terminated["finished_at"].timestamp() == datetime.fromisoformat(pod_terminated["finishedAt"]).timestamp()
 
 
 # Tests for get_deployed_chutes
 @pytest.mark.asyncio
-async def test_get_deployed_chutes(mock_k8s_app_client):
+async def test_get_deployed_chutes(mock_k8s_api_client, create_api_test_deployments, create_api_test_pods):
     """Test getting all deployed chutes."""
     # Setup mock
-    deployment1 = MagicMock()
-    deployment1.metadata.name = "chute-1"
-    deployment1.metadata.namespace = "test-namespace"
-    deployment2 = MagicMock()
-    deployment2.metadata.name = "chute-2"
-    deployment2.metadata.namespace = "test-namespace"
+    deployments=create_api_test_deployments(1)
+    pods = create_api_test_pods(1)
+    responses = get_api_responses(deployments, pods)
+
+    mock_k8s_api_client.call_api.side_effect = get_mock_call_api_side_effect(responses)
     
-    deployment_list = MagicMock()
-    deployment_list.items = [deployment1, deployment2]
-    mock_k8s_app_client.list_namespaced_deployment.return_value = deployment_list
+    # Call the function
+    deployment_name = deployments[0]["metadata"]["name"]
+    results = await k8s.get_deployed_chutes()
     
-    # Setup extract_deployment_info mock
-    with patch("api.k8s.operator.K8sOperator._extract_deployment_info") as mock_extract:
-        mock_extract.side_effect = [
-            {"name": "chute-1", "chute_id": "id1"},
-            {"name": "chute-2", "chute_id": "id2"}
-        ]
-        
-        # Call the function
-        result = await k8s.get_deployed_chutes()
-        
-        # Assertions
-        mock_k8s_app_client.list_namespaced_deployment.assert_called_once()
-        assert mock_extract.call_count == 2
-        assert len(result) == 2
-        assert result[0]["name"] == "chute-1"
-        assert result[1]["name"] == "chute-2"
+    # Assertions
+    api_calls = [
+        call(
+          SEARCH_DEPLOYMENTS_PATH,
+          "GET",
+          query_params={
+              "fieldSelector": f"metadata.namespace={settings.namespace}",
+              "labelSelector": "chutes/chute=true"
+          },
+          response_type='object',
+          _return_http_data_only=True
+        ),
+        call(
+          SEARCH_PODS_PATH,
+          "GET",
+          query_params={
+              "fieldSelector": f"metadata.namespace={deployments[0]["metadata"]["namespace"]}",
+              "labelSelector": f"app={deployments[0]["metadata"]["name"]}"
+          },
+          response_type='object',
+          _return_http_data_only=True
+        )
+    ]
+    mock_k8s_api_client.call_api.assert_has_calls(api_calls)
+
+    result = results[0]
+    deployment = deployments[0]
+    pod=pods[0] 
+    
+    assert result["uuid"] == deployment["metadata"]["uid"]
+    assert result["deployment_id"] == deployment["metadata"]["labels"].get("chutes/deployment-id")
+    assert result["name"] == deployment["metadata"]["name"]
+    assert result["namespace"] == deployment["metadata"]["namespace"]
+    assert result["chute_id"] == deployment["metadata"]["labels"].get("chutes/chute-id")
+    assert result["version"] == deployment["metadata"]["labels"].get("chutes/version")
+    assert result["ready"] is True
+    assert result["node"] == pod["spec"]["nodeName"]
+
+    assert len(result["pods"]) == len(pods)
+    assert result["pods"][0]["name"] == pod["metadata"]["name"]
+    assert result["pods"][0]["phase"] == pod["status"]["phase"]
+    assert result["pods"][0]["restart_count"] == pod["status"]["containerStatuses"][0]["restartCount"]
+    if "started_at" in result["pods"][0]["state"]["running"] or "startedAt" in pod["status"]["containerStatuses"][0]["state"]["running"]:  
+      assert result["pods"][0]["state"]["running"]["started_at"].timestamp() == datetime.fromisoformat(pod["status"]["containerStatuses"][0]["state"]["running"]["startedAt"]).timestamp()
+    if result["pods"][0]["last_state"]["terminated"] or pod["status"]["containerStatuses"][0]["lastState"]["terminated"]:  
+      result_terminated = result["pods"][0]["last_state"]["terminated"]
+      pod_terminated = pod["status"]["containerStatuses"][0]["lastState"]["terminated"]
+      assert result_terminated["exit_code"] == pod_terminated["exitCode"]
+      assert result_terminated["reason"] == pod_terminated["reason"]
+      assert result_terminated["started_at"].timestamp() == datetime.fromisoformat(pod_terminated["startedAt"]).timestamp()
+      assert result_terminated["finished_at"].timestamp() == datetime.fromisoformat(pod_terminated["finishedAt"]).timestamp()
 
 
 # Tests for delete_code
 @pytest.mark.asyncio
-async def test_delete_code_success(mock_k8s_core_client):
+async def test_delete_code_success(mock_k8s_core_client, mock_k8s_custom_objects_client):
     """Test successful deletion of code configmap."""
     # Call the function
     await k8s.delete_code("test-chute-id", "1.0.0")
@@ -269,6 +393,8 @@ async def test_delete_code_success(mock_k8s_core_client):
     mock_k8s_core_client.delete_namespaced_config_map.assert_called_once()
     # Verify the name is based on the UUID generated from chute_id and version
     assert "chute-code-" in mock_k8s_core_client.delete_namespaced_config_map.call_args[1]["name"]
+    mock_k8s_custom_objects_client.delete_namespaced_custom_object.assert_called_once()
+    assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_args[1]["plural"] == "propagationpolicies"
 
 @pytest.mark.asyncio
 async def test_delete_code_not_found(mock_k8s_core_client):
@@ -342,7 +468,7 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
 async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
     """Test successful undeployment of a chute."""
     # Setup mocks
-    with patch("api.k8s.operator.SingleClusterK8sOperator.wait_for_deletion") as mock_wait:
+    with patch("api.k8s.wait_for_deletion") as mock_wait:
         # Call the function
         await k8s.undeploy("test-deployment-id")
         
@@ -358,7 +484,7 @@ async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_cl
     mock_k8s_core_client.delete_namespaced_service.side_effect = Exception("Service error")
     
     # Setup remaining mocks
-    with patch("api.k8s.operator.SingleClusterK8sOperator.wait_for_deletion") as mock_wait:
+    with patch("api.k8s.wait_for_deletion") as mock_wait:
         # Call the function - should not raise exception
         await k8s.undeploy("test-deployment-id")
         
@@ -450,7 +576,7 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
     # mock_session.execute.return_value.unique.return_value.scalar_one_or_none.return_value = mock_deployment_db
     
     # Call the function
-    with patch("api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
+    with patch("api.k8s.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
         result, created_deployment, created_service = await k8s.deploy_chute(sample_chute, sample_server)
     
     # Assertions
