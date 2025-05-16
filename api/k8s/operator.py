@@ -4,7 +4,7 @@ import uuid
 import traceback
 import abc
 from loguru import logger
-from typing import List, Dict, Any, Optional, Type, Tuple
+from typing import List, Dict, Any, Optional, Type, Tuple, Union
 from kubernetes import watch
 from kubernetes.client import (
     V1Deployment,
@@ -135,7 +135,7 @@ class K8sOperator(abc.ABC):
       return deploy_info
 
     @abc.abstractmethod
-    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> List[Dict]:
+    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Union[str | Dict[str, str]]] = None) -> V1PodList:
         """Get all Kubernetes nodes via k8s client, optionally filtering by GPU nodes."""
         raise NotImplementedError()
 
@@ -245,10 +245,30 @@ class K8sOperator(abc.ABC):
     def _get_code_uuid(self, chute_id: str, version: str) -> str:
         return str(uuid.uuid5(uuid.NAMESPACE_OID, f"{chute_id}::{version}"))
 
-    @abc.abstractmethod
     async def wait_for_deletion(self, label_selector: str, timeout_seconds: int = 120) -> None:
-        """Wait for a deleted pod to be fully removed."""
-        raise NotImplementedError()
+        """
+        Wait for a deleted pod to be fully removed.
+        """
+        pods = self._get_pods(settings.namespace, label_selector)
+        if not pods.items:
+            logger.info(f"Nothing to wait for: {label_selector}")
+            return
+
+        w = watch.Watch()
+        try:
+            for event in w.stream(
+                self._get_pods,
+                namespace=settings.namespace,
+                labels=label_selector,
+                timeout=timeout_seconds
+            ):
+                pods = self._get_pods(settings.namespace, label_selector)
+                if not pods.items:
+                    logger.success(f"Deletion of {label_selector=} is complete")
+                    w.stop()
+                    break
+        except Exception as exc:
+            logger.warning(f"Error waiting for pods to be deleted: {exc}")
     
     @abc.abstractmethod
     async def undeploy(self, deployment_id: str) -> None:
@@ -261,7 +281,7 @@ class K8sOperator(abc.ABC):
         raise NotImplementedError()
     
     @abc.abstractmethod
-    async def deploy_chute(self, chute_id: str, server_id: str) -> Tuple[Deployment, Any, Any]:
+    async def deploy_chute(self, chute_id: Union[str | Chute], server_id: Union[str | Server]) -> Tuple[Deployment, Any, Any]:
         """Deploy a chute!"""
         raise NotImplementedError()
     
@@ -276,12 +296,14 @@ class SingleClusterK8sOperator(K8sOperator):
         node_list = k8s_core_client().list_node(field_selector=None, label_selector="chutes/worker")
         return node_list
 
-    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None):
-        pod_label_selector = ",".join(
+    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Union[str | Dict[str, str]]] = None, timeout = 120) -> V1PodList:
+        pod_label_selector = labels if labels and isinstance(labels, str) else ",".join(
           [f"{k}={v}" for k, v in labels.items()]
         )
         pods = k8s_core_client().list_namespaced_pod(
-            namespace=namespace, label_selector=pod_label_selector
+            namespace=namespace, 
+            label_selector=pod_label_selector,
+            timeout_seconds=timeout
         )
         return pods
 
@@ -304,43 +326,6 @@ class SingleClusterK8sOperator(K8sOperator):
             namespace=namespace, label_selector=label_selector
         )
         return deployment_list
-
-    async def wait_for_deletion(self, label_selector: str, timeout_seconds: int = 120) -> None:
-        """
-        Wait for a deleted pod to be fully removed.
-        """
-        if (
-            not k8s_core_client()
-            .list_namespaced_pod(
-                namespace=settings.namespace,
-                label_selector=label_selector,
-            )
-            .items
-        ):
-            logger.info(f"Nothing to wait for: {label_selector}")
-            return
-
-        w = watch.Watch()
-        try:
-            for event in w.stream(
-                k8s_core_client().list_namespaced_pod,
-                namespace=settings.namespace,
-                label_selector=label_selector,
-                timeout_seconds=timeout_seconds,
-            ):
-                if (
-                    not k8s_core_client()
-                    .list_namespaced_pod(
-                        namespace=settings.namespace,
-                        label_selector=label_selector,
-                    )
-                    .items
-                ):
-                    logger.success(f"Deletion of {label_selector=} is complete")
-                    w.stop()
-                    break
-        except Exception as exc:
-            logger.warning(f"Error waiting for pods to be deleted: {exc}")
 
     async def undeploy(self, deployment_id: str) -> None:
         """Delete a deployment, and associated service."""
@@ -381,24 +366,42 @@ class SingleClusterK8sOperator(K8sOperator):
             if e.status != 409:
                 raise
 
-    async def deploy_chute(self, chute: Chute, server: Server) -> Tuple[Deployment, Any, Any]:
+    async def deploy_chute(self, chute_id: Union[str | Chute], server_id: Union[str | Server]) -> Tuple[Deployment, Any, Any]:
         """Deploy a chute!"""
-        # Make sure the node has capacity.
-        # used_ports = get_used_ports(server.name)
-        gpus_allocated = 0
-        available_gpus = {gpu.gpu_id for gpu in server.gpus if gpu.verified}
-        for deployment in server.deployments:
-            gpus_allocated += len(deployment.gpus)
-            available_gpus -= {gpu.gpu_id for gpu in deployment.gpus}
-        if len(available_gpus) - chute.gpu_count < 0:
-            raise DeploymentFailure(
-                f"Server {server.server_id} name={server.name} cannot allocate {chute.gpu_count} GPUs, already using {gpus_allocated} of {len(server.gpus)}"
-            )
-
-        # Immediately track this deployment (before actually creating it) to avoid allocation contention.
-        deployment_id = str(uuid.uuid4())
-        gpus = list([gpu for gpu in server.gpus if gpu.gpu_id in available_gpus])[: chute.gpu_count]
+        # Backwards compatible types...
+        if isinstance(chute_id, Chute):
+            chute_id = chute_id.chute_id
+        if isinstance(server_id, Server):
+            server_id = server_id.server_id
         async with get_session() as session:
+            chute = (
+                (await session.execute(select(Chute).where(Chute.chute_id == chute_id)))
+                .unique()
+                .scalar_one_or_none()
+            )
+            server = (
+                (await session.execute(select(Server).where(Server.server_id == server_id)))
+                .unique()
+                .scalar_one_or_none()
+            )
+            if not chute or not server:
+                raise DeploymentFailure(f"Failed to find chute or server: {chute_id=} {server_id=}")
+
+            # Make sure the node has capacity.
+            # used_ports = get_used_ports(server.name)
+            gpus_allocated = 0
+            available_gpus = {gpu.gpu_id for gpu in server.gpus if gpu.verified}
+            for deployment in server.deployments:
+                gpus_allocated += len(deployment.gpus)
+                available_gpus -= {gpu.gpu_id for gpu in deployment.gpus}
+            if len(available_gpus) - chute.gpu_count < 0:
+                raise DeploymentFailure(
+                    f"Server {server.server_id} name={server.name} cannot allocate {chute.gpu_count} GPUs, already using {gpus_allocated} of {len(server.gpus)}"
+                )
+
+            # Immediately track this deployment (before actually creating it) to avoid allocation contention.
+            deployment_id = str(uuid.uuid4())
+            gpus = list([gpu for gpu in server.gpus if gpu.gpu_id in available_gpus])[: chute.gpu_count]
             deployment = Deployment(
                 deployment_id=deployment_id,
                 server_id=server.server_id,
@@ -502,10 +505,6 @@ class KarmadaK8sOperator(K8sOperator):
         code_uuid = self._get_code_uuid(chute_id, version)
         self._delete_propagation_policy(settings.namespace, code_uuid)
 
-    async def wait_for_deletion(self, label_selector: str, timeout_seconds: int = 120) -> None:
-        """Wait for a deleted pod to be fully removed."""
-        pass
-
     async def undeploy(self, deployment_id: str) -> None:
         """Delete a deployment, and associated service."""
         pass
@@ -530,7 +529,7 @@ class KarmadaK8sOperator(K8sOperator):
             name=pp_name
         )
     
-    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> V1PodList:
+    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Union[str | Dict[str, str]]] = None) -> V1PodList:
         # Initialize query parameters
         query_params = {}
 
@@ -542,7 +541,7 @@ class KarmadaK8sOperator(K8sOperator):
         if labels:
             # Convert dictionary of labels to string format
             # Example: {'app': 'nginx', 'tier': 'frontend'} -> 'app=nginx,tier=frontend'
-            label_selector = ",".join([f"{k}={v}" for k, v in labels.items()])
+            label_selector = labels if isinstance(labels, str) else ",".join([f"{k}={v}" for k, v in labels.items()])
             query_params["labelSelector"] = label_selector
 
         response =  self._search(SEARCH_PODS_PATH, query_params)

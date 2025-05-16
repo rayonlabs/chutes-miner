@@ -425,32 +425,40 @@ async def test_delete_code_other_error(mock_k8s_core_client, mock_k8s_custom_obj
 
 # Tests for wait_for_deletion
 @pytest.mark.asyncio
-async def test_wait_for_deletion_no_pods(mock_k8s_core_client):
+async def test_wait_for_deletion_no_pods(mock_k8s_api_client):
     """Test wait_for_deletion when no pods match the label."""
     # Setup mock to return empty list
     pod_list = MagicMock()
     pod_list.items = []
-    mock_k8s_core_client.list_namespaced_pod.return_value = pod_list
+    mock_k8s_api_client.call_api.return_value = {
+                  'kind': 'PodList',
+                  'apiVersion': 'v1',
+                  'items': []
+              }
     
     # Call the function
     await k8s.wait_for_deletion("app=test")
     
     # Assertions
-    mock_k8s_core_client.list_namespaced_pod.assert_called_once()
+    mock_k8s_api_client.call_api.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
+async def test_wait_for_deletion_with_pods(mock_k8s_api_client, mock_watch, create_api_test_pods):
     """Test wait_for_deletion when pods exist and then get deleted."""
     # Setup mock to return pods initially, then empty
-    pod_list_with_pods = MagicMock()
-    pod_list_with_pods.items = [MagicMock()]
+    pods = create_api_test_pods(1)
     
-    pod_list_empty = MagicMock()
-    pod_list_empty.items = []
-    
-    mock_k8s_core_client.list_namespaced_pod.side_effect = [
-        pod_list_with_pods,  # Initial check - pods exist
-        pod_list_empty       # Check in the watch loop - pods gone
+    mock_k8s_api_client.call_api.side_effect = [
+        {
+            'kind': 'PodList',
+            'apiVersion': 'v1',
+            'items': pods
+        },  # Initial check - pods exist
+        {
+            'kind': 'PodList',
+            'apiVersion': 'v1',
+            'items': []
+        }       # Check in the watch loop - pods gone
     ]
     
     # Setup watch to return one event
@@ -460,7 +468,7 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
     await k8s.wait_for_deletion("app=test")
     
     # Assertions
-    assert mock_k8s_core_client.list_namespaced_pod.call_count == 2
+    assert mock_k8s_api_client.call_api.call_count == 2
     mock_watch.stream.assert_called_once()
     mock_watch.stop.assert_called_once()
 
