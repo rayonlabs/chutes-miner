@@ -342,7 +342,7 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
 async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
     """Test successful undeployment of a chute."""
     # Setup mocks
-    with patch("api.k8s.operator.SingleClusterK8sOperator.wait_for_deletion") as mock_wait:
+    with patch("api.k8s.operator.K8sOperator.wait_for_deletion") as mock_wait:
         # Call the function
         await k8s.undeploy("test-deployment-id")
         
@@ -358,7 +358,7 @@ async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_cl
     mock_k8s_core_client.delete_namespaced_service.side_effect = Exception("Service error")
     
     # Setup remaining mocks
-    with patch("api.k8s.operator.SingleClusterK8sOperator.wait_for_deletion") as mock_wait:
+    with patch("api.k8s.operator.K8sOperator.wait_for_deletion") as mock_wait:
         # Call the function - should not raise exception
         await k8s.undeploy("test-deployment-id")
         

@@ -270,10 +270,23 @@ class K8sOperator(abc.ABC):
         except Exception as exc:
             logger.warning(f"Error waiting for pods to be deleted: {exc}")
     
-    @abc.abstractmethod
     async def undeploy(self, deployment_id: str) -> None:
         """Delete a deployment, and associated service."""
-        raise NotImplementedError()
+        try:
+            k8s_core_client().delete_namespaced_service(
+                name=f"chute-service-{deployment_id}",
+                namespace=settings.namespace,
+            )
+        except Exception as exc:
+            logger.warning(f"Error deleting deployment service from k8s: {exc}")
+        try:
+            k8s_app_client().delete_namespaced_deployment(
+                name=f"chute-{deployment_id}",
+                namespace=settings.namespace,
+            )
+        except Exception as exc:
+            logger.warning(f"Error deleting deployment from k8s: {exc}")
+        await self.wait_for_deletion(f"chutes/deployment-id={deployment_id}", timeout_seconds=15)
     
     @abc.abstractmethod
     async def create_code_config_map(self, chute: Chute) -> None:
@@ -326,24 +339,6 @@ class SingleClusterK8sOperator(K8sOperator):
             namespace=namespace, label_selector=label_selector
         )
         return deployment_list
-
-    async def undeploy(self, deployment_id: str) -> None:
-        """Delete a deployment, and associated service."""
-        try:
-            k8s_core_client().delete_namespaced_service(
-                name=f"chute-service-{deployment_id}",
-                namespace=settings.namespace,
-            )
-        except Exception as exc:
-            logger.warning(f"Error deleting deployment service from k8s: {exc}")
-        try:
-            k8s_app_client().delete_namespaced_deployment(
-                name=f"chute-{deployment_id}",
-                namespace=settings.namespace,
-            )
-        except Exception as exc:
-            logger.warning(f"Error deleting deployment from k8s: {exc}")
-        await self.wait_for_deletion(f"chutes/deployment-id={deployment_id}", timeout_seconds=15)
     
     async def create_code_config_map(self, chute: Chute) -> None:
         """Create a ConfigMap to store the chute code."""
@@ -507,7 +502,11 @@ class KarmadaK8sOperator(K8sOperator):
 
     async def undeploy(self, deployment_id: str) -> None:
         """Delete a deployment, and associated service."""
-        pass
+        await super().undeploy(deployment_id)
+        service_pp_name = f"chute-service-pp-{deployment_id}"
+        deployment_pp_name = f"chute-pp-{deployment_id}"
+        self._delete_propagation_policy(settings.namespace, service_pp_name)
+        self._delete_propagation_policy(settings.namespace, deployment_pp_name)
     
     async def create_code_config_map(self, chute: Chute) -> None:
         """Create a ConfigMap to store the chute code."""

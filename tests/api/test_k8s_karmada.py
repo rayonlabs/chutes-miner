@@ -475,10 +475,10 @@ async def test_wait_for_deletion_with_pods(mock_k8s_api_client, mock_watch, crea
 
 # Tests for undeploy
 @pytest.mark.asyncio
-async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
+async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client):
     """Test successful undeployment of a chute."""
     # Setup mocks
-    with patch("api.k8s.wait_for_deletion") as mock_wait:
+    with patch("api.k8s.operator.K8sOperator.wait_for_deletion") as mock_wait:
         # Call the function
         await k8s.undeploy("test-deployment-id")
         
@@ -486,15 +486,16 @@ async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
         mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
+        assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count == 2
 
 @pytest.mark.asyncio
-async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_client):
+async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client):
     """Test undeployment when service deletion fails."""
     # Setup service deletion to fail
     mock_k8s_core_client.delete_namespaced_service.side_effect = Exception("Service error")
     
     # Setup remaining mocks
-    with patch("api.k8s.wait_for_deletion") as mock_wait:
+    with patch("api.k8s.operator.K8sOperator.wait_for_deletion") as mock_wait:
         # Call the function - should not raise exception
         await k8s.undeploy("test-deployment-id")
         
@@ -502,6 +503,7 @@ async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_cl
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
         mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
+        assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count == 2
 
 
 # Tests for create_code_config_map
