@@ -558,7 +558,7 @@ async def test_create_code_config_map_other_error(mock_k8s_core_client):
 
 # Tests for deploy_chute
 @pytest.mark.asyncio
-async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, mock_session, sample_server, sample_chute):
+async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, mock_db_session, sample_server, sample_chute):
     """Test successful deployment of a chute."""
     # Setup mocks for kubernetes deployment and service creation
     mock_deployment = MagicMock()
@@ -574,7 +574,7 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
     mock_result.scalar_one_or_none.return_value = mock_deployment_db
-    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
     # mock_session.execute.return_value.unique.return_value.scalar_one_or_none.return_value = mock_deployment_db
     
     # Call the function
@@ -582,8 +582,8 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
         result, created_deployment, created_service = await k8s.deploy_chute(sample_chute, sample_server)
     
     # Assertions
-    assert mock_session.add.call_count == 1
-    assert mock_session.commit.call_count == 2
+    assert mock_db_session.add.call_count == 1
+    assert mock_db_session.commit.call_count == 2
     mock_k8s_core_client.create_namespaced_service.assert_called_once()
     mock_k8s_app_client.create_namespaced_deployment.assert_called_once()
     assert result == mock_deployment_db
@@ -606,7 +606,7 @@ async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute):
         await k8s.deploy_chute(sample_chute, sample_server)
 
 @pytest.mark.asyncio
-async def test_deploy_chute_deployment_disappeared(mock_k8s_core_client, mock_k8s_app_client, mock_session, sample_server, sample_chute):
+async def test_deploy_chute_deployment_disappeared(mock_k8s_core_client, mock_k8s_app_client, mock_db_session, sample_server, sample_chute):
     """Test handling when deployment disappears mid-flight."""
     # Setup mocks for kubernetes deployment and service creation
     mock_deployment = MagicMock()
@@ -620,14 +620,14 @@ async def test_deploy_chute_deployment_disappeared(mock_k8s_core_client, mock_k8
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
     mock_result.scalar_one_or_none.return_value = None
-    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
     
     # Call the function and expect exception
     with pytest.raises(DeploymentFailure, match="Deployment disappeared mid-flight"):
         await k8s.deploy_chute(sample_chute, sample_server)
 
 @pytest.mark.asyncio
-async def test_deploy_chute_api_exception(mock_k8s_core_client, mock_k8s_app_client, mock_session, sample_server, sample_chute):
+async def test_deploy_chute_api_exception(mock_k8s_core_client, mock_k8s_app_client, mock_db_session, sample_server, sample_chute):
     """Test handling of API exception during deployment."""
     # Setup mock to raise ApiException
     error = ApiException(status=500, reason="Internal error")

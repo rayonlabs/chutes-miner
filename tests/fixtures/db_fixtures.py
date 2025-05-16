@@ -1,8 +1,8 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 @pytest.fixture
-def mock_session():
+def mock_db_session():
     
     
     # Create a list of paths where k8s_core_client is imported
@@ -16,7 +16,13 @@ def mock_session():
         # Otherwise return True for normal operation
         return exc_type is None
     
-    session = AsyncMock()
+    session = MagicMock()
+    mock_result = MagicMock()
+    mock_result.unique.return_value = mock_result
+    mock_result.scalar_one_or_none.return_value = []
+    session.execute = AsyncMock(return_value = mock_result)
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
 
     mock_get_session = AsyncMock(
             __aenter__=AsyncMock(return_value=session),
