@@ -39,7 +39,7 @@ from api.exceptions import DeploymentFailure
 from api.config import k8s_api_client, k8s_custom_objects_client, settings
 from api.database import get_session
 from api.k8s.constants import SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
-from api.k8s.response import ApiResponse, Node, NodeList
+from api.k8s.response import ApiResponse
 from api.k8s.util import build_chute_deployment, build_chute_service
 from api.server.schemas import Server
 from api.chute.schemas import Chute
@@ -480,7 +480,7 @@ class KarmadaK8sOperator(K8sOperator):
     def karmada_custom_objects_client(self):
         return k8s_custom_objects_client(context="karmada-apiserver")
     
-    async def _get_nodes(self) -> V1NodeList:
+    def _get_nodes(self) -> V1NodeList:
         response = self._search(SEARCH_NODES_PATH)
         node_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1NodeList')
         return node_list

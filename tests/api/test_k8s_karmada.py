@@ -397,7 +397,7 @@ async def test_delete_code_success(mock_k8s_core_client, mock_k8s_custom_objects
     assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_args[1]["plural"] == "propagationpolicies"
 
 @pytest.mark.asyncio
-async def test_delete_code_not_found(mock_k8s_core_client):
+async def test_delete_code_not_found(mock_k8s_core_client, mock_k8s_custom_objects_client):
     """Test handling of 404 error when deleting configmap."""
     # Setup mock to raise ApiException with 404
     error = ApiException(status=404)
@@ -408,9 +408,11 @@ async def test_delete_code_not_found(mock_k8s_core_client):
     
     # Assertions
     mock_k8s_core_client.delete_namespaced_config_map.assert_called_once()
+    mock_k8s_custom_objects_client.delete_namespaced_custom_object.assert_called_once()
+    assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_args[1]["plural"] == "propagationpolicies"
 
 @pytest.mark.asyncio
-async def test_delete_code_other_error(mock_k8s_core_client):
+async def test_delete_code_other_error(mock_k8s_core_client, mock_k8s_custom_objects_client):
     """Test handling of non-404 error when deleting configmap."""
     # Setup mock to raise ApiException with 500
     error = ApiException(status=500)
