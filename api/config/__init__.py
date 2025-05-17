@@ -35,19 +35,19 @@ def create_kubernetes_client(cls: Any = client.CoreV1Api, context: Optional[str]
         raise Exception(f"Failed to create Kubernetes client: {str(exc)}")
 
 
-@lru_cache(maxsize=5)
+@lru_cache(maxsize=2)
 def k8s_core_client(context: Optional[str] = None) -> client.CoreV1Api:
     return create_kubernetes_client(context=context)
 
-@lru_cache(maxsize=5)
+@lru_cache(maxsize=2)
 def k8s_app_client(context: Optional[str] = None) -> client.AppsV1Api:
     return create_kubernetes_client(cls=client.AppsV1Api, context=context)
 
-@lru_cache(maxsize=5)
+@lru_cache(maxsize=1)
 def k8s_api_client(context: Optional[str] = None) -> client.ApiClient:
     return create_kubernetes_client(cls=client.ApiClient, context=context)
 
-@lru_cache(maxsize=5)
+@lru_cache(maxsize=1)
 def k8s_custom_objects_client(context: Optional[str] = None) -> client.CustomObjectsApi:
     return create_kubernetes_client(cls=client.CustomObjectsApi, context=context)
 
