@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from substrateinterface import Keypair
 from pydantic_settings import BaseSettings
 from kubernetes import client
-from kubernetes.config import load_kube_config, load_incluster_config, kube_config
+from kubernetes.config import load_kube_config, load_incluster_config
 
 
 class Validator(BaseModel):

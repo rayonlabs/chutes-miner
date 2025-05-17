@@ -4,7 +4,6 @@ Helper for kubernetes interactions.
 
 from typing import List, Dict
 from api.k8s.operator import K8sOperator
-from api.server.schemas import Server
 from api.chute.schemas import Chute
 
 

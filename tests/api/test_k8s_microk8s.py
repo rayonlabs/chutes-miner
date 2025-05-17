@@ -3,9 +3,8 @@ Unit tests for kubernetes helper module.
 """
 
 import uuid
-import math
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 from kubernetes.client.rest import ApiException
 from datetime import datetime
 

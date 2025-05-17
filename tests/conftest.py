@@ -25,7 +25,7 @@ def pytest_configure(config):
 
 pytest_configure(None)
 
-from fixtures.api_fixtures import *
-from fixtures.cli_fixtures import *
-from fixtures.db_fixtures import *
-from fixtures.k8s_fixtures import *
+from fixtures.api_fixtures import *  # noqa
+from fixtures.cli_fixtures import *  # noqa
+from fixtures.db_fixtures import *  # noqa
+from fixtures.k8s_fixtures import *  # noqa

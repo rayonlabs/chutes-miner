@@ -5,12 +5,10 @@ Unit tests for kubernetes helper module.
 from datetime import datetime
 from typing import Any, Dict
 import uuid
-import math
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from kubernetes.client.rest import ApiException
 
-from kubernetes.client import V1NodeList, V1Node
 
 # Import the module under test
 from api.deployment.schemas import Deployment
@@ -219,7 +217,7 @@ def test_extract_deployment_info(mock_k8s_api_client, create_api_test_pods):
         "GET",
         query_params={
             "fieldSelector": f"metadata.namespace={deployment.metadata.namespace}",
-            "labelSelector": f"app=test",
+            "labelSelector": "app=test",
         },
         response_type="object",
         _return_http_data_only=True,
@@ -370,7 +368,6 @@ async def test_get_deployed_chutes(
     mock_k8s_api_client.call_api.side_effect = get_mock_call_api_side_effect(responses)
 
     # Call the function
-    deployment_name = deployments[0]["metadata"]["name"]
     results = await k8s.get_deployed_chutes()
 
     # Assertions
@@ -688,8 +685,8 @@ async def test_deploy_chute_success(
     assert mock_deployment_db.stub is False
 
     mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 3
-    for call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
-        assert call[2]["plural"] == "propagationpolicies"
+    for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
+        assert mock_call[2]["plural"] == "propagationpolicies"
 
 
 @pytest.mark.asyncio
@@ -742,8 +739,8 @@ async def test_deploy_chute_deployment_disappeared(
         await k8s.deploy_chute(sample_chute, sample_server)
 
     mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 3
-    for call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
-        assert call[2]["plural"] == "propagationpolicies"
+    for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
+        assert mock_call[2]["plural"] == "propagationpolicies"
 
     # Add assertions for PP cleanup
 

@@ -16,7 +16,6 @@ from kubernetes.client import (
     V1Volume,
     V1VolumeMount,
     V1ConfigMapVolumeSource,
-    V1ConfigMap,
     V1HostPathVolumeSource,
     V1SecurityContext,
     V1EmptyDirVolumeSource,

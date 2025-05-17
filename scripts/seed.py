@@ -2,19 +2,9 @@ import json
 import os
 import sys
 from sqlalchemy import (
-    BigInteger,
-    Float,
     create_engine,
-    Column,
-    Integer,
-    String,
-    ForeignKey,
-    DateTime,
-    Text,
-    Boolean,
-    func,
 )
-from sqlalchemy.orm import relationship, sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker
 import datetime
 import random
 import uuid
@@ -36,11 +26,11 @@ validators_json = {
 }
 os.environ["VALIDATORS"] = json.dumps(validators_json)
 
-from api.database import Base
-from api.chute.schemas import Chute
-from api.deployment.schemas import Deployment
-from api.gpu.schemas import GPU
-from api.server.schemas import Server
+from api.database import Base  # noqa
+from api.chute.schemas import Chute  # noqa
+from api.deployment.schemas import Deployment  # noqa
+from api.gpu.schemas import GPU  # noqa
+from api.server.schemas import Server  # noqa
 
 
 def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_server=2):
@@ -132,7 +122,7 @@ def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_serve
         # Get all available GPUs for this server
         server_gpus = (
             session.query(GPU)
-            .filter(GPU.server_id == server.server_id, GPU.deployment_id == None)
+            .filter(GPU.server_id == server.server_id, GPU.deployment_id is None)
             .all()
         )
 

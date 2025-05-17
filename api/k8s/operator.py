@@ -73,7 +73,7 @@ class K8sOperator(abc.ABC):
                 cls._instance = super().__new__(KarmadaK8sOperator)
             else:
                 cls._instance = super().__new__(SingleClusterK8sOperator)
-        except Exception as exc:
+        except Exception:
             cls._instance = super().__new__(SingleClusterK8sOperator)
 
         return cls._instance
