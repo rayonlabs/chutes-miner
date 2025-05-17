@@ -4,7 +4,7 @@ import uuid
 import traceback
 import abc
 from loguru import logger
-from typing import List, Dict, Any, Optional, Type, Tuple, Union
+from typing import List, Dict, Any, Optional, Tuple, Union
 from kubernetes import watch
 from kubernetes.client import (
     V1Deployment,
@@ -14,31 +14,16 @@ from kubernetes.client import (
     V1PodList,
     V1ObjectMeta,
     V1DeploymentList,
-    V1DeploymentSpec,
-    V1DeploymentStrategy,
-    V1PodTemplateSpec,
-    V1PodSpec,
-    V1Container,
-    V1ResourceRequirements,
-    V1ServiceSpec,
-    V1ServicePort,
-    V1Probe,
-    V1EnvVar,
-    V1Volume,
-    V1VolumeMount,
-    V1ConfigMapVolumeSource,
-    V1ConfigMap,
-    V1HostPathVolumeSource,
-    V1SecurityContext,
-    V1EmptyDirVolumeSource,
-    V1ExecAction,
+    V1ConfigMap
 )
 from kubernetes.client.rest import ApiException
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from api.exceptions import DeploymentFailure
 from api.config import k8s_api_client, k8s_custom_objects_client, settings
 from api.database import get_session
-from api.k8s.constants import SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
+from api.k8s.constants import CHUTE_CODE_CM_PP_PREFIX, CHUTE_CODE_CM_PREFIX, SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
+from api.k8s.karmada.models import ClusterAffinity, Placement, PropagationPolicy, ReplicaScheduling, ResourceSelector
 from api.k8s.response import ApiResponse
 from api.k8s.util import build_chute_deployment, build_chute_service
 from api.server.schemas import Server
@@ -60,12 +45,12 @@ class K8sOperator(abc.ABC):
         # If we already have an instance, return it (singleton pattern)
         if cls._instance is not None:
             return cls._instance
-            
+
         # If someone is trying to instantiate the concrete classes directly, let them
         if cls is not K8sOperator:
             instance = super().__new__(cls)
             return instance
-            
+
         # Otherwise, determine which implementation to use
         try:
             # Detection logic
@@ -76,9 +61,9 @@ class K8sOperator(abc.ABC):
                 cls._instance = super().__new__(SingleClusterK8sOperator)
         except Exception as exc:
             cls._instance = super().__new__(SingleClusterK8sOperator)
-            
+
         return cls._instance
-    
+
     def _extract_deployment_info(self, deployment: V1Deployment) -> Dict:
       """
       Extract deployment info from the deployment objects.
@@ -152,7 +137,7 @@ class K8sOperator(abc.ABC):
             logger.error(f"Failed to get Kubernetes nodes: {e}")
             raise
         return nodes
-    
+
     @abc.abstractmethod
     def _get_nodes(self) -> V1NodeList:
         """
@@ -197,7 +182,7 @@ class K8sOperator(abc.ABC):
     async def get_deployment(self, deployment_id: str) -> Dict:
         """Get a single deployment by ID."""
         raise NotImplementedError()
-    
+
     def _is_deployment_ready(self, deployment):
         """
         Check if a deployment is "ready"
@@ -208,7 +193,7 @@ class K8sOperator(abc.ABC):
             and deployment.status.ready_replicas == deployment.spec.replicas
             and deployment.status.updated_replicas == deployment.spec.replicas
         )
-    
+
     async def get_deployed_chutes(self) -> List[Dict]:
         """Get all chutes deployments from kubernetes."""
         deployments = []
@@ -219,14 +204,14 @@ class K8sOperator(abc.ABC):
                 f"Found chute deployment: {deployment.metadata.name} in namespace {deployment.metadata.namespace}"
             )
         return deployments
-    
+
     @abc.abstractmethod
     def _get_deployments(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> V1DeploymentList:
         """
         Get deployment, optinally filtering by namespace and labels
         """
         raise NotImplementedError()
-    
+
     async def delete_code(self, chute_id: str, version: str) -> None:
         """
         Delete the code configmap associated with a chute & version.
@@ -240,7 +225,7 @@ class K8sOperator(abc.ABC):
             if exc.status != 404:
                 logger.error(f"Failed to delete code reference: {exc}")
                 raise
-    
+
     @lru_cache(maxsize=5)
     def _get_code_uuid(self, chute_id: str, version: str) -> str:
         return str(uuid.uuid5(uuid.NAMESPACE_OID, f"{chute_id}::{version}"))
@@ -269,7 +254,7 @@ class K8sOperator(abc.ABC):
                     break
         except Exception as exc:
             logger.warning(f"Error waiting for pods to be deleted: {exc}")
-    
+
     async def undeploy(self, deployment_id: str) -> None:
         """Delete a deployment, and associated service."""
         try:
@@ -287,17 +272,110 @@ class K8sOperator(abc.ABC):
         except Exception as exc:
             logger.warning(f"Error deleting deployment from k8s: {exc}")
         await self.wait_for_deletion(f"chutes/deployment-id={deployment_id}", timeout_seconds=15)
-    
-    @abc.abstractmethod
+
     async def create_code_config_map(self, chute: Chute) -> None:
         """Create a ConfigMap to store the chute code."""
-        raise NotImplementedError()
-    
-    @abc.abstractmethod
+        code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
+        config_map = V1ConfigMap(
+            metadata=V1ObjectMeta(
+                name=f"{CHUTE_CODE_CM_PREFIX}-{code_uuid}",
+                labels={
+                    "chutes/chute-id": chute.chute_id,
+                    "chutes/version": chute.version,
+                },
+            ),
+            data={chute.filename: chute.code},
+        )
+        try:
+            k8s_core_client().create_namespaced_config_map(
+                namespace=settings.namespace, body=config_map
+            )
+        except ApiException as e:
+            if e.status != 409:
+                raise
+
     async def deploy_chute(self, chute_id: Union[str | Chute], server_id: Union[str | Server]) -> Tuple[Deployment, Any, Any]:
         """Deploy a chute!"""
-        raise NotImplementedError()
+        # Backwards compatible types...
+        if isinstance(chute_id, Chute):
+            chute_id = chute_id.chute_id
+        if isinstance(server_id, Server):
+            server_id = server_id.server_id
+
+        async with get_session() as session:
+            chute = await self._fetch_chute(session, chute_id)
+            server = await self._fetch_server(session, server_id)
+            available_gpus = self._verify_gpus(chute, server)
+            deployment_id = await self._track_deployment(session, chute, server, available_gpus)
+
+        # Create the deployment.
+        deployment = build_chute_deployment(deployment_id, chute, server)
+
+        # And the service that exposes it.
+        service = build_chute_service(deployment_id, chute)
+
+        return await self._deploy_chute_resources(deployment_id, deployment, service, chute, server)
+        
+    async def _fetch_chute(self, session: AsyncSession, chute_id: str):
+        chute = (
+            (await session.execute(select(Chute).where(Chute.chute_id == chute_id)))
+            .unique()
+            .scalar_one_or_none()
+        )
+
+        if not chute:
+            raise DeploymentFailure(f"Failed to find chute: {chute_id=}")
+        
+        return chute
+  
+    async def _fetch_server(self, session: AsyncSession, server_id: str):
+        server = (
+            (await session.execute(select(Server).where(Server.server_id == server_id)))
+            .unique()
+            .scalar_one_or_none()
+        )
+        if not server:
+            raise DeploymentFailure(f"Failed to find server: {server_id=}")
+        
+        return server
     
+    def _verify_gpus(self, chute: Chute, server: Server):
+        # Make sure the node has capacity.
+        gpus_allocated = 0
+        available_gpus = {gpu.gpu_id for gpu in server.gpus if gpu.verified}
+        for deployment in server.deployments:
+            gpus_allocated += len(deployment.gpus)
+            available_gpus -= {gpu.gpu_id for gpu in deployment.gpus}
+        if len(available_gpus) - chute.gpu_count < 0:
+            raise DeploymentFailure(
+                f"Server {server.server_id} name={server.name} cannot allocate {chute.gpu_count} GPUs, already using {gpus_allocated} of {len(server.gpus)}"
+            )
+        return available_gpus
+    
+    async def _track_deployment(self, session: AsyncSession, chute: Chute, server: Server, available_gpus):
+        # Immediately track this deployment (before actually creating it) to avoid allocation contention.
+            deployment_id = str(uuid.uuid4())
+            gpus = list([gpu for gpu in server.gpus if gpu.gpu_id in available_gpus])[: chute.gpu_count]
+            deployment = Deployment(
+                deployment_id=deployment_id,
+                server_id=server.server_id,
+                validator=server.validator,
+                chute_id=chute.chute_id,
+                version=chute.version,
+                active=False,
+                verified_at=None,
+                stub=True,
+            )
+            session.add(deployment)
+            deployment.gpus = gpus
+            await session.commit()
+            
+            return deployment_id
+    
+    @abc.abstractmethod
+    async def _deploy_chute_resources(self, deployment_id: str, deployment: V1Deployment, service: V1Service, chute: Chute, server: Server):
+        raise NotImplementedError()
+
 # Legacy single-cluster implementation
 class SingleClusterK8sOperator(K8sOperator):
     """Kubernetes operations for legacy single-cluster setup."""
@@ -314,7 +392,7 @@ class SingleClusterK8sOperator(K8sOperator):
           [f"{k}={v}" for k, v in labels.items()]
         )
         pods = k8s_core_client().list_namespaced_pod(
-            namespace=namespace, 
+            namespace=namespace,
             label_selector=pod_label_selector,
             timeout_seconds=timeout
         )
@@ -340,83 +418,7 @@ class SingleClusterK8sOperator(K8sOperator):
         )
         return deployment_list
     
-    async def create_code_config_map(self, chute: Chute) -> None:
-        """Create a ConfigMap to store the chute code."""
-        code_uuid = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{chute.chute_id}::{chute.version}"))
-        config_map = V1ConfigMap(
-            metadata=V1ObjectMeta(
-                name=f"chute-code-{code_uuid}",
-                labels={
-                    "chutes/chute-id": chute.chute_id,
-                    "chutes/version": chute.version,
-                },
-            ),
-            data={chute.filename: chute.code},
-        )
-        try:
-            k8s_core_client().create_namespaced_config_map(
-                namespace=settings.namespace, body=config_map
-            )
-        except ApiException as e:
-            if e.status != 409:
-                raise
-
-    async def deploy_chute(self, chute_id: Union[str | Chute], server_id: Union[str | Server]) -> Tuple[Deployment, Any, Any]:
-        """Deploy a chute!"""
-        # Backwards compatible types...
-        if isinstance(chute_id, Chute):
-            chute_id = chute_id.chute_id
-        if isinstance(server_id, Server):
-            server_id = server_id.server_id
-        async with get_session() as session:
-            chute = (
-                (await session.execute(select(Chute).where(Chute.chute_id == chute_id)))
-                .unique()
-                .scalar_one_or_none()
-            )
-            server = (
-                (await session.execute(select(Server).where(Server.server_id == server_id)))
-                .unique()
-                .scalar_one_or_none()
-            )
-            if not chute or not server:
-                raise DeploymentFailure(f"Failed to find chute or server: {chute_id=} {server_id=}")
-
-            # Make sure the node has capacity.
-            # used_ports = get_used_ports(server.name)
-            gpus_allocated = 0
-            available_gpus = {gpu.gpu_id for gpu in server.gpus if gpu.verified}
-            for deployment in server.deployments:
-                gpus_allocated += len(deployment.gpus)
-                available_gpus -= {gpu.gpu_id for gpu in deployment.gpus}
-            if len(available_gpus) - chute.gpu_count < 0:
-                raise DeploymentFailure(
-                    f"Server {server.server_id} name={server.name} cannot allocate {chute.gpu_count} GPUs, already using {gpus_allocated} of {len(server.gpus)}"
-                )
-
-            # Immediately track this deployment (before actually creating it) to avoid allocation contention.
-            deployment_id = str(uuid.uuid4())
-            gpus = list([gpu for gpu in server.gpus if gpu.gpu_id in available_gpus])[: chute.gpu_count]
-            deployment = Deployment(
-                deployment_id=deployment_id,
-                server_id=server.server_id,
-                validator=server.validator,
-                chute_id=chute.chute_id,
-                version=chute.version,
-                active=False,
-                verified_at=None,
-                stub=True,
-            )
-            session.add(deployment)
-            deployment.gpus = gpus
-            await session.commit()
-
-        # Create the deployment.
-        deployment = build_chute_deployment(deployment_id, chute, server)
-
-        # And the service that exposes it.
-        service = build_chute_service(deployment_id, chute)
-
+    async def _deploy_chute_resources(self, deployment_id: str, deployment: V1Deployment, service: V1Service, chute: Chute, server: Server):
         try:
             created_service = k8s_core_client().create_namespaced_service(
                 namespace=settings.namespace, body=service
@@ -463,21 +465,20 @@ class SingleClusterK8sOperator(K8sOperator):
                 f"Failed to deploy chute {chute.chute_id} with version {chute.version}: {exc}\n{traceback.format_exc()}"
             )
 
-    
 class KarmadaK8sOperator(K8sOperator):
     """Kubernetes operations for Karmada-based multi-cluster setup."""
-    
+
     # This class will implement the K8sOperator interface but translate operations
     # to work with Karmada's multi-cluster orchestration
 
     @property
     def karmada_api_client(self):
         return k8s_api_client(context="karmada-apiserver")
-    
+
     @property
     def karmada_custom_objects_client(self):
         return k8s_custom_objects_client(context="karmada-apiserver")
-    
+
     def _get_nodes(self) -> V1NodeList:
         response = self._search(SEARCH_NODES_PATH)
         node_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1NodeList')
@@ -493,7 +494,7 @@ class KarmadaK8sOperator(K8sOperator):
         deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1DeploymentList')
         # Handle case where no deployments found or more than one found
         return self._extract_deployment_info(deploy_list.items[0])
-    
+
     async def delete_code(self, chute_id: str, version: str) -> None:
         """Delete the code configmap associated with a chute & version."""
         await super().delete_code(chute_id, version)
@@ -507,17 +508,90 @@ class KarmadaK8sOperator(K8sOperator):
         deployment_pp_name = f"chute-pp-{deployment_id}"
         self._delete_propagation_policy(settings.namespace, service_pp_name)
         self._delete_propagation_policy(settings.namespace, deployment_pp_name)
-    
+
     async def create_code_config_map(self, chute: Chute) -> None:
         """Create a ConfigMap to store the chute code."""
-        pass
+        await super().create_code_config_map(chute)
+        self._create_code_config_map_propagation_policy(chute)
 
-    async def deploy_chute(self, chute_id: str, server_id: str) -> Tuple[Deployment, Any, Any]:
-        """Deploy a chute!"""
-        pass
-    
-    def _create_propagation_policy(self):
-        pass
+    async def _deploy_chute_resources(self, deployment_id: str, deployment: V1Deployment, service: V1Service, chute: Chute, server: Server):
+        try:
+            created_service = k8s_core_client().create_namespaced_service(
+                namespace=settings.namespace, body=service
+            )
+            created_deployment = k8s_app_client().create_namespaced_deployment(
+                namespace=settings.namespace, body=deployment
+            )
+            deployment_port = created_service.spec.ports[0].node_port
+            async with get_session() as session:
+                deployment = (
+                    (
+                        await session.execute(
+                            select(Deployment).where(Deployment.deployment_id == deployment_id)
+                        )
+                    )
+                    .unique()
+                    .scalar_one_or_none()
+                )
+                if not deployment:
+                    raise DeploymentFailure("Deployment disappeared mid-flight!")
+                deployment.host = server.ip_address
+                deployment.port = deployment_port
+                deployment.stub = False
+                await session.commit()
+                await session.refresh(deployment)
+
+            return deployment, created_deployment, created_service
+        except ApiException as exc:
+            try:
+                k8s_core_client().delete_namespaced_service(
+                    name=f"chute-service-{deployment_id}",
+                    namespace=settings.namespace,
+                )
+            except Exception:
+                ...
+            try:
+                k8s_core_client().delete_namespaced_deployment(
+                    name=f"chute-{deployment_id}",
+                    namespace=settings.namespace,
+                )
+            except Exception:
+                ...
+            raise DeploymentFailure(
+                f"Failed to deploy chute {chute.chute_id} with version {chute.version}: {exc}\n{traceback.format_exc()}"
+            )
+
+    def _create_code_config_map_propagation_policy(self, chute: Chute):
+        code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
+        pp = PropagationPolicy(
+            name=f"{CHUTE_CODE_CM_PP_PREFIX}-{code_uuid}",
+            namespace=settings.namespace,
+            resource_selectors=[
+                ResourceSelector(
+                    api_version="v1",
+                    kind="ConfigMap",
+                    name=f"{CHUTE_CODE_CM_PREFIX}-{code_uuid}"
+                )
+            ],
+            placement=Placement(
+                cluster_affinity=ClusterAffinity(
+                    cluster_names=[]
+                ),
+                replica_scheduling=ReplicaScheduling(
+                    scheduling_type="Duplicated"
+                )
+            )
+        )
+        self._create_propagation_policy(settings.namespace, pp)
+
+    def _create_propagation_policy(self, namespace: str, propagation_policy: PropagationPolicy):
+        self.karmada_custom_objects_client.create_namespaced_custom_object(
+            group="policy.karmada.io",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="propagationpolicies",
+            body=propagation_policy.to_dict()
+        )
 
     def _delete_propagation_policy(self, namespace, pp_name):
         self.karmada_custom_objects_client.delete_namespaced_custom_object(
@@ -527,7 +601,7 @@ class KarmadaK8sOperator(K8sOperator):
             plural="propagationpolicies",
             name=pp_name
         )
-    
+
     def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Union[str | Dict[str, str]]] = None) -> V1PodList:
         # Initialize query parameters
         query_params = {}
@@ -546,7 +620,7 @@ class KarmadaK8sOperator(K8sOperator):
         response =  self._search(SEARCH_PODS_PATH, query_params)
         pod_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1PodList')
         return pod_list
-    
+
     def _get_deployments(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None):
         # Initialize query parameters
         query_params = {}
@@ -570,9 +644,9 @@ class KarmadaK8sOperator(K8sOperator):
         """
         Search using the Karamada Search API
         """
-        
+
         response = self.karmada_api_client.call_api(
-            api_path, 
+            api_path,
             'GET',
             query_params=query_params,
             response_type='object',
@@ -580,3 +654,4 @@ class KarmadaK8sOperator(K8sOperator):
         )
 
         return response
+

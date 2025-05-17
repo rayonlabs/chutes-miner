@@ -508,7 +508,7 @@ async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_cl
 
 # Tests for create_code_config_map
 @pytest.mark.asyncio
-async def test_create_code_config_map_success(mock_k8s_core_client):
+async def test_create_code_config_map_success(mock_k8s_core_client, mock_k8s_custom_objects_client):
     """Test successful creation of code configmap."""
     # Setup mock chute
     chute = MagicMock()
@@ -526,8 +526,11 @@ async def test_create_code_config_map_success(mock_k8s_core_client):
     called_config_map = mock_k8s_core_client.create_namespaced_config_map.call_args[1]["body"]
     assert called_config_map.data["app.py"] == "print('Hello World')"
 
+    mock_k8s_custom_objects_client.create_namespaced_custom_object.assert_called_once()
+    assert mock_k8s_custom_objects_client.create_namespaced_custom_object.call_args[1]["plural"] == "propagationpolicies"
+
 @pytest.mark.asyncio
-async def test_create_code_config_map_conflict(mock_k8s_core_client):
+async def test_create_code_config_map_conflict(mock_k8s_core_client, mock_k8s_custom_objects_client):
     """Test handling of 409 conflict when creating configmap."""
     # Setup mock to raise ApiException with 409
     error = ApiException(status=409)
@@ -546,6 +549,12 @@ async def test_create_code_config_map_conflict(mock_k8s_core_client):
     # Assertions
     mock_k8s_core_client.create_namespaced_config_map.assert_called_once()
 
+    # Check configmap data
+    called_config_map = mock_k8s_core_client.create_namespaced_config_map.call_args[1]["body"]
+    assert called_config_map.data["app.py"] == "print('Hello World')"
+
+    mock_k8s_custom_objects_client.create_namespaced_custom_object.assert_called_once()
+    assert mock_k8s_custom_objects_client.create_namespaced_custom_object.call_args[1]["plural"] == "propagationpolicies"
 
 @pytest.mark.asyncio
 async def test_create_code_config_map_other_error(mock_k8s_core_client):
@@ -579,16 +588,20 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
     
     # Setup session mock for deployment retrieval
+        # Setup session mock for deployment retrieval
     mock_deployment_db = MagicMock(spec=Deployment)
     mock_deployment_db.deployment_id = uuid.uuid4()
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
-    mock_result.scalar_one_or_none.return_value = mock_deployment_db
+    mock_result.scalar_one_or_none.side_effect = [
+        sample_chute,
+        sample_server,
+        mock_deployment_db
+    ]
     mock_db_session.execute = AsyncMock(return_value=mock_result)
-    # mock_session.execute.return_value.unique.return_value.scalar_one_or_none.return_value = mock_deployment_db
     
     # Call the function
-    with patch("api.k8s.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
+    with patch("api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
         result, created_deployment, created_service = await k8s.deploy_chute(sample_chute, sample_server)
     
     # Assertions
@@ -605,12 +618,24 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
 
 
 @pytest.mark.asyncio
-async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute):
+async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute, mock_db_session):
     """Test deployment failure when server doesn't have enough GPU capacity."""
     # Modify server to have no available GPUs
     for gpu in sample_server.gpus:
         gpu.verified = False
     
+    # Setup session mock for deployment retrieval
+    mock_deployment_db = MagicMock(spec=Deployment)
+    mock_deployment_db.deployment_id = uuid.uuid4()
+    mock_result = MagicMock()
+    mock_result.unique.return_value = mock_result
+    mock_result.scalar_one_or_none.side_effect = [
+        sample_chute,
+        sample_server,
+        mock_deployment_db
+    ]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
     # Call the function and expect exception
     with pytest.raises(DeploymentFailure, match="cannot allocate"):
         await k8s.deploy_chute(sample_chute, sample_server)
@@ -627,9 +652,14 @@ async def test_deploy_chute_deployment_disappeared(mock_k8s_core_client, mock_k8
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
     
     # Setup session mock to return None for deployment
+    # Setup session mock for deployment retrieval
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
-    mock_result.scalar_one_or_none.return_value = None
+    mock_result.scalar_one_or_none.side_effect = [
+        sample_chute,
+        sample_server,
+        None
+    ]
     mock_db_session.execute = AsyncMock(return_value=mock_result)
     
     # Call the function and expect exception
@@ -643,6 +673,18 @@ async def test_deploy_chute_api_exception(mock_k8s_core_client, mock_k8s_app_cli
     error = ApiException(status=500, reason="Internal error")
     mock_k8s_app_client.create_namespaced_deployment.side_effect = error
     
+    # Setup session mock for deployment retrieval
+    mock_deployment_db = MagicMock(spec=Deployment)
+    mock_deployment_db.deployment_id = uuid.uuid4()
+    mock_result = MagicMock()
+    mock_result.unique.return_value = mock_result
+    mock_result.scalar_one_or_none.side_effect = [
+        sample_chute,
+        sample_server,
+        mock_deployment_db
+    ]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
     # Setup service creation to succeed
     mock_service = MagicMock()
     mock_service.spec.ports = [MagicMock(node_port=30000)]
