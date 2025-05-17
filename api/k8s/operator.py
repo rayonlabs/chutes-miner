@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.exceptions import DeploymentFailure
 from api.config import k8s_api_client, k8s_custom_objects_client, settings
 from api.database import get_session
-from api.k8s.constants import CHUTE_CODE_CM_PP_PREFIX, CHUTE_CODE_CM_PREFIX, SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
+from api.k8s.constants import CHUTE_CODE_CM_PREFIX, CHUTE_DEPLOY_PREFIX, CHUTE_SVC_PREFIX, SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
 from api.k8s.karmada.models import ClusterAffinity, Placement, PropagationPolicy, ReplicaScheduling, ResourceSelector
 from api.k8s.response import ApiResponse
 from api.k8s.util import build_chute_deployment, build_chute_service
@@ -509,11 +509,6 @@ class KarmadaK8sOperator(K8sOperator):
         self._delete_propagation_policy(settings.namespace, service_pp_name)
         self._delete_propagation_policy(settings.namespace, deployment_pp_name)
 
-    async def create_code_config_map(self, chute: Chute) -> None:
-        """Create a ConfigMap to store the chute code."""
-        await super().create_code_config_map(chute)
-        self._create_code_config_map_propagation_policy(chute)
-
     async def _deploy_chute_resources(self, deployment_id: str, deployment: V1Deployment, service: V1Service, chute: Chute, server: Server):
         try:
             created_service = k8s_core_client().create_namespaced_service(
@@ -522,6 +517,9 @@ class KarmadaK8sOperator(K8sOperator):
             created_deployment = k8s_app_client().create_namespaced_deployment(
                 namespace=settings.namespace, body=deployment
             )
+            self._create_chute_service_propagation_policy(deployment_id, service, server)
+            self._create_chute_deployment_propagation_policy(deployment_id, deployment, server)
+            self._create_chute_code_cm_propagation_policy(deployment_id, chute, server)
             deployment_port = created_service.spec.ports[0].node_port
             async with get_session() as session:
                 deployment = (
@@ -544,27 +542,97 @@ class KarmadaK8sOperator(K8sOperator):
             return deployment, created_deployment, created_service
         except ApiException as exc:
             try:
-                k8s_core_client().delete_namespaced_service(
-                    name=f"chute-service-{deployment_id}",
-                    namespace=settings.namespace,
-                )
+                self._cleanup_chute_resources(deployment_id, chute)
             except Exception:
                 ...
-            try:
-                k8s_core_client().delete_namespaced_deployment(
-                    name=f"chute-{deployment_id}",
-                    namespace=settings.namespace,
-                )
-            except Exception:
-                ...
+
             raise DeploymentFailure(
                 f"Failed to deploy chute {chute.chute_id} with version {chute.version}: {exc}\n{traceback.format_exc()}"
             )
 
-    def _create_code_config_map_propagation_policy(self, chute: Chute):
+    def _cleanup_chute_resources(self, deployment_id: str, chute: Chute):
+        code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
+        service_pp_name = f"{CHUTE_SVC_PREFIX}-{deployment_id}"
+        deployment_pp_name = f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}"
+        code_cm_pp_name = f"{CHUTE_CODE_CM_PREFIX}-{code_uuid}"
+
+        try:
+            k8s_core_client().delete_namespaced_service(
+                name=f"chute-service-{deployment_id}",
+                namespace=settings.namespace,
+            )
+        except Exception:
+            ...
+        try:
+            k8s_core_client().delete_namespaced_deployment(
+                name=f"chute-{deployment_id}",
+                namespace=settings.namespace,
+            )
+        except Exception:
+            ...
+        try:
+            self._delete_propagation_policy(settings.namespace, service_pp_name)
+        except Exception:
+            ...
+
+        try:
+            self._delete_propagation_policy(settings.namespace, deployment_pp_name)
+        except Exception:
+            ...
+
+        try:
+            self._delete_propagation_policy(settings.namespace, code_cm_pp_name)
+        except Exception:
+            ...
+
+    def _create_chute_deployment_propagation_policy(self, deployment_id: str, deployment: V1Deployment, server: Server):
+        pp = PropagationPolicy(
+            name=f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}",
+            namespace=settings.namespace,
+            resource_selectors=[
+                ResourceSelector(
+                    api_version="v1",
+                    kind="Deployment",
+                    name=deployment.metadata.name
+                )
+            ],
+            placement=Placement(
+                cluster_affinity=ClusterAffinity(
+                    cluster_names=[server.name]
+                ),
+                replica_scheduling=ReplicaScheduling(
+                    scheduling_type="Duplicated"
+                )
+            )
+        )
+        self._create_propagation_policy(settings.namespace, pp)
+    
+    def _create_chute_service_propagation_policy(self, deployment_id: str, service: V1Service, server: Server):
+        pp = PropagationPolicy(
+            name=f"{CHUTE_SVC_PREFIX}-{deployment_id}",
+            namespace=settings.namespace,
+            resource_selectors=[
+                ResourceSelector(
+                    api_version="v1",
+                    kind="Service",
+                    name=service.metadata.name
+                )
+            ],
+            placement=Placement(
+                cluster_affinity=ClusterAffinity(
+                    cluster_names=[server.name]
+                ),
+                replica_scheduling=ReplicaScheduling(
+                    scheduling_type="Duplicated"
+                )
+            )
+        )
+        self._create_propagation_policy(settings.namespace, pp)
+
+    def _create_chute_code_cm_propagation_policy(self, deployment_id: str, chute: Chute, server: Server):
         code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
         pp = PropagationPolicy(
-            name=f"{CHUTE_CODE_CM_PP_PREFIX}-{code_uuid}",
+            name=f"{CHUTE_CODE_CM_PREFIX}-{deployment_id}",
             namespace=settings.namespace,
             resource_selectors=[
                 ResourceSelector(
@@ -575,7 +643,7 @@ class KarmadaK8sOperator(K8sOperator):
             ],
             placement=Placement(
                 cluster_affinity=ClusterAffinity(
-                    cluster_names=[]
+                    cluster_names=[server.name]
                 ),
                 replica_scheduling=ReplicaScheduling(
                     scheduling_type="Duplicated"

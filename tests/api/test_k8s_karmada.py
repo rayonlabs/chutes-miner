@@ -526,8 +526,8 @@ async def test_create_code_config_map_success(mock_k8s_core_client, mock_k8s_cus
     called_config_map = mock_k8s_core_client.create_namespaced_config_map.call_args[1]["body"]
     assert called_config_map.data["app.py"] == "print('Hello World')"
 
-    mock_k8s_custom_objects_client.create_namespaced_custom_object.assert_called_once()
-    assert mock_k8s_custom_objects_client.create_namespaced_custom_object.call_args[1]["plural"] == "propagationpolicies"
+    # mock_k8s_custom_objects_client.create_namespaced_custom_object.assert_called_once()
+    # assert mock_k8s_custom_objects_client.create_namespaced_custom_object.call_args[1]["plural"] == "propagationpolicies"
 
 @pytest.mark.asyncio
 async def test_create_code_config_map_conflict(mock_k8s_core_client, mock_k8s_custom_objects_client):
@@ -553,8 +553,6 @@ async def test_create_code_config_map_conflict(mock_k8s_core_client, mock_k8s_cu
     called_config_map = mock_k8s_core_client.create_namespaced_config_map.call_args[1]["body"]
     assert called_config_map.data["app.py"] == "print('Hello World')"
 
-    mock_k8s_custom_objects_client.create_namespaced_custom_object.assert_called_once()
-    assert mock_k8s_custom_objects_client.create_namespaced_custom_object.call_args[1]["plural"] == "propagationpolicies"
 
 @pytest.mark.asyncio
 async def test_create_code_config_map_other_error(mock_k8s_core_client):
@@ -577,7 +575,7 @@ async def test_create_code_config_map_other_error(mock_k8s_core_client):
 
 # Tests for deploy_chute
 @pytest.mark.asyncio
-async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, mock_db_session, sample_server, sample_chute):
+async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client, mock_db_session, sample_server, sample_chute):
     """Test successful deployment of a chute."""
     # Setup mocks for kubernetes deployment and service creation
     mock_deployment = MagicMock()
@@ -616,6 +614,10 @@ async def test_deploy_chute_success(mock_k8s_core_client, mock_k8s_app_client, m
     assert mock_deployment_db.port == 30000
     assert mock_deployment_db.stub is False
 
+    mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 3
+    for call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
+      assert call[2]["plural"] == "propagationpolicies"
+
 
 @pytest.mark.asyncio
 async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute, mock_db_session):
@@ -641,7 +643,7 @@ async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute, mock_db
         await k8s.deploy_chute(sample_chute, sample_server)
 
 @pytest.mark.asyncio
-async def test_deploy_chute_deployment_disappeared(mock_k8s_core_client, mock_k8s_app_client, mock_db_session, sample_server, sample_chute):
+async def test_deploy_chute_deployment_disappeared(mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client, mock_db_session, sample_server, sample_chute):
     """Test handling when deployment disappears mid-flight."""
     # Setup mocks for kubernetes deployment and service creation
     mock_deployment = MagicMock()
@@ -666,8 +668,14 @@ async def test_deploy_chute_deployment_disappeared(mock_k8s_core_client, mock_k8
     with pytest.raises(DeploymentFailure, match="Deployment disappeared mid-flight"):
         await k8s.deploy_chute(sample_chute, sample_server)
 
+    mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 3
+    for call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
+      assert call[2]["plural"] == "propagationpolicies"
+
+    # Add assertions for PP cleanup
+
 @pytest.mark.asyncio
-async def test_deploy_chute_api_exception(mock_k8s_core_client, mock_k8s_app_client, mock_db_session, sample_server, sample_chute):
+async def test_deploy_chute_api_exception(mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client, mock_db_session, sample_server, sample_chute):
     """Test handling of API exception during deployment."""
     # Setup mock to raise ApiException
     error = ApiException(status=500, reason="Internal error")
@@ -696,3 +704,5 @@ async def test_deploy_chute_api_exception(mock_k8s_core_client, mock_k8s_app_cli
     
     # Verify cleanup was attempted
     mock_k8s_core_client.delete_namespaced_service.assert_called_once()
+    mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count = 3
+
