@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="chutes-miner-cli",
-    version="0.0.15",
+    version="0.0.14",
     description="Chutes miner CLI",
     long_description="Command line interface for managing chutes miners -- add/delete nodes, etc.",
     long_description_content_type="text/markdown",
