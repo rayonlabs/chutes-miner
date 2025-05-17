@@ -1,0 +1,74 @@
+---
+- name: Setup control plane
+  hosts: control
+  become: true
+  tags:
+    - setup-control-plane
+  tasks:
+    - name: Common Setup
+      ansible.builtin.include_role:
+        name: common
+
+    - name: K3s Setup
+      ansible.builtin.include_role:
+        name: k3s
+
+    - name: Karmada Setup
+      ansible.builtin.include_role:
+        name: karmada
+
+- name: Prepare control planes
+  hosts:
+    - microk8s
+    - control
+  become: true
+  tags:
+    - migrate-prep
+  tasks:
+    - name: Verify chutes CLI
+      ansible.builtin.include_tasks:
+        file: ../tasks/migration/verify-chutes-cli.yml
+        apply:
+          tags: chutes-cli
+      vars:
+        run_locally: true
+        hotkey_path: ~/.bittensor/wallets/chutes-test/hotkeys/chutes-test
+        remote_hotkey_path: /etc/chutes-miner/hotkey.json
+        miner_api_url: http://18.207.121.17:32000
+        copy_hotkey_to_ansible_host: false
+      tags: chutes-cli
+
+    - name: Verify gepetto
+      ansible.builtin.include_tasks:
+        file: ../tasks/migration/verify-gepetto.yml
+        apply:
+          tags: verify-gepetto
+      tags: verify-gepetto
+
+- name: Migrate Nodes
+  hosts: workers
+  become: true
+  any_errors_fatal: true
+  serial: 1
+  tags:
+    - migrate-nodes
+  tasks:
+    - name: Reset System
+      ansible.builtin.include_role:
+        name: reset
+
+    - name: Common Setup
+      ansible.builtin.include_role:
+        name: common
+
+    - name: K3s Setup
+      ansible.builtin.include_role:
+        name: k3s
+
+    - name: GPU Setup
+      ansible.builtin.include_role:
+        name: gpu
+
+    - name: Join Control Plane
+      ansible.builtin.include_role:
+        name: karmada

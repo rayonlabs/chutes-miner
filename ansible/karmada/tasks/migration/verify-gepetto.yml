@@ -1,0 +1,72 @@
+---
+- name: Setup kubeconfig on microk8s
+  when: inventory_hostname in groups['microk8s']
+
+  block:
+    - name: Ensure .kube directory exists
+      ansible.builtin.file:
+        path: ~/.kube
+        state: directory
+        mode: "0700"
+
+    - name: Get microk8s kubeconfig
+      ansible.builtin.command: microk8s config
+      register: microk8s_config
+      changed_when: false
+
+    - name: Save microk8s kubeconfig
+      ansible.builtin.copy:
+        content: "{{ microk8s_config.stdout }}"
+        dest: ~/.kube/config
+        mode: "0600"
+
+- name: Verify the gepetto-code configmap
+  tags: verify-gepetto
+  block:
+    # Install chutes-miner if not present
+    # Create virtual environment for chutes-miner
+    - name: Create virtual environment for chutes-miner
+      ansible.builtin.command: python3 -m venv /opt/chutes-miner-venv
+      args:
+        creates: /opt/chutes-miner-venv
+
+    # Install chutes-miner by properly activating the venv first
+    - name: Install packages with activated venv
+      ansible.builtin.shell: |
+        source /opt/chutes-miner-venv/bin/activate
+        pip install kubernetes openshift pyyaml
+        deactivate
+      register: venv_install
+      args:
+        executable: /bin/bash
+      changed_when: venv_install.rc == 0
+
+    - name: Get current gepetto-code configmap
+      kubernetes.core.k8s_info:
+        kind: ConfigMap
+        name: gepetto-code
+        namespace: chutes
+      register: configmap_data
+      vars:
+        ansible_python_interpreter: "/opt/chutes-miner-venv/bin/python"
+
+    - name: Extract gepetto.py content to local file
+      ansible.builtin.copy:
+        content: "{{ configmap_data.resources[0].data['gepetto.py'] }}"
+        dest: /tmp/gepetto.py
+        mode: "0644"
+
+    - name: Check if reconsile method is already modified
+      ansible.builtin.command: grep -q "Skipping reconsiliation, currently migrating" /tmp/gepetto.py
+      register: grep_result
+      failed_when: grep_result.rc != 0
+      changed_when: false
+
+    - name: Display verification status
+      ansible.builtin.debug:
+        msg: "Gepetto reconsile method {{ 'is' if grep_result.rc == 0 else 'is NOT' }} disabled."
+
+    - name: Clean up temporary file
+      ansible.builtin.file:
+        path: /tmp/gepetto.py
+        state: absent

@@ -1,0 +1,78 @@
+---
+- name: Monitoring setup
+  tags: monitoring
+  block:
+    - name: Add monitoring Helm repository
+      ansible.builtin.command: helm repo add k8s-cluster {{ karmada_monitoring_chart_repo }}
+      register: helm_monitor_repo_result
+      changed_when: "'has been added' in helm_monitor_repo_result.stdout"
+
+    - name: Update Helm repositories
+      ansible.builtin.command: helm repo update
+      register: helm_update_result
+      changed_when: "'Update Complete' in helm_update_result.stdout"
+
+    # Install monitoring on Karmada API Server context
+    - name: Generate Monitoring API Server Helm values
+      ansible.builtin.template:
+        src: monitoring-apiserver-values.yaml.j2
+        dest: /tmp/monitoring-apiserver-values.yaml
+        mode: "0644"
+
+    - name: Install or upgrade Monitoring on Karmada API Server context
+      ansible.builtin.command: >
+        helm upgrade --install monitoring k8s-cluster/monitoring
+        --kubeconfig={{ karmada_kubeconfig_temp_dir }}/karmada-apiserver
+        --version {{ karmada_monitoring_chart_version }}
+        --namespace {{ karmada_monitoring_namespace }}
+        --create-namespace
+        -f /tmp/monitoring-apiserver-values.yaml
+      register: monitoring_apiserver_deployment
+      changed_when: monitoring_apiserver_deployment.rc == 0
+
+    - name: Get Karmada API Server token
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          KUBECONFIG={{ karmada_kubeconfig_temp_dir }}/karmada-apiserver \
+          kubectl get secret -n {{ karmada_monitoring_namespace }} prometheus \
+          -o jsonpath='{.data.token}' | base64 -d
+        executable: /bin/bash
+      register: api_token
+      changed_when: false
+      failed_when: api_token.rc != 0
+
+    - name: Set the API token fact
+      ansible.builtin.set_fact:
+        api_server_token: "{{ api_token.stdout }}"
+
+    # Install monitoring on Karmada host
+    - name: Generate Monitoring Host Helm values
+      ansible.builtin.template:
+        src: monitoring-host-values.yaml.j2
+        dest: /tmp/monitoring-host-values.yaml
+        mode: "0644"
+
+    - name: Install or upgrade Monitoring on Karmada host
+      ansible.builtin.command: >
+        helm upgrade --install monitoring k8s-cluster/monitoring
+        --version {{ karmada_monitoring_chart_version }}
+        --namespace {{ karmada_monitoring_namespace }}
+        --create-namespace
+        -f /tmp/monitoring-host-values.yaml
+      register: monitoring_host_deployment
+      changed_when: monitoring_host_deployment.rc == 0
+
+    - name: Wait for Monitoring components to be ready on host
+      ansible.builtin.command: >
+        kubectl -n {{ karmada_monitoring_namespace }} wait --for=condition=Ready pod
+        --selector="app=prometheus-server" --timeout=300s
+      register: monitoring_wait
+      changed_when: false
+      retries: 10
+      delay: 30
+      until: monitoring_wait.rc == 0
+      when:
+        - monitoring_host_deployment is defined
+        - monitoring_host_deployment.rc is defined
+        - monitoring_host_deployment.rc == 0

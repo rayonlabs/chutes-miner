@@ -1,0 +1,151 @@
+---
+- name: Check CUDA
+  tags:
+    - gpu-device-setup
+  block:
+    - name: Check CUDA installation
+      ansible.builtin.apt:
+        name: cuda-toolkit-{{ cuda_version }}
+        state: present
+      check_mode: true
+      register: cuda_check
+      ignore_errors: true
+
+    - name: Get list of NVIDIA/CUDA packages
+      ansible.builtin.command:
+        cmd: dpkg --list
+      register: dpkg_list
+      check_mode: false
+      changed_when: false
+
+    - name: Filter NVIDIA/CUDA packages
+      ansible.builtin.set_fact:
+        nvidia_cuda_packages: >-
+          {{ dpkg_list.stdout_lines |
+            select('match', '.*\\s+(cuda|nvidia).*') |
+            reject('match', '.*\\s+(nvidia-kernel|linux-(nvidia|modules|headers|image)).*') |
+            map('regex_replace', '^\\S+\\s+\\S+\\s+(\\S+)\\s+.*$', '\\1') |
+            list }}
+
+    - name: Remove NVIDIA/CUDA packages
+      ansible.builtin.apt:
+        name: "{{ nvidia_cuda_packages }}"
+        state: absent
+        allow_change_held_packages: true
+        purge: true
+      register: gpu_setup
+      failed_when: false
+      when:
+        - not skip_cuda | bool
+        - (cuda_check.failed or cuda_check.changed)
+        - nvidia_cuda_packages | length > 0
+
+    - name: Download and install CUDA keyring
+      block:
+        - name: Download keyring
+          ansible.builtin.get_url:
+            url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu{{ ubuntu_major }}{{ ubuntu_minor }}/x86_64/cuda-keyring_1.1-1_all.deb
+            dest: /tmp/cuda-keyring.deb
+            mode: "0644"
+            owner: root
+            group: root
+
+        - name: Install keyring
+          ansible.builtin.apt:
+            deb: /tmp/cuda-keyring.deb
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: GPU Setup Tasks
+      when: not skip_cuda | bool
+      block:
+        - name: Install NVIDIA packages
+          ansible.builtin.apt:
+            name:
+              - cuda-toolkit-{{ cuda_version }}
+              - cuda-drivers-{{ nvidia_version }}
+              - nvidia-fabricmanager-{{ nvidia_version }}
+            state: present
+
+        - name: Configure NVIDIA Fabric Manager
+          ansible.builtin.systemd:
+            name: nvidia-fabricmanager
+            enabled: true
+            masked: false
+
+    - name: Set NVIDIA device permissions
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: "0666"
+      with_fileglob:
+        - /dev/nvidia*
+        - /dev/nvidiactl
+        - /dev/nvidia-uvm
+        - /dev/nvidia-uvm-tools
+      register: nvidia_permissions
+      changed_when: nvidia_permissions.changed | default(false)
+
+    - name: Create NVIDIA character device symlinks
+      block:
+        - name: Find NVIDIA character devices
+          ansible.builtin.find:
+            paths: /dev
+            patterns: "nvidia[0-9]"
+            file_type: any
+          register: nvidia_devices
+
+        - name: Get device information for each NVIDIA device
+          ansible.builtin.stat:
+            path: "{{ item.path }}"
+          register: nvidia_stat_results
+          loop: "{{ nvidia_devices.files }}"
+
+        - name: Create directories for NVIDIA character device symlinks
+          ansible.builtin.file:
+            path: "/dev/char/{{ item.stat.rdev_major }}:{{ item.stat.rdev_minor }}"
+            state: directory
+            mode: "0755"
+          loop: "{{ nvidia_stat_results.results }}"
+
+        - name: Create NVIDIA character device symlinks
+          ansible.builtin.file:
+            src: "{{ item.stat.path }}"
+            dest: "/dev/char/{{ item.stat.rdev_major }}:{{ item.stat.rdev_minor }}/{{ item.stat.path | basename }}"
+            state: link
+          loop: "{{ nvidia_stat_results.results }}"
+
+    - name: Configure file limits
+      ansible.builtin.blockinfile:
+        path: /etc/security/limits.conf
+        block: |
+          * soft nofile 40000
+          * hard nofile 40001
+
+    - name: Configure PAM limits
+      ansible.builtin.lineinfile:
+        path: "{{ item }}"
+        line: "session required pam_limits.so"
+      with_items:
+        - /etc/pam.d/common-session
+        - /etc/pam.d/common-session-noninteractive
+
+- name: Setup NVIDIA Container Toolkit
+  tags:
+    - gpu-container-setup
+  block:
+    - name: Install NVIDIA Container Toolkit
+      ansible.builtin.apt:
+        name: nvidia-container-toolkit
+        state: present
+
+    - name: Configure NVIDIA Container Toolkit
+      ansible.builtin.shell: |
+        nvidia-ctk runtime configure --runtime=docker --set-as-default
+        nvidia-ctk runtime configure --runtime=containerd --set-as-default
+        nvidia-ctk runtime configure --runtime=crio --set-as-default --config=/etc/crio/crio.conf.d/99-nvidia.conf
+      register: container_runtime
+      notify: restart k3s
+      changed_when: >
+        container_runtime.stdout is search('changed|updated|modified') or  container_runtime.stderr is search('changed|updated|modified')
