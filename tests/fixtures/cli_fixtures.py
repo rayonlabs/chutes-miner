@@ -13,6 +13,7 @@ def mock_hotkey_content():
         }
     )
 
+
 @pytest.fixture
 def mock_client_session():
     """Mock aiohttp ClientSession for testing."""

@@ -14,7 +14,7 @@ from kubernetes.client import (
     V1PodList,
     V1ObjectMeta,
     V1DeploymentList,
-    V1ConfigMap
+    V1ConfigMap,
 )
 from kubernetes.client.rest import ApiException
 from sqlalchemy import select
@@ -22,8 +22,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.exceptions import DeploymentFailure
 from api.config import k8s_api_client, k8s_custom_objects_client, settings
 from api.database import get_session
-from api.k8s.constants import CHUTE_CODE_CM_PREFIX, CHUTE_DEPLOY_PREFIX, CHUTE_SVC_PREFIX, SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
-from api.k8s.karmada.models import ClusterAffinity, Placement, PropagationPolicy, ReplicaScheduling, ResourceSelector
+from api.k8s.constants import (
+    CHUTE_CODE_CM_PREFIX,
+    CHUTE_DEPLOY_PREFIX,
+    CHUTE_SVC_PREFIX,
+    SEARCH_DEPLOYMENTS_PATH,
+    SEARCH_NODES_PATH,
+    SEARCH_PODS_PATH,
+)
+from api.k8s.karmada.models import (
+    ClusterAffinity,
+    Placement,
+    PropagationPolicy,
+    ReplicaScheduling,
+    ResourceSelector,
+)
 from api.k8s.response import ApiResponse
 from api.k8s.util import build_chute_deployment, build_chute_service
 from api.server.schemas import Server
@@ -35,6 +48,7 @@ from api.config import k8s_core_client, k8s_app_client
 # Abstract base class for all Kubernetes operations
 class K8sOperator(abc.ABC):
     """Base class for Kubernetes operations that works with both single-cluster and Karmada setups."""
+
     _instance: Optional["K8sOperator"] = None
 
     def __new__(cls, *args, **kwargs):
@@ -65,62 +79,70 @@ class K8sOperator(abc.ABC):
         return cls._instance
 
     def _extract_deployment_info(self, deployment: V1Deployment) -> Dict:
-      """
-      Extract deployment info from the deployment objects.
-      """
-      deploy_info = {
-          "uuid": deployment.metadata.uid,
-          "deployment_id": deployment.metadata.labels.get("chutes/deployment-id"),
-          "name": deployment.metadata.name,
-          "namespace": deployment.metadata.namespace,
-          "labels": deployment.metadata.labels,
-          "chute_id": deployment.metadata.labels.get("chutes/chute-id"),
-          "version": deployment.metadata.labels.get("chutes/version"),
-          "node_selector": deployment.spec.template.spec.node_selector,
-      }
-      deploy_info["ready"] = self._is_deployment_ready(deployment)
-      pods = self._get_pods(
-          namespace=deployment.metadata.namespace, labels=deployment.spec.selector.match_labels
-      )
-      deploy_info["pods"] = []
-      for pod in pods.items:
-          state = pod.status.container_statuses[0].state if pod.status.container_statuses else None
-          last_state = (
-              pod.status.container_statuses[0].last_state if pod.status.container_statuses else None
-          )
-          pod_info = {
-              "name": pod.metadata.name,
-              "phase": pod.status.phase,
-              "restart_count": pod.status.container_statuses[0].restart_count
-              if pod.status.container_statuses
-              else 0,
-              "state": {
-                  "running": state.running.to_dict() if state and state.running else None,
-                  "terminated": state.terminated.to_dict() if state and state.terminated else None,
-                  "waiting": state.waiting.to_dict() if state and state.waiting else None,
-              }
-              if state
-              else None,
-              "last_state": {
-                  "running": last_state.running.to_dict()
-                  if last_state and last_state.running
-                  else None,
-                  "terminated": last_state.terminated.to_dict()
-                  if last_state and last_state.terminated
-                  else None,
-                  "waiting": last_state.waiting.to_dict()
-                  if last_state and last_state.waiting
-                  else None,
-              }
-              if last_state
-              else None,
-          }
-          deploy_info["pods"].append(pod_info)
-          deploy_info["node"] = pod.spec.node_name
-      return deploy_info
+        """
+        Extract deployment info from the deployment objects.
+        """
+        deploy_info = {
+            "uuid": deployment.metadata.uid,
+            "deployment_id": deployment.metadata.labels.get("chutes/deployment-id"),
+            "name": deployment.metadata.name,
+            "namespace": deployment.metadata.namespace,
+            "labels": deployment.metadata.labels,
+            "chute_id": deployment.metadata.labels.get("chutes/chute-id"),
+            "version": deployment.metadata.labels.get("chutes/version"),
+            "node_selector": deployment.spec.template.spec.node_selector,
+        }
+        deploy_info["ready"] = self._is_deployment_ready(deployment)
+        pods = self._get_pods(
+            namespace=deployment.metadata.namespace, labels=deployment.spec.selector.match_labels
+        )
+        deploy_info["pods"] = []
+        for pod in pods.items:
+            state = (
+                pod.status.container_statuses[0].state if pod.status.container_statuses else None
+            )
+            last_state = (
+                pod.status.container_statuses[0].last_state
+                if pod.status.container_statuses
+                else None
+            )
+            pod_info = {
+                "name": pod.metadata.name,
+                "phase": pod.status.phase,
+                "restart_count": pod.status.container_statuses[0].restart_count
+                if pod.status.container_statuses
+                else 0,
+                "state": {
+                    "running": state.running.to_dict() if state and state.running else None,
+                    "terminated": state.terminated.to_dict()
+                    if state and state.terminated
+                    else None,
+                    "waiting": state.waiting.to_dict() if state and state.waiting else None,
+                }
+                if state
+                else None,
+                "last_state": {
+                    "running": last_state.running.to_dict()
+                    if last_state and last_state.running
+                    else None,
+                    "terminated": last_state.terminated.to_dict()
+                    if last_state and last_state.terminated
+                    else None,
+                    "waiting": last_state.waiting.to_dict()
+                    if last_state and last_state.waiting
+                    else None,
+                }
+                if last_state
+                else None,
+            }
+            deploy_info["pods"].append(pod_info)
+            deploy_info["node"] = pod.spec.node_name
+        return deploy_info
 
     @abc.abstractmethod
-    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Union[str | Dict[str, str]]] = None) -> V1PodList:
+    def _get_pods(
+        self, namespace: Optional[str] = None, labels: Optional[Union[str | Dict[str, str]]] = None
+    ) -> V1PodList:
         """Get all Kubernetes nodes via k8s client, optionally filtering by GPU nodes."""
         raise NotImplementedError()
 
@@ -152,9 +174,7 @@ class K8sOperator(abc.ABC):
         cpu_count = (
             int(node.status.capacity["cpu"]) - 2
         )  # leave 2 CPUs for incidentals, daemon sets, etc.
-        cpus_per_gpu = (
-            1 if cpu_count <= gpu_count else min(4, math.floor(cpu_count / gpu_count))
-        )
+        cpus_per_gpu = 1 if cpu_count <= gpu_count else min(4, math.floor(cpu_count / gpu_count))
         raw_mem = node.status.capacity["memory"]
         if raw_mem.endswith("Ki"):
             total_memory_gb = int(int(raw_mem.replace("Ki", "")) / 1024 / 1024) - 6
@@ -197,16 +217,20 @@ class K8sOperator(abc.ABC):
     async def get_deployed_chutes(self) -> List[Dict]:
         """Get all chutes deployments from kubernetes."""
         deployments = []
-        deployments_list = self._get_deployments(namespace=settings.namespace, labels={ "chutes/chute": "true"})
+        deployments_list = self._get_deployments(
+            namespace=settings.namespace, labels={"chutes/chute": "true"}
+        )
         for deployment in deployments_list.items:
-          deployments.append(self._extract_deployment_info(deployment))
-          logger.info(
+            deployments.append(self._extract_deployment_info(deployment))
+            logger.info(
                 f"Found chute deployment: {deployment.metadata.name} in namespace {deployment.metadata.namespace}"
             )
         return deployments
 
     @abc.abstractmethod
-    def _get_deployments(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> V1DeploymentList:
+    def _get_deployments(
+        self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None
+    ) -> V1DeploymentList:
         """
         Get deployment, optinally filtering by namespace and labels
         """
@@ -245,7 +269,7 @@ class K8sOperator(abc.ABC):
                 self._get_pods,
                 namespace=settings.namespace,
                 labels=label_selector,
-                timeout=timeout_seconds
+                timeout=timeout_seconds,
             ):
                 pods = self._get_pods(settings.namespace, label_selector)
                 if not pods.items:
@@ -294,7 +318,9 @@ class K8sOperator(abc.ABC):
             if e.status != 409:
                 raise
 
-    async def deploy_chute(self, chute_id: Union[str | Chute], server_id: Union[str | Server]) -> Tuple[Deployment, Any, Any]:
+    async def deploy_chute(
+        self, chute_id: Union[str | Chute], server_id: Union[str | Server]
+    ) -> Tuple[Deployment, Any, Any]:
         """Deploy a chute!"""
         # Backwards compatible types...
         if isinstance(chute_id, Chute):
@@ -315,7 +341,7 @@ class K8sOperator(abc.ABC):
         service = build_chute_service(deployment_id, chute)
 
         return await self._deploy_chute_resources(deployment_id, deployment, service, chute, server)
-        
+
     async def _fetch_chute(self, session: AsyncSession, chute_id: str):
         chute = (
             (await session.execute(select(Chute).where(Chute.chute_id == chute_id)))
@@ -325,9 +351,9 @@ class K8sOperator(abc.ABC):
 
         if not chute:
             raise DeploymentFailure(f"Failed to find chute: {chute_id=}")
-        
+
         return chute
-  
+
     async def _fetch_server(self, session: AsyncSession, server_id: str):
         server = (
             (await session.execute(select(Server).where(Server.server_id == server_id)))
@@ -336,9 +362,9 @@ class K8sOperator(abc.ABC):
         )
         if not server:
             raise DeploymentFailure(f"Failed to find server: {server_id=}")
-        
+
         return server
-    
+
     def _verify_gpus(self, chute: Chute, server: Server):
         # Make sure the node has capacity.
         gpus_allocated = 0
@@ -351,30 +377,40 @@ class K8sOperator(abc.ABC):
                 f"Server {server.server_id} name={server.name} cannot allocate {chute.gpu_count} GPUs, already using {gpus_allocated} of {len(server.gpus)}"
             )
         return available_gpus
-    
-    async def _track_deployment(self, session: AsyncSession, chute: Chute, server: Server, available_gpus):
+
+    async def _track_deployment(
+        self, session: AsyncSession, chute: Chute, server: Server, available_gpus
+    ):
         # Immediately track this deployment (before actually creating it) to avoid allocation contention.
-            deployment_id = str(uuid.uuid4())
-            gpus = list([gpu for gpu in server.gpus if gpu.gpu_id in available_gpus])[: chute.gpu_count]
-            deployment = Deployment(
-                deployment_id=deployment_id,
-                server_id=server.server_id,
-                validator=server.validator,
-                chute_id=chute.chute_id,
-                version=chute.version,
-                active=False,
-                verified_at=None,
-                stub=True,
-            )
-            session.add(deployment)
-            deployment.gpus = gpus
-            await session.commit()
-            
-            return deployment_id
-    
+        deployment_id = str(uuid.uuid4())
+        gpus = list([gpu for gpu in server.gpus if gpu.gpu_id in available_gpus])[: chute.gpu_count]
+        deployment = Deployment(
+            deployment_id=deployment_id,
+            server_id=server.server_id,
+            validator=server.validator,
+            chute_id=chute.chute_id,
+            version=chute.version,
+            active=False,
+            verified_at=None,
+            stub=True,
+        )
+        session.add(deployment)
+        deployment.gpus = gpus
+        await session.commit()
+
+        return deployment_id
+
     @abc.abstractmethod
-    async def _deploy_chute_resources(self, deployment_id: str, deployment: V1Deployment, service: V1Service, chute: Chute, server: Server):
+    async def _deploy_chute_resources(
+        self,
+        deployment_id: str,
+        deployment: V1Deployment,
+        service: V1Service,
+        chute: Chute,
+        server: Server,
+    ):
         raise NotImplementedError()
+
 
 # Legacy single-cluster implementation
 class SingleClusterK8sOperator(K8sOperator):
@@ -387,14 +423,19 @@ class SingleClusterK8sOperator(K8sOperator):
         node_list = k8s_core_client().list_node(field_selector=None, label_selector="chutes/worker")
         return node_list
 
-    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Union[str | Dict[str, str]]] = None, timeout = 120) -> V1PodList:
-        pod_label_selector = labels if labels and isinstance(labels, str) else ",".join(
-          [f"{k}={v}" for k, v in labels.items()]
+    def _get_pods(
+        self,
+        namespace: Optional[str] = None,
+        labels: Optional[Union[str | Dict[str, str]]] = None,
+        timeout=120,
+    ) -> V1PodList:
+        pod_label_selector = (
+            labels
+            if labels and isinstance(labels, str)
+            else ",".join([f"{k}={v}" for k, v in labels.items()])
         )
         pods = k8s_core_client().list_namespaced_pod(
-            namespace=namespace,
-            label_selector=pod_label_selector,
-            timeout_seconds=timeout
+            namespace=namespace, label_selector=pod_label_selector, timeout_seconds=timeout
         )
         return pods
 
@@ -408,7 +449,9 @@ class SingleClusterK8sOperator(K8sOperator):
         )
         return self._extract_deployment_info(deployment)
 
-    def _get_deployments(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> V1DeploymentList:
+    def _get_deployments(
+        self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None
+    ) -> V1DeploymentList:
         """
         Get deployment, optinally filtering by namespace and labels
         """
@@ -417,8 +460,15 @@ class SingleClusterK8sOperator(K8sOperator):
             namespace=namespace, label_selector=label_selector
         )
         return deployment_list
-    
-    async def _deploy_chute_resources(self, deployment_id: str, deployment: V1Deployment, service: V1Service, chute: Chute, server: Server):
+
+    async def _deploy_chute_resources(
+        self,
+        deployment_id: str,
+        deployment: V1Deployment,
+        service: V1Service,
+        chute: Chute,
+        server: Server,
+    ):
         try:
             created_service = k8s_core_client().create_namespaced_service(
                 namespace=settings.namespace, body=service
@@ -465,6 +515,7 @@ class SingleClusterK8sOperator(K8sOperator):
                 f"Failed to deploy chute {chute.chute_id} with version {chute.version}: {exc}\n{traceback.format_exc()}"
             )
 
+
 class KarmadaK8sOperator(K8sOperator):
     """Kubernetes operations for Karmada-based multi-cluster setup."""
 
@@ -481,17 +532,19 @@ class KarmadaK8sOperator(K8sOperator):
 
     def _get_nodes(self) -> V1NodeList:
         response = self._search(SEARCH_NODES_PATH)
-        node_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1NodeList')
+        node_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1NodeList")
         return node_list
 
     async def get_deployment(self, deployment_id: str) -> Dict:
         """Get a single deployment by ID."""
         # Initialize query parameters
         query_params = {}
-        query_params["fieldSelector"] = f"metadata.namespace={settings.namespace},metadata.name=chute-{deployment_id}"
+        query_params["fieldSelector"] = (
+            f"metadata.namespace={settings.namespace},metadata.name=chute-{deployment_id}"
+        )
 
-        response =  self._search(SEARCH_DEPLOYMENTS_PATH, query_params)
-        deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1DeploymentList')
+        response = self._search(SEARCH_DEPLOYMENTS_PATH, query_params)
+        deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1DeploymentList")
         # Handle case where no deployments found or more than one found
         return self._extract_deployment_info(deploy_list.items[0])
 
@@ -509,7 +562,14 @@ class KarmadaK8sOperator(K8sOperator):
         self._delete_propagation_policy(settings.namespace, service_pp_name)
         self._delete_propagation_policy(settings.namespace, deployment_pp_name)
 
-    async def _deploy_chute_resources(self, deployment_id: str, deployment: V1Deployment, service: V1Service, chute: Chute, server: Server):
+    async def _deploy_chute_resources(
+        self,
+        deployment_id: str,
+        deployment: V1Deployment,
+        service: V1Service,
+        chute: Chute,
+        server: Server,
+    ):
         try:
             created_service = k8s_core_client().create_namespaced_service(
                 namespace=settings.namespace, body=service
@@ -585,70 +645,54 @@ class KarmadaK8sOperator(K8sOperator):
         except Exception:
             ...
 
-    def _create_chute_deployment_propagation_policy(self, deployment_id: str, deployment: V1Deployment, server: Server):
+    def _create_chute_deployment_propagation_policy(
+        self, deployment_id: str, deployment: V1Deployment, server: Server
+    ):
         pp = PropagationPolicy(
             name=f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}",
             namespace=settings.namespace,
             resource_selectors=[
-                ResourceSelector(
-                    api_version="v1",
-                    kind="Deployment",
-                    name=deployment.metadata.name
-                )
+                ResourceSelector(api_version="v1", kind="Deployment", name=deployment.metadata.name)
             ],
             placement=Placement(
-                cluster_affinity=ClusterAffinity(
-                    cluster_names=[server.name]
-                ),
-                replica_scheduling=ReplicaScheduling(
-                    scheduling_type="Duplicated"
-                )
-            )
+                cluster_affinity=ClusterAffinity(cluster_names=[server.name]),
+                replica_scheduling=ReplicaScheduling(scheduling_type="Duplicated"),
+            ),
         )
         self._create_propagation_policy(settings.namespace, pp)
-    
-    def _create_chute_service_propagation_policy(self, deployment_id: str, service: V1Service, server: Server):
+
+    def _create_chute_service_propagation_policy(
+        self, deployment_id: str, service: V1Service, server: Server
+    ):
         pp = PropagationPolicy(
             name=f"{CHUTE_SVC_PREFIX}-{deployment_id}",
             namespace=settings.namespace,
             resource_selectors=[
-                ResourceSelector(
-                    api_version="v1",
-                    kind="Service",
-                    name=service.metadata.name
-                )
+                ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name)
             ],
             placement=Placement(
-                cluster_affinity=ClusterAffinity(
-                    cluster_names=[server.name]
-                ),
-                replica_scheduling=ReplicaScheduling(
-                    scheduling_type="Duplicated"
-                )
-            )
+                cluster_affinity=ClusterAffinity(cluster_names=[server.name]),
+                replica_scheduling=ReplicaScheduling(scheduling_type="Duplicated"),
+            ),
         )
         self._create_propagation_policy(settings.namespace, pp)
 
-    def _create_chute_code_cm_propagation_policy(self, deployment_id: str, chute: Chute, server: Server):
+    def _create_chute_code_cm_propagation_policy(
+        self, deployment_id: str, chute: Chute, server: Server
+    ):
         code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
         pp = PropagationPolicy(
             name=f"{CHUTE_CODE_CM_PREFIX}-{deployment_id}",
             namespace=settings.namespace,
             resource_selectors=[
                 ResourceSelector(
-                    api_version="v1",
-                    kind="ConfigMap",
-                    name=f"{CHUTE_CODE_CM_PREFIX}-{code_uuid}"
+                    api_version="v1", kind="ConfigMap", name=f"{CHUTE_CODE_CM_PREFIX}-{code_uuid}"
                 )
             ],
             placement=Placement(
-                cluster_affinity=ClusterAffinity(
-                    cluster_names=[server.name]
-                ),
-                replica_scheduling=ReplicaScheduling(
-                    scheduling_type="Duplicated"
-                )
-            )
+                cluster_affinity=ClusterAffinity(cluster_names=[server.name]),
+                replica_scheduling=ReplicaScheduling(scheduling_type="Duplicated"),
+            ),
         )
         self._create_propagation_policy(settings.namespace, pp)
 
@@ -658,7 +702,7 @@ class KarmadaK8sOperator(K8sOperator):
             version="v1alpha1",
             namespace=namespace,
             plural="propagationpolicies",
-            body=propagation_policy.to_dict()
+            body=propagation_policy.to_dict(),
         )
 
     def _delete_propagation_policy(self, namespace, pp_name):
@@ -667,10 +711,12 @@ class KarmadaK8sOperator(K8sOperator):
             version="v1alpha1",
             namespace=namespace,
             plural="propagationpolicies",
-            name=pp_name
+            name=pp_name,
         )
 
-    def _get_pods(self, namespace: Optional[str] = None, labels: Optional[Union[str | Dict[str, str]]] = None) -> V1PodList:
+    def _get_pods(
+        self, namespace: Optional[str] = None, labels: Optional[Union[str | Dict[str, str]]] = None
+    ) -> V1PodList:
         # Initialize query parameters
         query_params = {}
 
@@ -682,14 +728,20 @@ class KarmadaK8sOperator(K8sOperator):
         if labels:
             # Convert dictionary of labels to string format
             # Example: {'app': 'nginx', 'tier': 'frontend'} -> 'app=nginx,tier=frontend'
-            label_selector = labels if isinstance(labels, str) else ",".join([f"{k}={v}" for k, v in labels.items()])
+            label_selector = (
+                labels
+                if isinstance(labels, str)
+                else ",".join([f"{k}={v}" for k, v in labels.items()])
+            )
             query_params["labelSelector"] = label_selector
 
-        response =  self._search(SEARCH_PODS_PATH, query_params)
-        pod_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1PodList')
+        response = self._search(SEARCH_PODS_PATH, query_params)
+        pod_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1PodList")
         return pod_list
 
-    def _get_deployments(self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None):
+    def _get_deployments(
+        self, namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None
+    ):
         # Initialize query parameters
         query_params = {}
 
@@ -704,22 +756,21 @@ class KarmadaK8sOperator(K8sOperator):
             label_selector = ",".join([f"{k}={v}" for k, v in labels.items()])
             query_params["labelSelector"] = label_selector
 
-        response =  self._search(SEARCH_DEPLOYMENTS_PATH, query_params)
-        deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), 'V1DeploymentList')
+        response = self._search(SEARCH_DEPLOYMENTS_PATH, query_params)
+        deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1DeploymentList")
         return deploy_list
 
-    def _search(self, api_path, query_params = {}):
+    def _search(self, api_path, query_params={}):
         """
         Search using the Karamada Search API
         """
 
         response = self.karmada_api_client.call_api(
             api_path,
-            'GET',
+            "GET",
             query_params=query_params,
-            response_type='object',
+            response_type="object",
             _return_http_data_only=True,
         )
 
         return response
-

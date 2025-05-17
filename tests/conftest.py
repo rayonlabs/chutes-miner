@@ -1,6 +1,7 @@
 import os
 import json
 
+
 def pytest_configure(config):
     """Set up environment variables before any modules are imported."""
     os.environ["MINER_SS58"] = "5E6xfU3oNU7y1a7pQwoc31fmUjwBZ2gKcNCw8EXsdtCQieUQ"
@@ -20,6 +21,7 @@ def pytest_configure(config):
 
     # Print confirmation for debugging
     print("Environment variables set up for testing!")
+
 
 pytest_configure(None)
 

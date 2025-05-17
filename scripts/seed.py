@@ -1,7 +1,19 @@
 import json
 import os
 import sys
-from sqlalchemy import BigInteger, Float, create_engine, Column, Integer, String, ForeignKey, DateTime, Text, Boolean, func
+from sqlalchemy import (
+    BigInteger,
+    Float,
+    create_engine,
+    Column,
+    Integer,
+    String,
+    ForeignKey,
+    DateTime,
+    Text,
+    Boolean,
+    func,
+)
 from sqlalchemy.orm import relationship, sessionmaker, declarative_base
 import datetime
 import random
@@ -33,17 +45,17 @@ from api.server.schemas import Server
 
 def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_server=2):
     """Create test chutes, servers, GPUs, and deployments"""
-    
+
     # GPU model types to use
     gpu_models = ["A100", "H100", "RTX4090", "V100", "A6000"]
-    
+
     # Create chutes first (needed for deployments)
     chutes = []
     for i in range(num_chutes):
         chute_id = f"chute-{uuid.uuid4()}"
         supported_gpus = random.sample(gpu_models, k=random.randint(1, len(gpu_models)))
         gpu_count = random.randint(1, 4)
-        
+
         chute = Chute(
             chute_id=chute_id,
             validator=f"validator-{i+1}",
@@ -55,41 +67,41 @@ def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_serve
             version=f"1.{random.randint(0, 9)}.{random.randint(0, 99)}",
             supported_gpus=supported_gpus,
             gpu_count=gpu_count,
-            ban_reason=None
+            ban_reason=None,
         )
         session.add(chute)
         chutes.append(chute)
-    
+
     session.commit()
-    
+
     # Create servers
     servers = []
     for i in range(num_servers):
         gpu_count = random.randint(2, 8)
         server_id = f"server-{uuid.uuid4()}"
         validator_name = f"validator-{i+1}"
-        
+
         server = Server(
             server_id=server_id,
             validator=validator_name,
             name=f"test-server-{i+1}",
             ip_address=f"192.168.1.{10+i}",
             verification_port=random.randint(8000, 9000),
-            status=random.choice(['active', 'maintenance', 'offline']),
+            status=random.choice(["active", "maintenance", "offline"]),
             labels={"environment": "test", "region": "us-west", "tier": f"tier-{i+1}"},
             seed=random.randint(1000, 9999),
             gpu_count=gpu_count,
             cpu_per_gpu=random.randint(4, 16),
             memory_per_gpu=random.randint(16, 64),
             hourly_cost=random.uniform(0.5, 5.0),
-            locked=random.choice([True, False])
+            locked=random.choice([True, False]),
         )
         session.add(server)
         servers.append(server)
-    
+
     # Commit to get server IDs
     session.commit()
-    
+
     # Create GPUs for each server
     for server in servers:
         for j in range(server.gpu_count):
@@ -106,28 +118,34 @@ def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_serve
                     "uuid": f"GPU-{uuid.uuid4().hex[:16]}",
                     "index": j,
                     "clock_rate": 10000,
-                    "processors": 8
+                    "processors": 8,
                 },
                 model_short_ref=model,
-                verified=random.choice([True, False])
+                verified=random.choice([True, False]),
             )
             session.add(gpu)
-    
+
     session.commit()
-    
+
     # Create deployments for each server
     for server in servers:
         # Get all available GPUs for this server
-        server_gpus = session.query(GPU).filter(GPU.server_id == server.server_id, GPU.deployment_id == None).all()
-        
+        server_gpus = (
+            session.query(GPU)
+            .filter(GPU.server_id == server.server_id, GPU.deployment_id == None)
+            .all()
+        )
+
         for j in range(min(deployments_per_server, len(chutes))):
             chute = chutes[j % len(chutes)]
-            
+
             # Only create deployment if server has enough GPUs of supported type
-            compatible_gpus = [gpu for gpu in server_gpus if gpu.model_short_ref in chute.supported_gpus]
+            compatible_gpus = [
+                gpu for gpu in server_gpus if gpu.model_short_ref in chute.supported_gpus
+            ]
             if len(compatible_gpus) < chute.gpu_count:
                 continue
-                
+
             deployment_id = f"deploy-{uuid.uuid4()}"
             deployment = Deployment(
                 deployment_id=deployment_id,
@@ -139,62 +157,71 @@ def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_serve
                 server_id=server.server_id,
                 version=chute.version,
                 active=random.choice([True, False]),
-                verified_at=datetime.datetime.utcnow() - datetime.timedelta(hours=random.randint(1, 48)) if random.choice([True, False]) else None,
-                stub=False
+                verified_at=datetime.datetime.utcnow()
+                - datetime.timedelta(hours=random.randint(1, 48))
+                if random.choice([True, False])
+                else None,
+                stub=False,
             )
             session.add(deployment)
-            
+
             # Assign the required number of GPUs to this deployment
             gpus_needed = chute.gpu_count
             assigned_gpus = compatible_gpus[:gpus_needed]
-            
+
             # Remove these GPUs from available list
             for gpu in assigned_gpus:
                 server_gpus.remove(gpu)
                 gpu.deployment_id = deployment_id
                 session.add(gpu)
-    
+
     # Commit all deployments and GPU assignments
     session.commit()
     print(f"Created {len(servers)} servers")
     print(f"Created {num_chutes} chutes")
-    
+
     # Count deployments
     deployments = session.query(Deployment).all()
     print(f"Created {len(deployments)} total deployments")
 
+
 def main():
     # Create a PostgreSQL test database
     # You'll need to update this connection string to your actual database
-    engine = create_engine('postgresql://user:password@postgres:5432/chutes', echo=True)
-    
+    engine = create_engine("postgresql://user:password@postgres:5432/chutes", echo=True)
+
     # Create all tables
     Base.metadata.create_all(engine)
-    
+
     # Create a session
     Session = sessionmaker(bind=engine)
     session = Session()
-    
+
     try:
         # Create test data
         create_test_data(session)
-        
+
         # Example queries to verify data was added
         servers = session.query(Server).all()
         print(f"\nServers in database: {len(servers)}")
         for server in servers:
-            print(f"Server: {server.name}, GPUs: {server.gpu_count}, Deployments: {len(server.deployments)}")
+            print(
+                f"Server: {server.name}, GPUs: {server.gpu_count}, Deployments: {len(server.deployments)}"
+            )
             for deployment in server.deployments:
                 gpu_count = len(deployment.gpus)
-                print(f"  - {deployment.deployment_id[:8]}... (chute: {deployment.chute.name}, version: {deployment.version}, active: {deployment.active}, GPUs: {gpu_count})")
-                
+                print(
+                    f"  - {deployment.deployment_id[:8]}... (chute: {deployment.chute.name}, version: {deployment.version}, active: {deployment.active}, GPUs: {gpu_count})"
+                )
+
                 # List GPUs assigned to this deployment
                 for gpu in deployment.gpus:
                     print(f"    * GPU: {gpu.model_short_ref} ({gpu.gpu_id[:8]}...)")
-    
+
     finally:
         # Close the session
         session.close()
+
 
 if __name__ == "__main__":
     main()

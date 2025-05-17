@@ -180,7 +180,9 @@ class Gepetto:
                     data=payload_string,
                 ) as resp:
                     if resp.status >= 300:
-                        logger.error(f"Error announcing deployment to validator:\n{await resp.text()}")
+                        logger.error(
+                            f"Error announcing deployment to validator:\n{await resp.text()}"
+                        )
                     resp.raise_for_status()
                     instance = await resp.json()
 
