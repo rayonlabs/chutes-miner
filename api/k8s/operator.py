@@ -329,8 +329,8 @@ class K8sOperator(abc.ABC):
             server_id = server_id.server_id
 
         async with get_session() as session:
-            chute = await self._fetch_chute(session, chute_id)
-            server = await self._fetch_server(session, server_id)
+            chute = await self._get_chute(session, chute_id)
+            server = await self._get_server(session, server_id)
             available_gpus = self._verify_gpus(chute, server)
             deployment_id = await self._track_deployment(session, chute, server, available_gpus)
 
@@ -340,9 +340,9 @@ class K8sOperator(abc.ABC):
         # And the service that exposes it.
         service = build_chute_service(deployment_id, chute)
 
-        return await self._deploy_chute_resources(deployment_id, deployment, service, chute, server)
+        return await self._deploy_chute(deployment_id, deployment, service, chute, server)
 
-    async def _fetch_chute(self, session: AsyncSession, chute_id: str):
+    async def _get_chute(self, session: AsyncSession, chute_id: str):
         chute = (
             (await session.execute(select(Chute).where(Chute.chute_id == chute_id)))
             .unique()
@@ -354,7 +354,7 @@ class K8sOperator(abc.ABC):
 
         return chute
 
-    async def _fetch_server(self, session: AsyncSession, server_id: str):
+    async def _get_server(self, session: AsyncSession, server_id: str):
         server = (
             (await session.execute(select(Server).where(Server.server_id == server_id)))
             .unique()
@@ -401,7 +401,7 @@ class K8sOperator(abc.ABC):
         return deployment_id
 
     @abc.abstractmethod
-    async def _deploy_chute_resources(
+    async def _deploy_chute(
         self,
         deployment_id: str,
         deployment: V1Deployment,
@@ -461,7 +461,7 @@ class SingleClusterK8sOperator(K8sOperator):
         )
         return deployment_list
 
-    async def _deploy_chute_resources(
+    async def _deploy_chute(
         self,
         deployment_id: str,
         deployment: V1Deployment,
@@ -562,7 +562,7 @@ class KarmadaK8sOperator(K8sOperator):
         self._delete_propagation_policy(settings.namespace, service_pp_name)
         self._delete_propagation_policy(settings.namespace, deployment_pp_name)
 
-    async def _deploy_chute_resources(
+    async def _deploy_chute(
         self,
         deployment_id: str,
         deployment: V1Deployment,
