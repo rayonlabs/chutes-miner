@@ -28,7 +28,7 @@ def create_kubernetes_client(cls: Any = client.CoreV1Api, context: Optional[str]
     try:
         if os.getenv("KUBECONFIG") is not None:
             load_kube_config(config_file=os.getenv("KUBECONFIG"), context=context)
-        elif os.getnev("KUBERNETES_SERVICE_HOST" != None):
+        elif os.getenv("KUBERNETES_SERVICE_HOST" != None):
             load_incluster_config(context=context)
         else:
             raise RuntimeError(
