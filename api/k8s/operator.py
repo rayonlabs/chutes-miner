@@ -601,10 +601,7 @@ class KarmadaK8sOperator(K8sOperator):
 
             return deployment, created_deployment, created_service
         except ApiException as exc:
-            try:
-                self._cleanup_chute_resources(deployment_id, chute)
-            except Exception:
-                ...
+            self._cleanup_chute_resources(deployment_id, chute)
 
             raise DeploymentFailure(
                 f"Failed to deploy chute {chute.chute_id} with version {chute.version}: {exc}\n{traceback.format_exc()}"
