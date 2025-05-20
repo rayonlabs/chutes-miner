@@ -1,0 +1,20 @@
+{{- if .Values.prometheus.networkPolicies.create }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-access
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus-server
+  ingress:
+  {{- range .Values.prometheus.networkPolicies.allowedCIDRs }}
+  - from:
+    - ipBlock:
+        cidr: {{ . }}
+    ports:
+    - protocol: TCP
+      port: 9090
+  {{- end }}
+{{- end }}

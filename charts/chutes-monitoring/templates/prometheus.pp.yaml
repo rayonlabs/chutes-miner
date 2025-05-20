@@ -1,0 +1,144 @@
+{{ if .Values.prometheus.propagationPolicies.create }}
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+
+metadata:
+  name: prometheus-conf
+  namespace: {{ $.Release.Namespace }}
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: ConfigMap
+      name: prometheus-conf
+  placement:
+    clusterAffinity:
+      clusterNames: []  # Empty array means propagate to all registered clusters
+    replicaScheduling:
+      replicaSchedulingType: Duplicated  # Alternative: Duplicated
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+
+metadata:
+  name: prometheus-deploy
+  namespace: {{ $.Release.Namespace }}
+spec:
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: prometheus
+  placement:
+    clusterAffinity:
+      clusterNames: []
+    replicaScheduling:
+      replicaSchedulingType: Duplicated  # Alternative: Duplicated
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+
+metadata:
+  name: prometheus-sa
+  namespace: {{ $.Release.Namespace }}
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: ServiceAccount
+      name: prometheus
+  placement:
+    clusterAffinity:
+      clusterNames: []  # Empty array means propagate to all registered clusters
+    replicaScheduling:
+      replicaSchedulingType: Duplicated  # Alternative: Duplicated
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+
+metadata:
+  name: prometheus-svc
+  namespace: {{ $.Release.Namespace }}
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: Service
+      name: prometheus
+  placement:
+    clusterAffinity:
+      clusterNames: []  # Empty array means propagate to all registered clusters
+    replicaScheduling:
+      replicaSchedulingType: Duplicated  # Alternative: Duplicated
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: ClusterPropagationPolicy
+
+metadata:
+  name: prometheus-cr
+  namespace: {{ $.Release.Namespace }}
+spec:
+  resourceSelectors:
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      name: prometheus
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      name: prometheus
+  placement:
+    clusterAffinity:
+      clusterNames: []  # Empty array means propagate to all registered clusters
+    replicaScheduling:
+      replicaSchedulingType: Duplicated  # Alternative: Duplicated
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: ClusterPropagationPolicy
+
+metadata:
+  name: prometheus-svc-discovery-cr
+  namespace: {{ $.Release.Namespace }}
+spec:
+  resourceSelectors:
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      name: prometheus-service-discovery
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      name: prometheus-service-discovery
+  placement:
+    clusterAffinity:
+      clusterNames: []  # Empty array means propagate to all registered clusters
+    replicaScheduling:
+      replicaSchedulingType: Duplicated  # Alternative: Duplicated
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+
+metadata:
+  name: prometheus-secret
+  namespace: {{ $.Release.Namespace }}
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: Secret
+      name: prometheus
+  placement:
+    clusterAffinity:
+      clusterNames: []  # Empty array means propagate to all registered clusters
+    replicaScheduling:
+      replicaSchedulingType: Duplicated  # Alternative: Duplicated
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+
+metadata:
+  name: prometheus-netpol
+  namespace: {{ $.Release.Namespace }}
+spec:
+  resourceSelectors:
+    - apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      name: prometheus-access
+  placement:
+    clusterAffinity:
+      clusterNames: []  # Empty array means propagate to all registered clusters
+    replicaScheduling:
+      replicaSchedulingType: Duplicated  # Alternative: Duplicated
+{{- end }}
