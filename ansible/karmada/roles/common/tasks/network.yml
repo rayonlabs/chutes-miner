@@ -69,22 +69,38 @@
 
 # Configure sysctl for Kubernetes
 - name: Configure sysctl for Kubernetes
-  ansible.posix.sysctl:
-    name: "{{ item.name }}"
-    value: "{{ item.value }}"
-    state: present
-    reload: true
-  with_items:
-    - { name: net.bridge.bridge-nf-call-iptables, value: "1" }
-    - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
-    - { name: net.ipv4.ip_forward, value: "1" }
-  register: sysctl_result
-  failed_when:
-    - sysctl_result.failed is defined
-    - sysctl_result.failed
-    - "'Cannot set net.bridge.bridge-nf-call' not in sysctl_result.msg | default('')"
-    - "'Module br_netfilter not loaded' not in sysctl_result.msg | default('')"
-    - "'sysctl: cannot stat' not in sysctl_result.msg | default('')"
+  block:
+    - name: Set sysctl for kubernetes
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      with_items:
+        - { name: net.bridge.bridge-nf-call-iptables, value: "1" }
+        - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+        - { name: net.ipv4.ip_forward, value: "1" }
+      register: sysctl_result
+      failed_when:
+        - sysctl_result.failed is defined
+        - sysctl_result.failed
+        - "'Cannot set net.bridge.bridge-nf-call' not in sysctl_result.msg | default('')"
+        - "'Module br_netfilter not loaded' not in sysctl_result.msg | default('')"
+        - "'sysctl: cannot stat' not in sysctl_result.msg | default('')"
+
+    - name: Disable IPv6
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        sysctl_file: /etc/sysctl.d/99-disable-ipv6.conf
+        reload: yes
+      with_items:
+        - { key: "net.ipv6.conf.all.disable_ipv6", value: "1" }
+        - { key: "net.ipv6.conf.default.disable_ipv6", value: "1" }
+        - { key: "net.ipv6.conf.lo.disable_ipv6", value: "1" }
+      register: ipv6_disabled
+      when: not ipv6_enabled | bool
 
 # Fix for 'br_netfilter not found' errors
 - name: Add br_netfilter to /etc/modules-load.d/
@@ -186,3 +202,4 @@
       - "Warning: Iptables {{ ansible_facts.packages['iptables'][0]['version'] }} found."
       - Add '--prefer-bundled-bin' to extra_server_args variable to use the bundled iptables binary.
   failed_when: false
+

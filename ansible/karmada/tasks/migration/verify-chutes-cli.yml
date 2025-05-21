@@ -2,7 +2,7 @@
 # Ansible tasks to verify chutes-miner installation and functionality
 
 - name: Verify and test chutes-miner CLI
-  when: not run_locally | default(false) and ('microk8s' or 'control') in group_names
+  when: not run_cli_locally | default(false) and ('microk8s' or 'control') in group_names
   delegate_to: "{{ target_host | default(inventory_hostname) }}"
   tags: chutes-cli
 
@@ -64,7 +64,7 @@
         msg: "Hotkey file {{ 'exists' if hotkey_file.stat.exists else 'does not exist' }}"
 
     - name: Copy hotkey
-      when: not run_locally | default(false) and copy_hotkey_to_ansible_host | default(false)
+      when: not run_cli_locally | default(false) and copy_hotkey_to_ansible_host | default(false)
 
       # Test miner API connection
       block:
@@ -118,7 +118,7 @@
 
     - name: Test connection to miner API
       ansible.builtin.uri:
-        url: http://127.0.0.1:32000/ping"
+        url: http://127.0.0.1:32000/ping
         method: GET
         validate_certs: false
         status_code: 200
@@ -126,28 +126,25 @@
       failed_when: false
       changed_when: false
 
-    - name: Display miner API connection status
-      ansible.builtin.debug:
-        msg: "Miner API {{ 'is reachable' if api_connection.status == 200 else 'is not reachable' }}"
+    - name: Verify miner API connection status
+      assert:
+        that: api_connection.status == 200
+        fail_msg: "Miner API is not reachable"
+        success_msg: "Miner API is reachable"
 
     # Test CLI commands if prerequisites are met
     - name: Run local-inventory command
       ansible.builtin.command: >
         chutes-miner local-inventory  --hotkey {{ remote_hotkey_path }}
       register: local_inventory_result
-      failed_when: false
+      failed_when: local_inventory_result.rc != 0
       changed_when: false
       when: hotkey_file.stat.exists and api_connection.status is defined and api_connection.status == 200
-
-    - name: Display local-inventory results
-      ansible.builtin.debug:
-        msg: "{{ local_inventory_result.stdout_lines }}"
-      when: local_inventory_result is defined and local_inventory_result.rc == 0
 
 # This block runs remotely by default
 - name: Verify and test chutes-miner CLI (locally)
   become: false
-  when: run_locally | default(false)
+  when: run_cli_locally | default(false)
   tags: chutes-cli
   block:
     # Check if chutes-miner package is installed locally
@@ -194,7 +191,7 @@
     # Test miner API connection from localhost
     - name: Test connection to miner API from localhost
       ansible.builtin.uri:
-        url: "{{ miner_api_url }}/ping"
+        url: "http://{{ ansible_host }}:{{ miner_api_port | default(32000) }}/ping"
         method: GET
         validate_certs: false
         status_code: 200
@@ -211,16 +208,11 @@
     - name: Run local-inventory command locally
       ansible.builtin.command: >
         chutes-miner local-inventory  --hotkey {{ hotkey_path }}
-        --miner-api {{ miner_api_url }}
+        --miner-api http://{{ ansible_host }}:{{ miner_api_port | default(32000) }}
       register: local_inventory_result_local
-      failed_when: false
+      failed_when: local_inventory_result_local.rc != 0
       changed_when: false
       delegate_to: localhost
       when: hotkey_file_local.stat.exists and api_connection_local.status is defined and api_connection_local.status == 200
 
-    - name: Display local-inventory results (local execution)
-      ansible.builtin.debug:
-        msg: "{{ local_inventory_result_local.stdout_lines }}"
-      when: local_inventory_result_local is defined and local_inventory_result_local.rc == 0
-
-  # This block only runs when run_locally is set to true
+  # This block only runs when run_cli_locally is set to true

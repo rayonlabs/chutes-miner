@@ -1,0 +1,187 @@
+---
+- name: Stop and remove Wireguard
+  block:
+    - name: Stop Wireguard service
+      ansible.builtin.systemd:
+        name: wg-quick@wg0
+        state: stopped
+        enabled: false
+      register: stop_wireguard
+      failed_when:
+        - stop_wireguard.failed is defined
+        - stop_wireguard.failed
+        - '"Could not find the requested service" not in stop_wireguard.msg'
+
+    - name: Remove Wireguard configuration
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/wireguard/wg0.conf
+        - /etc/wireguard/private.key
+        - /etc/wireguard/public.key
+
+    - name: Uninstall Wireguard package
+      ansible.builtin.apt:
+        name: wireguard
+        state: absent
+        purge: true
+
+- name: Stop and remove MicroK8s
+  block:
+    - name: Check if MicroK8s service exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/snap.microk8s.daemon-containerd.service
+      register: microk8s_service_file
+
+    - name: Stop MicroK8s services if they exist
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      with_items:
+        - snap.microk8s.daemon-containerd
+        - snap.microk8s.daemon-apiserver
+        - snap.microk8s.daemon-proxy
+        - snap.microk8s.daemon-kubelet
+        - snap.microk8s.daemon-scheduler
+        - snap.microk8s.daemon-controller-manager
+        - snap.microk8s.daemon-kubelite
+      register: stop_microk8s
+      failed_when:
+        - stop_microk8s.failed is defined
+        - stop_microk8s.failed
+        - "'Could not find the requested service' not in stop_microk8s.msg"
+      when: microk8s_service_file.stat.exists
+
+    - name: Remove MicroK8s snap
+      community.general.snap:
+        name: microk8s
+        state: absent
+        classic: true
+      register: remove_microk8s
+      failed_when:
+        - remove_microk8s.failed is defined
+        - remove_microk8s.failed
+        - '"not found" not in remove_microk8s.msg'
+
+    - name: Clean up MicroK8s directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /var/snap/microk8s
+        - /var/lib/microk8s
+      register: remove_microk8s_dirs
+      failed_when:
+        - remove_microk8s_dirs.failed is defined
+        - remove_microk8s_dirs.failed
+        - "'No such file or directory' not in remove_microk8s_dirs.msg"
+
+    - name: Remove kubeconfig files
+      ansible.builtin.file:
+        path: "/home/{{ item }}/.kube"
+        state: absent
+      with_items:
+        - "{{ ansible_user }}"
+        - "{{ user | default(ansible_user) }}"
+      register: remove_kubeconfig
+      failed_when:
+        - remove_kubeconfig.failed is defined
+        - remove_kubeconfig.failed
+        - "'No such file or directory' not in remove_kubeconfig.msg"
+
+- name: Remove containerd configuration
+  ansible.builtin.file:
+    path: /var/snap/microk8s/current/args/certs.d
+    state: absent
+  register: remove_containerd_config
+  failed_when:
+    - remove_containerd_config.failed is defined
+    - remove_containerd_config.failed
+    - "'No such file or directory' not in remove_containerd_config.msg"
+
+- name: Clean up iptables rules (if primary node)
+  when: is_primary | default(false) | bool
+  block:
+    - name: Flush iptables
+      ansible.builtin.shell: |
+        iptables -F
+        iptables -t nat -F
+        iptables -t mangle -F
+        iptables -X
+      register: flush_iptables
+      changed_when: true # This command always changes the state
+
+    - name: Save iptables rules
+      ansible.builtin.shell: |
+        command -v netfilter-persistent && netfilter-persistent save && netfilter-persistent reload
+      register: save_iptables
+      changed_when: save_iptables.rc == 0
+      failed_when:
+        - save_iptables.rc != 0
+        - save_iptables.rc != 127 # 127 means command not found, which is okay
+
+- name: Reset DNS configuration
+  block:
+    - name: Reset resolved.conf
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf
+        content: |
+          #  This file is part of systemd.
+          #
+          #  systemd is free software; you can redistribute it and/or modify it under the
+          #  terms of the GNU Lesser General Public License as published by the Free
+          #  Software Foundation; either version 2.1 of the License, or (at your option)
+          #  any later version.
+          #
+          # Entries in this file show the compile time defaults. Local configuration
+          # should be created by either modifying this file (or a copy of it placed in
+          # /etc/ if the original file is shipped in /usr/), or by creating "drop-ins" in
+          # the /etc/systemd/resolved.conf.d/ directory. The latter is generally
+          # recommended. Defaults can be restored by simply deleting the main
+          # configuration file and all drop-ins located in /etc/.
+          #
+          # Use 'systemd-analyze cat-config systemd/resolved.conf' to display the full config.
+          #
+          # See resolved.conf(5) for details.
+
+          [Resolve]
+          # Some examples of DNS servers which may be used for DNS= and FallbackDNS=:
+          # Cloudflare: 1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com 2606:4700:4700::1111#cloudflare-dns.com 2606:4700:4700::1001#cloudflare-dns.com
+          # Google:     8.8.8.8#dns.google 8.8.4.4#dns.google 2001:4860:4860::8888#dns.google 2001:4860:4860::8844#dns.google
+          # Quad9:      9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
+          #DNS=
+          #FallbackDNS=
+          #Domains=
+          #DNSSEC=no
+          #DNSOverTLS=no
+          #MulticastDNS=no
+          #LLMNR=no
+          #Cache=no-negative
+          #CacheFromLocalhost=no
+          #DNSStubListener=yes
+          #DNSStubListenerExtra=
+          #ReadEtcHosts=yes
+          #ResolveUnicastSingleLabel=no
+          #StaleRetentionSec=0
+
+        mode: "0644"
+
+    - name: Restart systemd-resolved
+      ansible.builtin.systemd:
+        name: systemd-resolved
+        state: restarted
+      register: restart_resolved
+      failed_when:
+        - restart_resolved.failed is defined
+        - restart_resolved.failed
+        - "'Could not find the requested service' not in restart_resolved.msg"
+
+- name: Restart system
+  ansible.builtin.reboot:
+    msg: "Rebooting after cleanup..."
+    reboot_timeout: 600
+    pre_reboot_delay: 0
+    post_reboot_delay: 30
+    test_command: uptime

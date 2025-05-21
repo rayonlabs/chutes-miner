@@ -15,18 +15,72 @@
   when: containerd_config_file.stat.exists
 
 - name: Setup KTX
-  ansible.builtin.get_url:
-    url: https://raw.githubusercontent.com/blendle/kns/master/bin/ktx
-    dest: /usr/local/bin/ktx
-    mode: "0755"
-  become: true
+  block:
+    - name: Get KTX script
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/blendle/kns/master/bin/ktx
+        dest: /usr/local/bin/ktx
+        mode: "0755"
+        timeout: 60
+      register: ktx_download
+      retries: 5
+      delay: 30
+      until: ktx_download is not failed or ('status' in ktx_download and ktx_download.status != 429)
+      become: true
+
+  rescue:
+    - name: Handle GitHub rate limit
+      ansible.builtin.debug:
+        msg: "Hit GitHub rate limit (429). Waiting before retry..."
+      when: ktx_download is defined and ('status' in ktx_download and ktx_download.status == 429)
+
+    - name: Wait for rate limit reset
+      ansible.builtin.pause:
+        seconds: 60
+      when: ktx_download is defined and ('status' in ktx_download and ktx_download.status == 429)
+
+    - name: Retry KTX download after rate limit
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/blendle/kns/master/bin/ktx
+        dest: /usr/local/bin/ktx
+        mode: "0755"
+        timeout: 60
+      become: true
+      when: ktx_download is defined and ('status' in ktx_download and ktx_download.status == 429)
 
 - name: Setup KNS
-  ansible.builtin.get_url:
-    url: https://raw.githubusercontent.com/blendle/kns/master/bin/kns
-    dest: /usr/local/bin/kns
-    mode: "0755"
-  become: true
+  block:
+    - name: Get KNS script
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/blendle/kns/master/bin/kns
+        dest: /usr/local/bin/kns
+        mode: "0755"
+        timeout: 60
+      register: kns_download
+      retries: 5
+      delay: 30
+      until: kns_download is not failed or ('status' in kns_download and kns_download.status != 429)
+      become: true
+
+  rescue:
+    - name: Handle GitHub rate limit
+      ansible.builtin.debug:
+        msg: "Hit GitHub rate limit (429). Waiting before retry..."
+      when: kns_download is defined and ('status' in kns_download and kns_download.status == 429)
+
+    - name: Wait for rate limit reset
+      ansible.builtin.pause:
+        seconds: 60
+      when: kns_download is defined and ('status' in kns_download and kns_download.status == 429)
+
+    - name: Retry KNS download after rate limit
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/blendle/kns/master/bin/kns
+        dest: /usr/local/bin/kns
+        mode: "0755"
+        timeout: 60
+      become: true
+      when: kns_download is defined and ('status' in kns_download and kns_download.status == 429)
 
 - name: Ensure fzf is installed (required dependency for kns/ktx)
   ansible.builtin.package:

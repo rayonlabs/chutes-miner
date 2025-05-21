@@ -2,15 +2,19 @@
 - name: Monitoring setup
   tags: monitoring
   block:
-    - name: Add monitoring Helm repository
-      ansible.builtin.command: helm repo add k8s-cluster {{ karmada_monitoring_chart_repo }}
-      register: helm_monitor_repo_result
-      changed_when: "'has been added' in helm_monitor_repo_result.stdout"
+    - name: Create temporary directory for monitoring charts
+      ansible.builtin.file:
+        path: /tmp/chutes-monitoring
+        state: directory
+        mode: "0755"
 
-    - name: Update Helm repositories
-      ansible.builtin.command: helm repo update
-      register: helm_update_result
-      changed_when: "'Update Complete' in helm_update_result.stdout"
+    - name: Copy monitoring charts from local directory
+      ansible.builtin.copy:
+        src: ../../../charts/chutes-monitoring/
+        dest: /tmp/chutes-monitoring/
+        mode: preserve
+      register: copy_charts_result
+      changed_when: copy_charts_result.changed
 
     # Install monitoring on Karmada API Server context
     - name: Generate Monitoring API Server Helm values
@@ -21,14 +25,12 @@
 
     - name: Install or upgrade Monitoring on Karmada API Server context
       ansible.builtin.command: >
-        helm upgrade --install monitoring k8s-cluster/monitoring
+        helm upgrade --install monitoring /tmp/chutes-monitoring
         --kubeconfig={{ karmada_kubeconfig_temp_dir }}/karmada-apiserver
-        --version {{ karmada_monitoring_chart_version }}
         --namespace {{ karmada_monitoring_namespace }}
         --create-namespace
         -f /tmp/monitoring-apiserver-values.yaml
       register: monitoring_apiserver_deployment
-      changed_when: monitoring_apiserver_deployment.rc == 0
 
     - name: Get Karmada API Server token
       ansible.builtin.shell:
@@ -55,7 +57,7 @@
 
     - name: Install or upgrade Monitoring on Karmada host
       ansible.builtin.command: >
-        helm upgrade --install monitoring k8s-cluster/monitoring
+        helm upgrade --install monitoring chutes/monitoring
         --version {{ karmada_monitoring_chart_version }}
         --namespace {{ karmada_monitoring_namespace }}
         --create-namespace

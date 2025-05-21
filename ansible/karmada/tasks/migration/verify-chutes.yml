@@ -1,13 +1,43 @@
 ---
+- name: Verify python3-kubernetes package is present
+  apt:
+    name: python3-kubernetes
+    state: present
+  become: true
+
 - name: Setup kubeconfig on microk8s
   when: inventory_hostname in groups['microk8s']
-
   block:
     - name: Ensure .kube directory exists
       ansible.builtin.file:
         path: ~/.kube
         state: directory
         mode: "0700"
+
+    - name: Check if 'default' context already exists
+      ansible.builtin.shell: microk8s kubectl config get-contexts -o name | grep '^default$'
+      register: default_context_exists
+      changed_when: false
+      failed_when: false
+      check_mode: no
+
+    - name: Check if 'microk8s' context exists
+      ansible.builtin.shell: microk8s kubectl config get-contexts -o name | grep '^microk8s$'
+      register: microk8s_context_exists
+      changed_when: false
+      failed_when: false
+      check_mode: no
+      when: default_context_exists.rc != 0
+
+    - name: Rename kubectl context from 'microk8s' to 'default'
+      ansible.builtin.command:
+        cmd: microk8s kubectl config rename-context microk8s default
+      register: rename_context_result
+      changed_when: rename_context_result.rc == 0
+      failed_when: false
+      when: 
+        - default_context_exists.rc != 0  # default context doesn't exist
+        - microk8s_context_exists.rc == 0  # microk8s context exists
 
     - name: Get microk8s kubeconfig
       ansible.builtin.command: microk8s config
@@ -19,6 +49,17 @@
         content: "{{ microk8s_config.stdout }}"
         dest: ~/.kube/config
         mode: "0600"
+
+
+- name: Disable audit exporter
+  kubernetes.core.k8s:
+    state: patched
+    kind: CronJob
+    name: "{{ cronjob_name | default('audit-exporter') }}"
+    namespace: "{{ chutes_namespace | default('chutes') }}"
+    definition:
+      spec:
+        suspend: true
 
 - name: Verify the gepetto-code configmap
   tags: verify-gepetto
@@ -46,6 +87,7 @@
         kind: ConfigMap
         name: gepetto-code
         namespace: chutes
+        context: default
       register: configmap_data
       vars:
         ansible_python_interpreter: "/opt/chutes-miner-venv/bin/python"
@@ -59,12 +101,21 @@
     - name: Check if reconsile method is already modified
       ansible.builtin.command: grep -q "Skipping reconsiliation, currently migrating" /tmp/gepetto.py
       register: grep_result
-      failed_when: grep_result.rc != 0
+      failed_when: false
       changed_when: false
 
     - name: Display verification status
       ansible.builtin.debug:
         msg: "Gepetto reconsile method {{ 'is' if grep_result.rc == 0 else 'is NOT' }} disabled."
+
+    - name: Fail with helpful message if reconcile method is not disabled
+      ansible.builtin.fail:
+        msg: >
+          The Gepetto reconcile method is not disabled. \
+          
+          This likely means you need to update the configmap before continuing.
+          Please manually update the reconcile method gepetto before proceeding.
+      when: grep_result.rc != 0
 
     - name: Clean up temporary file
       ansible.builtin.file:

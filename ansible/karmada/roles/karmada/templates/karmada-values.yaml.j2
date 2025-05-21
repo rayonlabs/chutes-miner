@@ -3,6 +3,9 @@
 {% set helm_values_domain = '{{ .Values.clusterDomain }}' %}
 installMode: {{ karmada_install_mode }}
 
+components:
+  - search
+
 apiServer:
   nodePort: {{ karmada_api_server_node_port }}
   serviceType: NodePort

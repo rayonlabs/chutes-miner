@@ -17,33 +17,38 @@
       ansible.builtin.include_role:
         name: karmada
 
-- name: Prepare control planes
+- name: Prepare control planes and nodes
   hosts:
     - microk8s
     - control
   become: true
+  any_errors_fatal: true
   tags:
     - migrate-prep
+  vars_files:
+    - ../vars/migrate.yml
   tasks:
     - name: Verify chutes CLI
       ansible.builtin.include_tasks:
         file: ../tasks/migration/verify-chutes-cli.yml
         apply:
-          tags: chutes-cli
-      vars:
-        run_locally: true
-        hotkey_path: ~/.bittensor/wallets/chutes-test/hotkeys/chutes-test
-        remote_hotkey_path: /etc/chutes-miner/hotkey.json
-        miner_api_url: http://18.207.121.17:32000
-        copy_hotkey_to_ansible_host: false
-      tags: chutes-cli
+          tags: verify-cli
+      tags: verify-cli
 
-    - name: Verify gepetto
+    - name: Verify chutes components are ready
       ansible.builtin.include_tasks:
-        file: ../tasks/migration/verify-gepetto.yml
+        file: ../tasks/migration/verify-chutes.yml
         apply:
-          tags: verify-gepetto
-      tags: verify-gepetto
+          tags: verify-chutes
+      tags: verify-chutes
+
+    - name: Get node info for migration
+      ansible.builtin.include_tasks:
+        file: ../tasks/migration/get-node-info.yml
+        apply:
+          tags: get-node-info
+      tags: get-node-info
+    
 
 - name: Migrate Nodes
   hosts: workers
@@ -52,10 +57,15 @@
   serial: 1
   tags:
     - migrate-nodes
+  vars_files:
+    - ../vars/migrate.yml
+    - ../vars/chutes_nodes.yml
   tasks:
+    - name: Remove node from chutes
+      ansible.builtin.include_tasks: ../tasks/migration/remove-chutes-node.yml
+
     - name: Reset System
-      ansible.builtin.include_role:
-        name: reset
+      ansible.builtin.include_tasks: ../tasks/migration/reset-system.yml
 
     - name: Common Setup
       ansible.builtin.include_role:
@@ -65,10 +75,9 @@
       ansible.builtin.include_role:
         name: k3s
 
-    - name: GPU Setup
-      ansible.builtin.include_role:
-        name: gpu
-
     - name: Join Control Plane
       ansible.builtin.include_role:
         name: karmada
+
+    - name: Add node to chutes
+      ansible.builtin.include_tasks: ../tasks/migration/add-chutes-node.yml

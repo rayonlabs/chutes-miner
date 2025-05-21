@@ -1,8 +1,32 @@
 ---
 - name: Add Karmada Helm repository
-  ansible.builtin.command: helm repo add karmada {{ karmada_chart_repo }}
-  register: helm_repo_result
-  changed_when: "'has been added' in helm_repo_result.stdout"
+  block:
+    - name: Try adding Karmada Helm repository
+      ansible.builtin.command: helm repo add karmada {{ karmada_chart_repo }}
+      register: helm_repo_result
+      changed_when: "'has been added' in helm_repo_result.stdout"
+      failed_when:
+        - helm_repo_result.rc != 0
+        - "'429 Too Many Requests' not in helm_repo_result.stderr"
+      retries: 5
+      delay: 30
+      until: helm_repo_result.rc == 0 or "'429 Too Many Requests' not in helm_repo_result.stderr"
+  
+  rescue:
+    - name: Handle rate limit for Helm repository
+      ansible.builtin.debug:
+        msg: "Hit rate limit (429) when adding Helm repository. Waiting before retry..."
+      when: "'429 Too Many Requests' in helm_repo_result.stderr | default('')"
+    
+    - name: Wait for rate limit reset
+      ansible.builtin.pause:
+        seconds: 60
+      when: "'429 Too Many Requests' in helm_repo_result.stderr | default('')"
+    
+    - name: Final attempt to add Karmada Helm repository
+      ansible.builtin.command: helm repo add karmada {{ karmada_chart_repo }}
+      register: helm_repo_final
+      changed_when: "'has been added' in helm_repo_final.stdout"
 
 - name: Update Helm repositories
   ansible.builtin.command: helm repo update
@@ -78,6 +102,23 @@
   delay: 30
   until: karmada_wait.rc == 0
 
+- name: Install python3-kubernetes package
+  apt:
+    name: python3-kubernetes
+    state: present
+  become: true
+
+- name: Add karmada-control-plane label to control nodes
+  kubernetes.core.k8s:
+    state: present
+    kind: Node
+    name: "{{ inventory_hostname }}"
+    definition:
+      metadata:
+        labels:
+          karmada-control-plane: "true"
+    merge_type: strategic-merge
+
 - name: Get Karmada kubeconfig
   ansible.builtin.shell:
     cmd: |
@@ -103,6 +144,37 @@
       register: csa_result
       changed_when:
         - csa_result.rc == 0
+
+    - name: Merge API Server kubeconfig for user
+      ansible.builtin.shell: |
+        TFILE=$(mktemp)
+        mkdir -p /home/{{ ansible_user }}/.kube
+        touch /home/{{ ansible_user }}/.kube/config
+        KUBECONFIG={{ kubeconfig }}:/home/{{ ansible_user }}/.kube/config kubectl config view --flatten > ${TFILE}
+        mv ${TFILE} /home/{{ ansible_user }}/.kube/config
+        chown -R {{ ansible_user }}:{{ ansible_user }} /home/{{ ansible_user }}/.kube
+      register: mv_result
+      changed_when:
+        - mv_result.rc == 0
+
+    - name: Merge API Server kubeconfig for root
+      ansible.builtin.shell: |
+        TFILE=$(mktemp)
+        mkdir -p ~/.kube
+        touch ~/.kube/config
+        KUBECONFIG={{ kubeconfig }}:~/.kube/config kubectl config view --flatten > ${TFILE}
+        mv ${TFILE} ~/.kube/config
+      register: mv_result
+      changed_when:
+        - mv_result.rc == 0
+
+- name: Apply karmada search resources
+  kubernetes.core.k8s:
+    state: present
+    src: karmada-search.yaml
+    context: karmada-apiserver
+    wait: yes
+    wait_timeout: 60
 
 - name: Check whether kubectl is installed on control node
   delegate_to: 127.0.0.1

@@ -1,5 +1,5 @@
 ---
-- name: Undo cluster setup
+- name: Reset node
   hosts: all
   become: true
   tasks:
