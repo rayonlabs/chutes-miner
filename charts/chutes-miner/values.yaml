@@ -7,7 +7,10 @@ cache:
 #    chutes-miner-gpu-1: 1500
 
 # Set this value to true if oeprating a mutli cluster karmada environment
-multiCluster: false
+multiCluster: true
+kubeconfig:
+  hostPath: '/home/ubuntu/.kube/config'
+  localPath: /tmp/kube/config
 
 validators:
   defaultRegistry: registry.chutes.ai
@@ -19,12 +22,12 @@ validators:
       socket: wss://ws.chutes.ai
 
 minerApi:
-  image: parachutes/miner:latest
+  image: localhost:5000/miner:karmada
   imagePullPolicy: Always
   resources:
     requests:
       cpu: "500m"
-      memory: "4Gi"
+      memory: "2Gi"
     limits:
       cpu: "1"
       memory: "4Gi"
@@ -50,7 +53,7 @@ squid:
   resources:
     requests:
       cpu: "500m"
-      memory: "1Gi"
+      memory: 512Mi
     limits:
       cpu: "1"
       memory: "1Gi"
@@ -60,12 +63,12 @@ squid:
     nvidia.com/gpu.present: "true"
 
 gepetto:
-  image: parachutes/miner:latest
+  image: localhost:5000/miner:karmada
   imagePullPolicy: Always
   resources:
     requests:
       cpu: "1"
-      memory: "4Gi"
+      memory: "2Gi"
     limits:
       cpu: "1"
       memory: "4Gi"
@@ -129,7 +132,7 @@ redis:
   resources:
     requests:
       cpu: 1
-      memory: 1Gi
+      memory: 512Mi
     limits:
       cpu: 1
       memory: 1Gi

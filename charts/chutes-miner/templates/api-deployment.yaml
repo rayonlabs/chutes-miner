@@ -6,6 +6,7 @@ redis://:$(REDIS_PASSWORD)@redis:6379
 postgresql+asyncpg://{{ .Values.postgres.database.user }}:$(POSTGRES_PASSWORD)@postgres:5432/{{ .Values.postgres.database.name }}
 {{- end }}
 
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -70,9 +71,26 @@ spec:
               value: {{ .Values.validators | toJson | quote }}
             - name: REGISTRY_PROXY_PORT
               value: "{{ .Values.registry.service.nodePort }}"
+              {{ if .Values.multiCluster }}
+            - name: KUBECONFIG
+              value: "/tmp/kube/config"
+              {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.minerApi.service.targetPort }}
               protocol: TCP
           resources:
             {{- toYaml .Values.minerApi.resources | nindent 12 }}
+          volumeMounts:
+            {{ if .Values.multiCluster }}
+            - name: kubeconfig-volume
+              mountPath: /tmp/kube/config
+              readOnly: true
+              {{- end }}
+      volumes:
+        {{ if .Values.multiCluster }}
+        - name: kubeconfig-volume
+          hostPath:
+            path: {{ .Values.kubeconfig.hostPath }}
+            type: File
+          {{- end }}
