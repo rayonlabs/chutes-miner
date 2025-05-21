@@ -1,3 +1,4 @@
+---
 # This block runs remotely by default
 - name: Verify Remote CLI
   when: not run_cli_locally and inventory_hostname in groups['microk8s']
@@ -6,12 +7,10 @@
     - name: Verify CLI for node info
       ansible.builtin.include_tasks: ./verify-chutes-cli.yml
 
-
 - name: Get node cost details
   when: inventory_hostname in groups['microk8s']
   tags: get-node-info
   block:
-
     - name: Run local-inventory command remotely
       ansible.builtin.command: >
         chutes-miner local-inventory  --hotkey {{ remote_hotkey_path }}
@@ -34,44 +33,47 @@
     - name: Set inventory output variable
       ansible.builtin.set_fact:
         inventory_output: >-
-          {{ remote_inventory_output if (remote_inventory_output is defined and 
+          {{ remote_inventory_output if (remote_inventory_output is defined and
             remote_inventory_output.stdout is defined) else local_inventory_output }}
 
     - name: Parse servers
-      set_fact:
+      ansible.builtin.set_fact:
         server_names: "{{ inventory_output.stdout | regex_findall('Server:\\s+(\\S+)[\\s\\S]+?') }}"
 
     - name: Parse hourly costs
-      set_fact:
+      ansible.builtin.set_fact:
         hourly_costs: "{{ inventory_output.stdout | regex_findall('Hourly Cost.+?\\$([0-9.]+)') }}"
 
     # Filter out empty values from both lists
     - name: Filter out empty values from servers list
-      set_fact:
+      ansible.builtin.set_fact:
         filtered_servers: "{{ server_names | select('defined') | select('string') | reject('equalto', '') | list }}"
 
     - name: Filter out empty values from costs list
-      set_fact:
+      ansible.builtin.set_fact:
         filtered_costs: "{{ hourly_costs | select('defined') | select('string') | reject('equalto', '') | list }}"
 
     # Verify data integrity
     - name: Verify data integrity
-      assert:
+      ansible.builtin.assert:
         that:
           - "filtered_servers | length == filtered_costs | length"
           - "filtered_servers | length > 0"
-        fail_msg: "Data integrity check failed: The number of servers ({{ filtered_servers | length }}) does not match the number of hourly costs ({{ filtered_costs | length }}) or one of the lists is empty"
+        fail_msg: >-
+          Data integrity check failed: The number of servers ({{ filtered_servers | length }})
+          does not match the number of hourly costs ({{ filtered_costs | length }})
+          or one  of the lists is empty
         success_msg: "Data integrity check passed: Found {{ filtered_servers | length }} servers with corresponding costs"
 
     - name: Create server costs dictionary
-      set_fact:
+      ansible.builtin.set_fact:
         server_costs: "{{ {} }}"
       when: filtered_servers | length == filtered_costs | length and filtered_servers | length > 0
 
     - name: Populate server costs dictionary
-      set_fact:
+      ansible.builtin.set_fact:
         server_costs: "{{ server_costs | combine({filtered_servers[idx]: filtered_costs[idx]}) }}"
-      loop: "{{ range(0, filtered_servers|length) | list }}"
+      loop: "{{ range(0, filtered_servers | length) | list }}"
       loop_control:
         index_var: idx
       when: filtered_servers | length == filtered_costs | length and filtered_servers | length > 0
@@ -80,70 +82,76 @@
   when: inventory_hostname in groups['microk8s']
   tags: get-node-info
   block:
-
     - name: Get gpu-short-ref label for each server
-      shell: microk8s kubectl get node {{ item }} --template '{% raw %}{{range $key, $value := .metadata.labels}}{{if eq $key "gpu-short-ref"}}{{$value}}{{end}}{{end}}{% endraw %}'
+      ansible.builtin.command:
+        cmd: >-
+          microk8s kubectl get node {{ item }} --template '{% raw %}
+          {{- range $key, $value := .metadata.labels -}}
+            {{- if eq $key "gpu-short-ref" -}}
+              {{- $value -}}
+            {{- end -}}
+          {{- end -}}
+          {% endraw %}'
       register: gpu_short_ref_results
       loop: "{{ server_names }}"
+      changed_when: false
       when: filtered_servers | length == filtered_costs | length and filtered_servers | length > 0
 
     - name: Debug GPU short ref results
-      debug:
+      ansible.builtin.debug:
         msg: "Node: {{ item.item }}, GPU Short Ref: {{ item.stdout }}"
       loop: "{{ gpu_short_ref_results.results | default([]) }}"
       when: filtered_servers | length == filtered_costs | length and filtered_servers | length > 0 and gpu_short_ref_results is defined
 
-
 - name: Build server info dictionary
   block:
     - name: Create enhanced server costs dictionary with GPU type
-      set_fact:
+      ansible.builtin.set_fact:
         server_info: >-
-          {{ 
+          {{
             server_info | default({}) | combine({
               item.item: {
-                'hourly_cost': server_costs[item.item], 
+                'hourly_cost': server_costs[item.item],
                 'gpu_type': item.stdout | default('unknown')
               }
-            }) 
+            })
           }}
       loop: "{{ gpu_short_ref_results.results | default([]) }}"
       when: >
-        filtered_servers | length == filtered_costs | length and 
-        filtered_servers | length > 0 and 
-        gpu_short_ref_results is defined and 
-        item.item in server_costs
+        filtered_servers | length == filtered_costs | length
+        and filtered_servers | length > 0
+        and gpu_short_ref_results is defined
+        and item.item in server_costs
 
 - name: Save node details
   when: inventory_hostname in groups['microk8s']
   tags: get-node-info
   block:
-
     - name: Create vars directory
       delegate_to: localhost
       become: false
-      file:
+      ansible.builtin.file:
         path: "{{ playbook_dir }}/../vars"
         state: directory
-        mode: '0755'
+        mode: "0755"
       run_once: true
       when: filtered_servers | length == filtered_costs | length and filtered_servers | length > 0
 
     - name: Store server costs as variable file
       delegate_to: localhost
-      become: no
-      copy:
+      become: false
+      ansible.builtin.copy:
         content: |
           ---
-          chutes_nodes: 
+          chutes_nodes:
             {{ server_info | to_nice_yaml | indent(2) }}
         dest: "{{ playbook_dir }}/../vars/chutes_nodes.yml"
-        mode: '0644'
+        mode: "0644"
       run_once: true
       when: filtered_servers | length == filtered_costs | length and filtered_servers | length > 0
 
     - name: Display success message
-      debug:
+      ansible.builtin.debug:
         msg: "Server costs successfully stored in {{ playbook_dir }}/../vars/chutes_nodes.yml"
       delegate_to: localhost
       run_once: true

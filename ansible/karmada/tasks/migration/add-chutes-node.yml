@@ -1,11 +1,15 @@
+---
 - name: Add node to karmada/k3s
   block:
     - name: Verify node info is present before adding
-      assert:
+      ansible.builtin.assert:
         that: inventory_hostname in chutes_nodes
-        fail_msg: Node information for {{ inventory_hostname }} is not present. Run the 'get-node-info' tag to resolve if this node still exists in microk8s, otherwise add manually.
+        fail_msg: >-
+          Node information for {{ inventory_hostname }} is not present.
+          Run the 'get-node-info' tag to resolve if this node still exists in microk8s,
+          otherwise add manually.
         success_msg: Found information for {{ inventory_hostname }}
- 
+
     - name: Run add node command remotely
       ansible.builtin.command: >
         chutes-miner add-node --name {{ inventory_name }}  --hotkey {{ remote_hotkey_path }}
@@ -36,8 +40,7 @@
         add_output: "{{ remote_add_output | default(local_add_output) }}"
 
     - name: Verify node added
-      assert:
+      ansible.builtin.assert:
         that: add_output.rc == 0
         fail_msg: "Failed to add node {{ inventory_hostname }}"
         success_msg: "Successfully added {{ inventory_hostname }}"
-

@@ -48,7 +48,6 @@
         apply:
           tags: get-node-info
       tags: get-node-info
-    
 
 - name: Migrate Nodes
   hosts: workers

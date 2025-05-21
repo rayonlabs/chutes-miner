@@ -1,6 +1,6 @@
 ---
 - name: Verify python3-kubernetes package is present
-  apt:
+  ansible.builtin.apt:
     name: python3-kubernetes
     state: present
   become: true
@@ -15,18 +15,26 @@
         mode: "0700"
 
     - name: Check if 'default' context already exists
-      ansible.builtin.shell: microk8s kubectl config get-contexts -o name | grep '^default$'
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          microk8s kubectl config get-contexts -o name | grep '^default$'
+        exceutable: /bin/bash
       register: default_context_exists
       changed_when: false
       failed_when: false
-      check_mode: no
+      check_mode: false
 
     - name: Check if 'microk8s' context exists
-      ansible.builtin.shell: microk8s kubectl config get-contexts -o name | grep '^microk8s$'
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          microk8s kubectl config get-contexts -o name | grep '^microk8s$'
+        executable: /bin/bash
       register: microk8s_context_exists
       changed_when: false
       failed_when: false
-      check_mode: no
+      check_mode: false
       when: default_context_exists.rc != 0
 
     - name: Rename kubectl context from 'microk8s' to 'default'
@@ -35,9 +43,9 @@
       register: rename_context_result
       changed_when: rename_context_result.rc == 0
       failed_when: false
-      when: 
-        - default_context_exists.rc != 0  # default context doesn't exist
-        - microk8s_context_exists.rc == 0  # microk8s context exists
+      when:
+        - default_context_exists.rc != 0 # default context doesn't exist
+        - microk8s_context_exists.rc == 0 # microk8s context exists
 
     - name: Get microk8s kubeconfig
       ansible.builtin.command: microk8s config
@@ -49,7 +57,6 @@
         content: "{{ microk8s_config.stdout }}"
         dest: ~/.kube/config
         mode: "0600"
-
 
 - name: Disable audit exporter
   kubernetes.core.k8s:
@@ -112,7 +119,7 @@
       ansible.builtin.fail:
         msg: >
           The Gepetto reconcile method is not disabled. \
-          
+
           This likely means you need to update the configmap before continuing.
           Please manually update the reconcile method gepetto before proceeding.
       when: grep_result.rc != 0

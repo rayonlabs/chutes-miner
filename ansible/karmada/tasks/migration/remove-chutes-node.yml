@@ -1,11 +1,12 @@
+---
 - name: Remove node from microk8s
   block:
     - name: Verify node info is present before deleting
-      assert:
+      ansible.builtin.assert:
         that: inventory_hostname in chutes_nodes
         fail_msg: Node information for {{ inventory_hostname }} is not present. Run the 'get-node-info' tag to resolve.
         success_msg: Found information for {{ inventory_hostname }}
- 
+
     - name: Run delete node command remotely
       ansible.builtin.command: >
         chutes-miner delete-node {{ inventory_name }}  --hotkey {{ remote_hotkey_path }}
@@ -30,7 +31,7 @@
         delete_output: "{{ remote_delete_output | default(local_delete_output) }}"
 
     - name: Verify node deleted
-      assert:
+      ansible.builtin.assert:
         that: delete_output.rc == 0
         fail_msg: "Failed to delete node {{ inventory_hostname }}"
         success_msg: "Successfully deleted {{ inventory_hostname }}"

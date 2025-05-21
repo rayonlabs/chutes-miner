@@ -31,6 +31,7 @@
         --create-namespace
         -f /tmp/monitoring-apiserver-values.yaml
       register: monitoring_apiserver_deployment
+      changed_when: monitoring_apiserver_deployment.rc == 0
 
     - name: Get Karmada API Server token
       ansible.builtin.shell:

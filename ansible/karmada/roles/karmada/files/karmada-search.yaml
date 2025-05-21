@@ -7,11 +7,11 @@ spec:
   targetCluster:
     clusterNames: []
   resourceSelectors:
-  - apiVersion: v1
-    kind: Service
-  - apiVersion: v1
-    kind: Node
-  - apiVersion: v1
-    kind: Pod
-  - apiVersion: apps/v1
-    kind: Deployment
+    - apiVersion: v1
+      kind: Service
+    - apiVersion: v1
+      kind: Node
+    - apiVersion: v1
+      kind: Pod
+    - apiVersion: apps/v1
+      kind: Deployment

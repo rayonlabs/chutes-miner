@@ -1,3 +1,4 @@
+---
 run_cli_locally: false
 hotkey_path: ~/.bittensor/wallets/chutes-test/hotkeys/chutes-test
 remote_hotkey_path: /etc/chutes-miner/hotkey.json

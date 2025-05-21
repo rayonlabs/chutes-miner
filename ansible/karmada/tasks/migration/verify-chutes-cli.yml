@@ -127,7 +127,7 @@
       changed_when: false
 
     - name: Verify miner API connection status
-      assert:
+      ansible.builtin.assert:
         that: api_connection.status == 200
         fail_msg: "Miner API is not reachable"
         success_msg: "Miner API is reachable"

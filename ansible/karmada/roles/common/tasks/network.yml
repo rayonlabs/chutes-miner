@@ -89,12 +89,12 @@
         - "'sysctl: cannot stat' not in sysctl_result.msg | default('')"
 
     - name: Disable IPv6
-      sysctl:
+      ansible.posix.sysctl:
         name: "{{ item.key }}"
         value: "{{ item.value }}"
         state: present
         sysctl_file: /etc/sysctl.d/99-disable-ipv6.conf
-        reload: yes
+        reload: true
       with_items:
         - { key: "net.ipv6.conf.all.disable_ipv6", value: "1" }
         - { key: "net.ipv6.conf.default.disable_ipv6", value: "1" }
@@ -202,4 +202,3 @@
       - "Warning: Iptables {{ ansible_facts.packages['iptables'][0]['version'] }} found."
       - Add '--prefer-bundled-bin' to extra_server_args variable to use the bundled iptables binary.
   failed_when: false
-

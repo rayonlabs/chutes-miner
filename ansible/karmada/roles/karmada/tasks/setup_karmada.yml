@@ -11,18 +11,18 @@
       retries: 5
       delay: 30
       until: helm_repo_result.rc == 0 or "'429 Too Many Requests' not in helm_repo_result.stderr"
-  
+
   rescue:
     - name: Handle rate limit for Helm repository
       ansible.builtin.debug:
         msg: "Hit rate limit (429) when adding Helm repository. Waiting before retry..."
       when: "'429 Too Many Requests' in helm_repo_result.stderr | default('')"
-    
+
     - name: Wait for rate limit reset
       ansible.builtin.pause:
         seconds: 60
       when: "'429 Too Many Requests' in helm_repo_result.stderr | default('')"
-    
+
     - name: Final attempt to add Karmada Helm repository
       ansible.builtin.command: helm repo add karmada {{ karmada_chart_repo }}
       register: helm_repo_final
@@ -103,7 +103,7 @@
   until: karmada_wait.rc == 0
 
 - name: Install python3-kubernetes package
-  apt:
+  ansible.builtin.apt:
     name: python3-kubernetes
     state: present
   become: true
@@ -173,7 +173,7 @@
     state: present
     src: karmada-search.yaml
     context: karmada-apiserver
-    wait: yes
+    wait: true
     wait_timeout: 60
 
 - name: Check whether kubectl is installed on control node
