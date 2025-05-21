@@ -9,7 +9,7 @@
 
     - name: Run delete node command remotely
       ansible.builtin.command: >
-        chutes-miner delete-node {{ inventory_name }}  --hotkey {{ remote_hotkey_path }}
+        chutes-miner delete-node {{ inventory_hostname }}  --hotkey {{ remote_hotkey_path }}
       register: remote_delete_output
       failed_when: remote_delete_output.rc != 0
       changed_when: false
@@ -17,7 +17,7 @@
 
     - name: Run delete node command locally
       ansible.builtin.command: >
-        chutes-miner delete-node --name {{ inventory_name }}  --hotkey {{ hotkey_path }}
+        chutes-miner delete-node --name {{ inventory_hostname }}  --hotkey {{ hotkey_path }}
         --miner-api http://{{ ansible_host }}:{{ miner_api_port | default(32000) }}
       register: local_delete_output
       failed_when: local_delete_output.rc != 0

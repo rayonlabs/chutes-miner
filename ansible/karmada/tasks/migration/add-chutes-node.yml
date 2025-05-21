@@ -12,10 +12,10 @@
 
     - name: Run add node command remotely
       ansible.builtin.command: >
-        chutes-miner add-node --name {{ inventory_name }}  --hotkey {{ remote_hotkey_path }}
+        chutes-miner add-node --name {{ inventory_hostname }}  --hotkey {{ remote_hotkey_path }}
         --validator 5Dt7HZ7Zpw4DppPxFM7Ke3Cm7sDAWhsZXmM5ZAmE7dSVJbcQ
-        --hourly-cost {{ chutes_nodes[inventory_name]['hourly_cost'] }}
-        --gpu-short-ref {{ chutes_nodes[inventory_name]['gpu_type'] }}
+        --hourly-cost {{ chutes_nodes[inventory_hostname]['hourly_cost'] }}
+        --gpu-short-ref {{ chutes_nodes[inventory_hostname]['gpu_type'] }}
       register: remote_add_output
       failed_when: remote_add_output.rc != 0
       changed_when: false
@@ -23,11 +23,11 @@
 
     - name: Run add node command locally
       ansible.builtin.command: >
-        chutes-miner add-node --name {{ inventory_name }}  --hotkey {{ hotkey_path }}
+        chutes-miner add-node --name {{ inventory_hostname }}  --hotkey {{ hotkey_path }}
         --miner-api http://{{ ansible_host }}:{{ miner_api_port | default(32000) }}
         --validator 5Dt7HZ7Zpw4DppPxFM7Ke3Cm7sDAWhsZXmM5ZAmE7dSVJbcQ
-        --hourly-cost {{ chutes_nodes[inventory_name]['hourly_cost'] }}
-        --gpu-short-ref {{ chutes_nodes[inventory_name]['gpu_type'] }}
+        --hourly-cost {{ chutes_nodes[inventory_hostname]['hourly_cost'] }}
+        --gpu-short-ref {{ chutes_nodes[inventory_hostname]['gpu_type'] }}
       register: local_add_output
       failed_when: local_add_output.rc != 0
       become: false
