@@ -1,0 +1,27 @@
+- name: GPU CC | Clone NVIDIA GPU Admin Tools repository if needed
+  ansible.builtin.git:
+    repo: https://github.com/nvidia/gpu-admin-tools
+    dest: "{{ shared_dir }}/gpu-admin-tools"
+    version: main
+    force: no
+
+- name: GPU CC | Disable PPCIE and Enable CC Mode via Shell Script
+  ansible.builtin.shell: |
+    set -e
+    echo "Enabling CC Mode"
+    GPU_COUNT=$(lspci -nn | grep -c "10de" || true)
+    if [ "$GPU_COUNT" -gt 0 ]; then
+      for i in $(seq 0 $(($GPU_COUNT - 1))); do
+        echo "Enabling CC Mode for GPU $i..."
+        python3 ./nvidia_gpu_tools.py --set-cc-mode=on --reset-after-cc-mode-switch --gpu=$i
+      done
+    else
+       echo "No NVIDIA GPUs found via lspci, skipping CC enable."
+    fi
+    echo "GPU Mode Configuration Script Finished"
+  args:
+    chdir: "{{ shared_dir }}/gpu-admin-tools"
+    executable: /bin/bash
+  become: yes
+  register: gpu_mode_script_result
+  changed_when: true
