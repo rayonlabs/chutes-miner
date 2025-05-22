@@ -17,6 +17,7 @@
         --hourly-cost {{ chutes_nodes[inventory_hostname]['hourly_cost'] }}
         --gpu-short-ref {{ chutes_nodes[inventory_hostname]['gpu_type'] }}
       register: remote_add_output
+      delegate_to: "{{ groups['control'][0] }}"
       failed_when: remote_add_output.rc != 0
       changed_when: false
       when: not run_cli_locally | default(true)

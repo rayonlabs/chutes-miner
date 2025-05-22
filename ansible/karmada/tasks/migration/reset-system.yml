@@ -1,32 +1,4 @@
 ---
-- name: Stop and remove Wireguard
-  block:
-    - name: Stop Wireguard service
-      ansible.builtin.systemd:
-        name: wg-quick@wg0
-        state: stopped
-        enabled: false
-      register: stop_wireguard
-      failed_when:
-        - stop_wireguard.failed is defined
-        - stop_wireguard.failed
-        - '"Could not find the requested service" not in stop_wireguard.msg'
-
-    - name: Remove Wireguard configuration
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      with_items:
-        - /etc/wireguard/wg0.conf
-        - /etc/wireguard/private.key
-        - /etc/wireguard/public.key
-
-    - name: Uninstall Wireguard package
-      ansible.builtin.apt:
-        name: wireguard
-        state: absent
-        purge: true
-
 - name: Stop and remove MicroK8s
   block:
     - name: Check if MicroK8s service exists
@@ -54,11 +26,29 @@
         - "'Could not find the requested service' not in stop_microk8s.msg"
       when: microk8s_service_file.stat.exists
 
+    - name: Wait for MicroK8s services to be stopped
+      ansible.builtin.command:
+        cmd: systemctl is-active {{ item }}
+      register: service_status
+      until: service_status.stdout == "inactive" or service_status.stdout == "unknown"
+      retries: 10
+      delay: 3
+      failed_when: false
+      with_items:
+        - snap.microk8s.daemon-containerd
+        - snap.microk8s.daemon-apiserver
+        - snap.microk8s.daemon-proxy
+        - snap.microk8s.daemon-kubelet
+        - snap.microk8s.daemon-scheduler
+        - snap.microk8s.daemon-controller-manager
+        - snap.microk8s.daemon-kubelite
+      when: microk8s_service_file.stat.exists
+      changed_when: false
+
     - name: Remove MicroK8s snap
       community.general.snap:
         name: microk8s
         state: absent
-        classic: true
       register: remove_microk8s
       failed_when:
         - remove_microk8s.failed is defined
@@ -90,6 +80,34 @@
         - remove_kubeconfig.failed is defined
         - remove_kubeconfig.failed
         - "'No such file or directory' not in remove_kubeconfig.msg"
+
+- name: Stop and remove Wireguard
+  block:
+    - name: Stop Wireguard service
+      ansible.builtin.systemd:
+        name: wg-quick@wg0
+        state: stopped
+        enabled: false
+      register: stop_wireguard
+      failed_when:
+        - stop_wireguard.failed is defined
+        - stop_wireguard.failed
+        - '"Could not find the requested service" not in stop_wireguard.msg'
+
+    - name: Remove Wireguard configuration
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/wireguard/wg0.conf
+        - /etc/wireguard/private.key
+        - /etc/wireguard/public.key
+
+    - name: Uninstall Wireguard package
+      ansible.builtin.apt:
+        name: wireguard
+        state: absent
+        purge: true
 
 - name: Remove containerd configuration
   ansible.builtin.file:

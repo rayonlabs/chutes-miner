@@ -9,10 +9,11 @@
 
     - name: Run delete node command remotely
       ansible.builtin.command: >
-        chutes-miner delete-node {{ inventory_hostname }}  --hotkey {{ remote_hotkey_path }}
+        chutes-miner delete-node --name {{ inventory_hostname }}  --hotkey {{ remote_hotkey_path }}
       register: remote_delete_output
       failed_when: remote_delete_output.rc != 0
       changed_when: false
+      delegate_to: "{{ groups['microk8s'][0] }}"
       when: not run_cli_locally | default(true)
 
     - name: Run delete node command locally
