@@ -1,0 +1,82 @@
+---
+- name: Setup control plane
+  hosts: control
+  become: true
+  tags:
+    - setup-control-plane
+  tasks:
+    - name: Common Setup
+      ansible.builtin.include_role:
+        name: common
+
+    - name: K3s Setup
+      ansible.builtin.include_role:
+        name: k3s
+
+    - name: Karmada Setup
+      ansible.builtin.include_role:
+        name: karmada
+
+- name: Prepare control planes and nodes
+  hosts:
+    - microk8s
+    - control
+  become: true
+  any_errors_fatal: true
+  tags:
+    - migrate-prep
+  vars_files:
+    - ../vars/migrate.yml
+  tasks:
+    - name: Verify chutes CLI
+      ansible.builtin.include_tasks:
+        file: ../tasks/migration/verify-chutes-cli.yml
+        apply:
+          tags: verify-cli
+      tags: verify-cli
+
+    - name: Verify chutes components are ready
+      ansible.builtin.include_tasks:
+        file: ../tasks/migration/verify-chutes.yml
+        apply:
+          tags: verify-chutes
+      tags: verify-chutes
+
+    - name: Get node info for migration
+      ansible.builtin.include_tasks:
+        file: ../tasks/migration/get-node-info.yml
+        apply:
+          tags: get-node-info
+      tags: get-node-info
+
+- name: Migrate Nodes
+  hosts: workers
+  become: true
+  any_errors_fatal: true
+  serial: 1
+  tags:
+    - migrate-nodes
+  vars_files:
+    - ../vars/migrate.yml
+    - ../vars/chutes_nodes.yml
+  tasks:
+    - name: Remove node from chutes
+      ansible.builtin.include_tasks: ../tasks/migration/remove-chutes-node.yml
+
+    - name: Reset System
+      ansible.builtin.include_tasks: ../tasks/migration/reset-system.yml
+
+    - name: Common Setup
+      ansible.builtin.include_role:
+        name: common
+
+    - name: K3s Setup
+      ansible.builtin.include_role:
+        name: k3s
+
+    - name: Join Control Plane
+      ansible.builtin.include_role:
+        name: karmada
+
+    - name: Add node to chutes
+      ansible.builtin.include_tasks: ../tasks/migration/add-chutes-node.yml

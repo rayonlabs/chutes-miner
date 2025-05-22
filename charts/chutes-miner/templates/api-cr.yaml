@@ -7,7 +7,7 @@ rules:
   resources: ["nodes"]
   verbs: ["get", "list", "watch", "patch"]
 - apiGroups: [""]
-  resources: ["services"]
+  resources: ["services", "pods"]
   verbs: ["get", "list", "create", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments"]

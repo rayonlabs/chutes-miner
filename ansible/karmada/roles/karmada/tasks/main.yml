@@ -1,0 +1,20 @@
+---
+- name: Karmada host prereqs
+  ansible.builtin.include_tasks: install_prereqs.yml
+  when: inventory_hostname in groups['control']
+  tags: karmada-prereqs
+
+- name: Karmada control plane setup
+  ansible.builtin.include_tasks: setup_karmada.yml
+  when: inventory_hostname in groups['control']
+  tags: karmada-install
+
+- name: Join member clusters
+  ansible.builtin.include_tasks: join_clusters.yml
+  when: inventory_hostname in groups['workers']
+  tags: karmada-join-cluster
+
+- name: Karmada monitoring setup
+  ansible.builtin.include_tasks: setup_monitoring.yml
+  when: inventory_hostname in groups['control']
+  tags: monitoring

@@ -21,28 +21,42 @@ class Validator(BaseModel):
     socket: str
 
 
-def create_kubernetes_client(cls: Any = client.CoreV1Api):
+def create_kubernetes_client(cls: Any = client.CoreV1Api, context: Optional[str] = None):
     """
     Create a k8s client.
     """
     try:
-        if os.getenv("KUBERNETES_SERVICE_HOST") is not None:
+        if os.getenv("KUBECONFIG") is not None:
+            load_kube_config(config_file=os.getenv("KUBECONFIG"), context=context)
+        elif os.getenv("KUBERNETES_SERVICE_HOST") is not None:
             load_incluster_config()
         else:
-            load_kube_config(config_file=os.getenv("KUBECONFIG"))
+            raise RuntimeError(
+                "Unable to determine kubernetes configuration from environment. Set either 'KUBECONFIG' or 'KUBERNETES_SERVICE_HOST' environment variable."
+            )
         return cls()
     except Exception as exc:
         raise Exception(f"Failed to create Kubernetes client: {str(exc)}")
 
 
-@lru_cache(maxsize=1)
-def k8s_core_client():
-    return create_kubernetes_client()
+@lru_cache(maxsize=2)
+def k8s_core_client(context: Optional[str] = None) -> client.CoreV1Api:
+    return create_kubernetes_client(context=context)
 
 
 @lru_cache(maxsize=1)
-def k8s_app_client():
-    return create_kubernetes_client(cls=client.AppsV1Api)
+def k8s_app_client(context: Optional[str] = None) -> client.AppsV1Api:
+    return create_kubernetes_client(cls=client.AppsV1Api, context=context)
+
+
+@lru_cache(maxsize=1)
+def k8s_api_client(context: Optional[str] = None) -> client.ApiClient:
+    return create_kubernetes_client(cls=client.ApiClient, context=context)
+
+
+@lru_cache(maxsize=1)
+def k8s_custom_objects_client(context: Optional[str] = None) -> client.CustomObjectsApi:
+    return create_kubernetes_client(cls=client.CustomObjectsApi, context=context)
 
 
 @lru_cache(maxsize=32)

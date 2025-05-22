@@ -1,0 +1,21 @@
+---
+# .ansible-lint
+warn_list: # or 'skip_list' to silence them completely
+  # - '204'  # Lines should be no longer than 160 chars
+  - experimental # experimental is optional for now
+
+use_default_rules: true
+parseable: true
+
+# Check specific directories
+exclude_paths:
+  - .venv/ # Implicit unless exclude_paths is defined in config
+  - .github/
+  - .git/
+  - docker/
+  - charts/
+  - terraform/
+
+enable_list:
+  - fqcn-builtins # Use fully qualified collection names
+  - no-log-password # Ensure no passwords are logged
