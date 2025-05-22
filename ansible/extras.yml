@@ -7,6 +7,8 @@
         microk8s enable community || (sleep 10 && microk8s enable community) || true
         microk8s helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/ || true
         microk8s helm repo add nvidia https://helm.ngc.nvidia.com/nvidia || true
+        microk8s helm repo add jetstack https://charts.jetstack.io || true
+        microk8s helm repo add rocm https://rocm.github.io/gpu-operator || true
         microk8s helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
         microk8s helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ || true
         microk8s helm repo update
@@ -25,6 +27,44 @@
           --set operator.runtimeClass="nvidia-container-runtime" \
           --set operator.defaultRuntime=containerd \
           --set containerRuntime.socketPath=/var/snap/microk8s/common/run/containerd.sock
+      when: is_primary | bool
+    
+    - name: Install Cert manager
+      shell: |
+        microk8s helm upgrade --install cert-manager jetstack/cert-manager \
+          --namespace cert-manager \
+          --create-namespace \
+          --set crds.enabled=true
+      when: is_primary | bool
+    
+    - name: Install ROCm Operator
+      shell: |
+        microk8s helm upgrade --install amd-gpu-operator rocm/gpu-operator-charts \
+          --namespace rocm-operator \
+          --create-namespace \
+          --version=v1.2.0
+      when: is_primary | bool
+
+    - name: Install ROCm DeviceConfig
+      shell: |
+        microk8s kubectl apply -f - <<EOF
+        apiVersion: amd.com/v1alpha1
+        kind: DeviceConfig
+        metadata:
+          name: main-deviceconfig
+          namespace: rocm-operator
+        spec:
+          devicePlugin:
+            devicePluginImage: rocm/k8s-device-plugin:latest
+            enableNodeLabeller: true
+            nodeLabellerImage: rocm/k8s-device-plugin:labeller-latest
+          driver:
+            enable: false
+          metricsExporter:
+            enable: false
+          selector:
+            feature.node.kubernetes.io/amd-gpu: "true"
+        EOF
       when: is_primary | bool
 
     - name: Install Prometheus
