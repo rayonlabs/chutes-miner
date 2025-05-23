@@ -1,5 +1,5 @@
 # Base layer.
-FROM python:3.12 as base
+FROM python:3.12 AS base
 RUN apt update && apt -y install net-tools procps vim jq bc curl
 RUN useradd chutes -s /bin/bash -d /home/chutes && mkdir -p /home/chutes && chown chutes:chutes /home/chutes
 RUN mkdir -p /app && chown chutes:chutes /app
