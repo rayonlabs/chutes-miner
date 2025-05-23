@@ -18,7 +18,6 @@ from kubernetes.client import (
     V1ConfigMap,
 )
 from kubernetes.client.rest import ApiException
-from numpy import isin
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from api.exceptions import DeploymentFailure
@@ -98,8 +97,8 @@ class K8sOperator(abc.ABC):
         }
         deploy_info["ready"] = self._is_deployment_ready(deployment)
         pods = self._get_pods(
-            namespace=deployment.metadata.namespace, 
-            label_selector=deployment.spec.selector.match_labels
+            namespace=deployment.metadata.namespace,
+            label_selector=deployment.spec.selector.match_labels,
         )
         deploy_info["pods"] = []
         for pod in pods.items:
@@ -146,10 +145,11 @@ class K8sOperator(abc.ABC):
 
     @abc.abstractmethod
     def _get_pods(
-        self, namespace: Optional[str] = None,
+        self,
+        namespace: Optional[str] = None,
         label_selector: Optional[Union[str | Dict[str, str]]] = None,
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
-        timeout=120
+        timeout=120,
     ) -> V1PodList:
         """Get all Kubernetes nodes via k8s client, optionally filtering by GPU nodes."""
         raise NotImplementedError()
@@ -181,11 +181,10 @@ class K8sOperator(abc.ABC):
         Retrieve all nodes from the environment
         """
         raise NotImplementedError()
-    
+
     @abc.abstractmethod
     def patch_node(self, name: str, body: Dict) -> V1Node:
         raise NotImplementedError()
-
 
     def _extract_node_info(self, node: V1Node):
         gpu_count = int(node.status.capacity["nvidia.com/gpu"])
@@ -223,29 +222,31 @@ class K8sOperator(abc.ABC):
         """Get a single deployment by ID."""
         raise NotImplementedError()
 
-    async def get_deployments(self, namespace=settings.namespace, 
-                              label_selector: Optional[Union[str | Dict[str, str]]] = None,
-                              field_selector: Optional[Union[str | Dict[str, str]]] = None,
-                              timeout=120) -> V1DeploymentList:
-
+    async def get_deployments(
+        self,
+        namespace=settings.namespace,
+        label_selector: Optional[Union[str | Dict[str, str]]] = None,
+        field_selector: Optional[Union[str | Dict[str, str]]] = None,
+        timeout=120,
+    ) -> V1DeploymentList:
         return self._get_deployments(
             namespace=namespace,
             label_selector=label_selector,
             field_selector=field_selector,
-            timeout=timeout
+            timeout=timeout,
         )
 
     @abc.abstractmethod
-    def delete_deployment(self, name: str, namespace:str = settings.namespace):
+    def delete_deployment(self, name: str, namespace: str = settings.namespace):
         raise NotImplementedError()
 
     @abc.abstractmethod
     def _get_deployments(
-        self, 
-        namespace: Optional[str] = None, 
+        self,
+        namespace: Optional[str] = None,
         label_selector: Optional[Union[str | Dict[str, str]]] = None,
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
-        timeout=120
+        timeout=120,
     ) -> V1DeploymentList:
         """
         Get deployments, optinally filtering by namespace and labels
@@ -267,8 +268,7 @@ class K8sOperator(abc.ABC):
         """Get all chutes deployments from kubernetes."""
         deployments = []
         deployments_list = self._get_deployments(
-            namespace=settings.namespace, 
-            label_selector={"chutes/chute": "true"}
+            namespace=settings.namespace, label_selector={"chutes/chute": "true"}
         )
         for deployment in deployments_list.items:
             deployments.append(self._extract_deployment_info(deployment))
@@ -288,7 +288,7 @@ class K8sOperator(abc.ABC):
             if exc.status != 404:
                 logger.error(f"Failed to delete code reference: {exc}")
                 raise
-            
+
     @abc.abstractmethod
     def delete_config_map(self, name: str, namespace=settings.namespace):
         raise NotImplementedError()
@@ -357,7 +357,7 @@ class K8sOperator(abc.ABC):
         except ApiException as e:
             if e.status != 409:
                 raise
-            
+
     @abc.abstractmethod
     def create_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         raise NotImplementedError()
@@ -454,7 +454,7 @@ class K8sOperator(abc.ABC):
         server: Server,
     ):
         raise NotImplementedError()
-    
+
     @abc.abstractmethod
     async def deploy_graval(node: V1Node, deployment: V1Deployment, service: V1Service):
         raise NotImplementedError()
@@ -487,26 +487,25 @@ class SingleClusterK8sOperator(K8sOperator):
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
         timeout=120,
     ) -> V1PodList:
-        
         if label_selector:
-          label_selector = (
-              label_selector
-              if isinstance(label_selector, str)
-              else ",".join([f"{k}={v}" for k, v in label_selector.items()])
-          )
+            label_selector = (
+                label_selector
+                if isinstance(label_selector, str)
+                else ",".join([f"{k}={v}" for k, v in label_selector.items()])
+            )
 
         if field_selector:
-          field_selector = (
-              field_selector
-              if isinstance(field_selector, str)
-              else ",".join([f"{k}={v}" for k, v in field_selector.items()])
-          )
+            field_selector = (
+                field_selector
+                if isinstance(field_selector, str)
+                else ",".join([f"{k}={v}" for k, v in field_selector.items()])
+            )
 
         pods = k8s_core_client().list_namespaced_pod(
-            namespace=namespace, 
-            label_selector=label_selector, 
+            namespace=namespace,
+            label_selector=label_selector,
             field_selector=field_selector,
-            timeout_seconds=timeout
+            timeout_seconds=timeout,
         )
         return pods
 
@@ -521,58 +520,55 @@ class SingleClusterK8sOperator(K8sOperator):
         return self._extract_deployment_info(deployment)
 
     def _get_deployments(
-        self, namespace: Optional[str] = None, 
+        self,
+        namespace: Optional[str] = None,
         label_selector: Optional[Union[str | Dict[str, str]]] = None,
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
-        timeout=120
+        timeout=120,
     ) -> V1DeploymentList:
         """
         Get deployment, optinally filtering by namespace and labels
         """
         if label_selector:
             label_selector = (
-                label_selector 
+                label_selector
                 if isinstance(label_selector, str)
-                else ','.join(f"{k}={v}" for k, v in label_selector.items())
+                else ",".join(f"{k}={v}" for k, v in label_selector.items())
             )
 
         if field_selector:
             field_selector = (
-                field_selector 
+                field_selector
                 if isinstance(field_selector, str)
-                else ','.join(f"{k}={v}" for k, v in field_selector.items())
+                else ",".join(f"{k}={v}" for k, v in field_selector.items())
             )
 
         deployment_list = k8s_app_client().list_namespaced_deployment(
             namespace=namespace,
             label_selector=label_selector,
             field_selector=field_selector,
-            timeout_seconds=timeout
+            timeout_seconds=timeout,
         )
 
         return deployment_list
-    
-    def delete_deployment(self, name, namespace = settings.namespace):
+
+    def delete_deployment(self, name, namespace=settings.namespace):
         k8s_app_client().delete_namespaced_deployment(
-                name=name,
-                namespace=namespace,
-            )
-    
+            name=name,
+            namespace=namespace,
+        )
+
     def delete_service(self, name, namespace=settings.namespace):
         k8s_core_client().delete_namespaced_service(
-                name=name,
-                namespace=namespace,
-            )
-        
+            name=name,
+            namespace=namespace,
+        )
+
     def delete_config_map(self, name, namespace=settings.namespace):
-        k8s_core_client().delete_namespaced_config_map(
-                name=name, namespace=namespace
-            )
-        
+        k8s_core_client().delete_namespaced_config_map(name=name, namespace=namespace)
+
     def create_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
-        k8s_core_client().create_namespaced_config_map(
-                namespace=namespace, body=config_map
-            )
+        k8s_core_client().create_namespaced_config_map(namespace=namespace, body=config_map)
 
     async def _deploy_chute(
         self,
@@ -627,48 +623,50 @@ class SingleClusterK8sOperator(K8sOperator):
             raise DeploymentFailure(
                 f"Failed to deploy chute {chute.chute_id} with version {chute.version}: {exc}\n{traceback.format_exc()}"
             )
-        
-    async def deploy_graval(node: V1Node, deployment: V1Deployment, service: V1Service):
-      try:
-          created_service = k8s_core_client().create_namespaced_service(
-              namespace=settings.namespace, body=service
-          )
-          created_deployment = k8s_app_client().create_namespaced_deployment(
-              namespace=settings.namespace, body=deployment
-          )
 
-          # Track the verification port.
-          expected_port = created_service.spec.ports[0].node_port
-          async with get_session() as session:
-              result = await session.execute(
-                  update(Server)
-                  .where(Server.server_id == node.metadata.uid)
-                  .values(verification_port=created_service.spec.ports[0].node_port)
-                  .returning(Server.verification_port)
-              )
-              port = result.scalar_one_or_none()
-              if port != expected_port:
-                  raise DeploymentFailure(
-                      f"Unable to track verification port for newly added node: {expected_port=} actual_{port=}"
-                  )
-              await session.commit()
-          return created_deployment, created_service
-      except ApiException as exc:
-          try:
-              k8s_core_client().delete_namespaced_service(
-                  name=service.metadata.name,
-                  namespace=settings.namespace,
-              )
-          except Exception:
-              ...
-          try:
-              k8s_core_client().delete_namespaced_deployment(
-                  name=deployment.metadata.name,
-                  namespace=settings.namespace,
-              )
-          except Exception:
-              ...
-          raise DeploymentFailure(f"Failed to deploy GraVal: {str(exc)}:\n{traceback.format_exc()}")
+    async def deploy_graval(node: V1Node, deployment: V1Deployment, service: V1Service):
+        try:
+            created_service = k8s_core_client().create_namespaced_service(
+                namespace=settings.namespace, body=service
+            )
+            created_deployment = k8s_app_client().create_namespaced_deployment(
+                namespace=settings.namespace, body=deployment
+            )
+
+            # Track the verification port.
+            expected_port = created_service.spec.ports[0].node_port
+            async with get_session() as session:
+                result = await session.execute(
+                    update(Server)
+                    .where(Server.server_id == node.metadata.uid)
+                    .values(verification_port=created_service.spec.ports[0].node_port)
+                    .returning(Server.verification_port)
+                )
+                port = result.scalar_one_or_none()
+                if port != expected_port:
+                    raise DeploymentFailure(
+                        f"Unable to track verification port for newly added node: {expected_port=} actual_{port=}"
+                    )
+                await session.commit()
+            return created_deployment, created_service
+        except ApiException as exc:
+            try:
+                k8s_core_client().delete_namespaced_service(
+                    name=service.metadata.name,
+                    namespace=settings.namespace,
+                )
+            except Exception:
+                ...
+            try:
+                k8s_core_client().delete_namespaced_deployment(
+                    name=deployment.metadata.name,
+                    namespace=settings.namespace,
+                )
+            except Exception:
+                ...
+            raise DeploymentFailure(
+                f"Failed to deploy GraVal: {str(exc)}:\n{traceback.format_exc()}"
+            )
 
 
 class KarmadaK8sOperator(K8sOperator):
@@ -684,11 +682,11 @@ class KarmadaK8sOperator(K8sOperator):
     @property
     def karmada_custom_objects_client(self):
         return k8s_custom_objects_client(karmada_api=True)
-    
+
     @property
     def karmada_app_client(self):
         return k8s_app_client(True)
-    
+
     @property
     def karmada_core_client(self):
         return k8s_core_client(True)
@@ -708,22 +706,14 @@ class KarmadaK8sOperator(K8sOperator):
         return node_list
 
     def patch_node(self, name: str, body: Dict) -> V1Node:
-        
         # Construct the API path for the Search API cache endpoint
         api_path = f"/apis/cluster.karmada.io/v1alpha1/clusters/{name}/proxy/api/v1/nodes/{name}-control-plane"
 
-        headers = {
-            "Content-Type": "application/strategic-merge-patch+json"
-        }
-        
+        headers = {"Content-Type": "application/strategic-merge-patch+json"}
+
         # Call the Search API using the client
-        logger.info(f"Patching node via karmada proxy")
-        response = self.karmada_api_client.call_api(
-            api_path, 
-            'PATCH',
-            header_params=headers,
-            body=body
-        )
+        logger.info("Patching node via karmada proxy")
+        self.karmada_api_client.call_api(api_path, "PATCH", header_params=headers, body=body)
 
         return self.get_node(name)
 
@@ -737,31 +727,26 @@ class KarmadaK8sOperator(K8sOperator):
         # Handle case where no deployments found or more than one found
         return self._extract_deployment_info(deploy_list.items[0])
 
-    def delete_deployment(self, name, namespace = settings.namespace):
+    def delete_deployment(self, name, namespace=settings.namespace):
         self.karmada_app_client.delete_namespaced_deployment(
-                name=name,
-                namespace=namespace,
-            )
-    
+            name=name,
+            namespace=namespace,
+        )
+
     def delete_service(self, name, namespace=settings.namespace):
         self.karmada_core_client.delete_namespaced_service(
-                name=name,
-                namespace=namespace,
-            )
+            name=name,
+            namespace=namespace,
+        )
 
     def delete_config_map(self, name, namespace=settings.namespace):
-        self.karmada_core_client.delete_namespaced_config_map(
-                name=name, 
-                namespace=namespace
-            )
+        self.karmada_core_client.delete_namespaced_config_map(name=name, namespace=namespace)
 
     def create_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
-        # This is the one exception where we do not create the propagation policy for 
+        # This is the one exception where we do not create the propagation policy for
         # the CM since we don't know what Server to propagate to.  CM will be propagated
         # when chute is deployed.
-        self.karmada_core_client.create_namespaced_config_map(
-                namespace=namespace, body=config_map
-            )
+        self.karmada_core_client.create_namespaced_config_map(namespace=namespace, body=config_map)
 
     # async def delete_code(self, chute_id: str, version: str) -> None:
     #     """Delete the code configmap associated with a chute & version."""
@@ -772,7 +757,7 @@ class KarmadaK8sOperator(K8sOperator):
     async def undeploy(self, deployment_id: str) -> None:
         """Delete a deployment, and associated service."""
         await super().undeploy(deployment_id)
-        chute_pp_name=f"{CHUTE_PP_PREFIX}-{deployment_id}"
+        chute_pp_name = f"{CHUTE_PP_PREFIX}-{deployment_id}"
         self._delete_propagation_policy(chute_pp_name)
 
     async def _deploy_chute(
@@ -820,7 +805,6 @@ class KarmadaK8sOperator(K8sOperator):
             )
 
     def _cleanup_chute_resources(self, deployment_id: str):
-
         try:
             self.delete_service(f"{CHUTE_SVC_PREFIX}-{deployment_id}")
         except Exception:
@@ -846,12 +830,17 @@ class KarmadaK8sOperator(K8sOperator):
 
     def _get_service(self, name):
         pass
-    
+
     def _get_deployment(self, name):
         pass
 
     def _create_chute_propagation_policy(
-        self, deployment_id: str, chute: Chute, service: V1Service, deployment: V1Deployment, server: Server
+        self,
+        deployment_id: str,
+        chute: Chute,
+        service: V1Service,
+        deployment: V1Deployment,
+        server: Server,
     ):
         code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
         pp = PropagationPolicy(
@@ -859,20 +848,12 @@ class KarmadaK8sOperator(K8sOperator):
             namespace=settings.namespace,
             resource_selectors=[
                 ResourceSelector(
-                    api_version="v1", 
-                    kind="Deployment", 
-                    name=deployment.metadata.name
+                    api_version="v1", kind="Deployment", name=deployment.metadata.name
                 ),
+                ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name),
                 ResourceSelector(
-                    api_version="v1", 
-                    kind="Service", 
-                    name=service.metadata.name
+                    api_version="v1", kind="ConfigMap", name=f"{CHUTE_CODE_CM_PREFIX}-{code_uuid}"
                 ),
-                ResourceSelector(
-                    api_version="v1", 
-                    kind="ConfigMap", 
-                    name=f"{CHUTE_CODE_CM_PREFIX}-{code_uuid}"
-                )
             ],
             placement=Placement(
                 cluster_affinity=ClusterAffinity(cluster_names=[server.name]),
@@ -889,15 +870,9 @@ class KarmadaK8sOperator(K8sOperator):
             namespace=settings.namespace,
             resource_selectors=[
                 ResourceSelector(
-                    api_version="v1", 
-                    kind="Deployment", 
-                    name=deployment.metadata.name
+                    api_version="v1", kind="Deployment", name=deployment.metadata.name
                 ),
-                ResourceSelector(
-                    api_version="v1", 
-                    kind="Service", 
-                    name=service.metadata.name
-                )
+                ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name),
             ],
             placement=Placement(
                 cluster_affinity=ClusterAffinity(cluster_names=[server.name]),
@@ -906,8 +881,9 @@ class KarmadaK8sOperator(K8sOperator):
         )
         self._create_propagation_policy(pp)
 
-    def _create_propagation_policy(self, propagation_policy: PropagationPolicy, 
-                                   namespace: str = settings.namespace):
+    def _create_propagation_policy(
+        self, propagation_policy: PropagationPolicy, namespace: str = settings.namespace
+    ):
         self.karmada_custom_objects_client.create_namespaced_custom_object(
             group="policy.karmada.io",
             version="v1alpha1",
@@ -926,86 +902,90 @@ class KarmadaK8sOperator(K8sOperator):
         )
 
     def _get_pods(
-        self, namespace: Optional[str] = None, 
+        self,
+        namespace: Optional[str] = None,
         label_selector: Optional[Union[str | Dict[str, str]]] = None,
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
-        timeout=120
+        timeout=120,
     ) -> V1PodList:
         response = self._search(SEARCH_PODS_PATH)
         pod_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1PodList")
 
         pod_list.items[:] = [
-            pod for pod in pod_list.items
+            pod
+            for pod in pod_list.items
             if self._matches_filters(pod, namespace, label_selector, field_selector)
         ]
 
         return pod_list
 
     def _get_deployments(
-        self, namespace: Optional[str] = None, 
+        self,
+        namespace: Optional[str] = None,
         label_selector: Optional[Union[str | Dict[str, str]]] = None,
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
-        timeout=120
+        timeout=120,
     ):
         response = self._search(SEARCH_DEPLOYMENTS_PATH)
         deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1DeploymentList")
 
         deploy_list.items[:] = [
-            deployment for deployment in deploy_list.items
+            deployment
+            for deployment in deploy_list.items
             if self._matches_filters(deployment, namespace, label_selector, field_selector)
         ]
 
         return deploy_list
 
     def _matches_filters(
-        self, 
-        deployment: Union[V1Pod | V1Deployment], 
+        self,
+        deployment: Union[V1Pod | V1Deployment],
         namespace: Optional[str] = None,
         label_selector: Optional[Union[str | Dict[str, str]]] = None,
-        field_selector: Optional[Union[str | Dict[str, str]]] = None
+        field_selector: Optional[Union[str | Dict[str, str]]] = None,
     ) -> bool:
         """Check if deployment matches all specified filters."""
-        
+
         # Namespace filter
         if namespace and deployment.metadata.namespace != namespace:
             return False
-        
+
         # Label selector filter
         if label_selector:
             deployment_labels = deployment.metadata.labels or {}
-            
+
             if isinstance(label_selector, str):
                 # Parse string label selector (e.g., "app=nginx,version=1.0")
                 label_dict = self._parse_label_selector(label_selector)
             else:
                 label_dict = label_selector
-                
+
             # Check if all required labels match
             for key, value in label_dict.items():
                 if deployment_labels.get(key) != value:
                     return False
-        
+
         # Field selector filter (example implementation for common fields)
         if field_selector:
             if isinstance(field_selector, str):
                 field_dict = self._parse_field_selector(field_selector)
             else:
                 field_dict = field_selector
-                
+
             for field_path, expected_value in field_dict.items():
                 actual_value = self._get_field_value(deployment, field_path)
                 if actual_value != expected_value:
                     return False
-        
+
         return True
 
     def _parse_label_selector(self, selector: str) -> Dict[str, str]:
         """Parse label selector string into dictionary."""
         labels = {}
         if selector:
-            for pair in selector.split(','):
-                if '=' in pair:
-                    key, value = pair.split('=', 1)
+            for pair in selector.split(","):
+                if "=" in pair:
+                    key, value = pair.split("=", 1)
                     labels[key.strip()] = value.strip()
         return labels
 
@@ -1013,16 +993,16 @@ class KarmadaK8sOperator(K8sOperator):
         """Parse field selector string into dictionary."""
         fields = {}
         if selector:
-            for pair in selector.split(','):
-                if '=' in pair:
-                    key, value = pair.split('=', 1)
+            for pair in selector.split(","):
+                if "=" in pair:
+                    key, value = pair.split("=", 1)
                     fields[key.strip()] = value.strip()
         return fields
 
     def _get_field_value(self, deployment, field_path: str):
         """Get field value from deployment using dot notation."""
         obj = deployment
-        for part in field_path.split('.'):
+        for part in field_path.split("."):
             if hasattr(obj, part):
                 obj = getattr(obj, part)
             else:
@@ -1045,42 +1025,43 @@ class KarmadaK8sOperator(K8sOperator):
         return response
 
     async def deploy_graval(self, node: V1Node, deployment: V1Deployment, service: V1Service):
-      try:
+        try:
+            created_service = self.karmada_core_client.create_namespaced_service(
+                namespace=settings.namespace, body=service
+            )
+            created_deployment = self.karmada_app_client.create_namespaced_deployment(
+                namespace=settings.namespace, body=deployment
+            )
 
-          created_service = self.karmada_core_client.create_namespaced_service(
-              namespace=settings.namespace, body=service
-          )
-          created_deployment = self.karmada_app_client.create_namespaced_deployment(
-              namespace=settings.namespace, body=deployment
-          )
-          
-          # Create propagation policy
-          self._create_graval_propagation_policy(node, service, deployment)
+            # Create propagation policy
+            self._create_graval_propagation_policy(node, service, deployment)
 
-          # Track the verification port.
-          # Need to get the service port from the search API
-          expected_port = created_service.spec.ports[0].node_port
-          async with get_session() as session:
-              result = await session.execute(
-                  update(Server)
-                  .where(Server.server_id == node.metadata.uid)
-                  .values(verification_port=created_service.spec.ports[0].node_port)
-                  .returning(Server.verification_port)
-              )
-              port = result.scalar_one_or_none()
-              if port != expected_port:
-                  raise DeploymentFailure(
-                      f"Unable to track verification port for newly added node: {expected_port=} actual_{port=}"
-                  )
-              await session.commit()
-          return created_deployment, created_service
-      except ApiException as exc:
-          try:
-              self.delete_service(service.metadata.name)
-          except Exception:
-              ...
-          try:
-              self.delete_deployment(deployment.metadata.name)
-          except Exception:
-              ...
-          raise DeploymentFailure(f"Failed to deploy GraVal: {str(exc)}:\n{traceback.format_exc()}")
+            # Track the verification port.
+            # Need to get the service port from the search API
+            expected_port = created_service.spec.ports[0].node_port
+            async with get_session() as session:
+                result = await session.execute(
+                    update(Server)
+                    .where(Server.server_id == node.metadata.uid)
+                    .values(verification_port=created_service.spec.ports[0].node_port)
+                    .returning(Server.verification_port)
+                )
+                port = result.scalar_one_or_none()
+                if port != expected_port:
+                    raise DeploymentFailure(
+                        f"Unable to track verification port for newly added node: {expected_port=} actual_{port=}"
+                    )
+                await session.commit()
+            return created_deployment, created_service
+        except ApiException as exc:
+            try:
+                self.delete_service(service.metadata.name)
+            except Exception:
+                ...
+            try:
+                self.delete_deployment(deployment.metadata.name)
+            except Exception:
+                ...
+            raise DeploymentFailure(
+                f"Failed to deploy GraVal: {str(exc)}:\n{traceback.format_exc()}"
+            )

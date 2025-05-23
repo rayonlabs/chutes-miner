@@ -14,9 +14,13 @@ from kubernetes.client.rest import ApiException
 from api.deployment.schemas import Deployment
 import api.k8s as k8s
 from api.exceptions import DeploymentFailure
-from api.k8s.constants import CHUTE_DEPLOY_PREFIX, SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
+from api.k8s.constants import (
+    CHUTE_DEPLOY_PREFIX,
+    SEARCH_DEPLOYMENTS_PATH,
+    SEARCH_NODES_PATH,
+    SEARCH_PODS_PATH,
+)
 from api.k8s.operator import K8sOperator, KarmadaK8sOperator
-from api.config import settings
 
 
 def get_mock_call_api_side_effect(responses: Dict[str, Any]):
@@ -191,7 +195,7 @@ def test_extract_deployment_info(mock_k8s_api_client, create_api_test_pods):
     deployment.metadata.labels = {
         "chutes/deployment-id": "test-deployment-id",
         "chutes/chute-id": "test-chute-id",
-        "chutes/version": "1.0.0"
+        "chutes/version": "1.0.0",
     }
     deployment.spec.template.spec.node_selector = {"key": "value"}
     deployment.spec.selector.match_labels = {"app": "chute"}
@@ -272,14 +276,14 @@ async def test_get_deployment(
 ):
     """Test getting a single deployment by ID."""
     deployments = create_api_test_deployments(1)
-    pods = create_api_test_pods(1, base_name=deployments[0]['metadata']['name'])
+    pods = create_api_test_pods(1, base_name=deployments[0]["metadata"]["name"])
     responses = get_api_responses(deployments, pods)
     deployment_name = deployments[0]["metadata"]["name"]
     responses[f"{SEARCH_DEPLOYMENTS_PATH}/{CHUTE_DEPLOY_PREFIX}-{deployment_name}"] = {
-            "kind": "DeploymentList",
-            "apiVersion": "v1",
-            "items": deployments,
-        }
+        "kind": "DeploymentList",
+        "apiVersion": "v1",
+        "items": deployments,
+    }
 
     mock_k8s_api_client.call_api.side_effect = get_mock_call_api_side_effect(responses)
 
@@ -359,7 +363,7 @@ async def test_get_deployed_chutes(
     """Test getting all deployed chutes."""
     # Setup mock
     deployments = create_api_test_deployments(1)
-    pods = create_api_test_pods(1, base_name=deployments[0]['metadata']['name'])
+    pods = create_api_test_pods(1, base_name=deployments[0]["metadata"]["name"])
     responses = get_api_responses(deployments, pods)
 
     mock_k8s_api_client.call_api.side_effect = get_mock_call_api_side_effect(responses)
@@ -444,7 +448,6 @@ async def test_delete_code_success(mock_k8s_core_client, mock_k8s_custom_objects
     mock_k8s_core_client.delete_namespaced_config_map.assert_called_once()
     # Verify the name is based on the UUID generated from chute_id and version
     assert "chute-code-" in mock_k8s_core_client.delete_namespaced_config_map.call_args[1]["name"]
-
 
 
 @pytest.mark.asyncio

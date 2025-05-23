@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from substrateinterface import Keypair
 from pydantic_settings import BaseSettings
 from kubernetes import client
-from kubernetes.config import load_kube_config, load_incluster_config
+from kubernetes.config import load_incluster_config
 
 
 class Validator(BaseModel):
@@ -28,15 +28,17 @@ def create_kubernetes_client(cls: Any = client.CoreV1Api, karmada_api: bool = Fa
     try:
         client = None
         if karmada_api:
-            api_endpoint = os.getenv('KARMADA_APISERVER_ENDPOINT')
+            api_endpoint = os.getenv("KARMADA_APISERVER_ENDPOINT")
             if not api_endpoint:
-                raise RuntimeError("Karmada API client requested but api endpoint is not in environment.")
+                raise RuntimeError(
+                    "Karmada API client requested but api endpoint is not in environment."
+                )
             karmada_config = client.Configuration()
             karmada_config.host = os.getenv(api_endpoint)
-            with open('/var/run/secrets/kubernetes.io/serviceaccount/token', 'r') as f:
+            with open("/var/run/secrets/kubernetes.io/serviceaccount/token", "r") as f:
                 token = f.read().strip()
-            karmada_config.api_key = {'authorization': f'Bearer {token}'}
-            karmada_config.ssl_ca_cert = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+            karmada_config.api_key = {"authorization": f"Bearer {token}"}
+            karmada_config.ssl_ca_cert = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
             client = cls(karmada_config)
         elif os.getenv("KUBERNETES_SERVICE_HOST") is not None:
             load_incluster_config()

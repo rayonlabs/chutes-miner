@@ -29,7 +29,6 @@ from kubernetes.client import (
 )
 from sqlalchemy import update, select
 from sqlalchemy.exc import IntegrityError
-from kubernetes.client.rest import ApiException
 from typing import Tuple, Dict, List
 from api.auth import sign_request
 from api.config import settings, Validator, validator_by_hotkey
@@ -42,7 +41,6 @@ from api.exceptions import (
     DuplicateServer,
     NonEmptyServer,
     GPUlessServer,
-    DeploymentFailure,
     GraValBootstrapFailure,
 )
 
@@ -266,7 +264,6 @@ async def deploy_graval(
 
     # Deploy!
     K8sOperator().deploy_graval(node_object, deployment, service)
-    
 
 
 async def track_server(

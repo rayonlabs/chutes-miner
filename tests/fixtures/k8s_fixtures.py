@@ -480,10 +480,7 @@ def create_api_test_pods():
                     "finalizers": None,
                     "generateName": f"{base_name}-",
                     "generation": None,
-                    "labels": {
-                        "app": base_name, 
-                        "pod-template-hash": "5bf549858c"
-                    },
+                    "labels": {"app": base_name, "pod-template-hash": "5bf549858c"},
                     "name": pod_name,
                     "namespace": namespace,
                     "ownerReferences": [
