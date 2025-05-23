@@ -2,8 +2,7 @@
 # Ansible tasks to verify chutes-miner installation and functionality
 - name: Verify and test chutes-miner CLI
   when: >-
-    not run_cli_locally | default(false) 
-    and ('microk8s' in group_names or 'control' in group_names )
+    not run_cli_locally | default(false)  and ('microk8s' in group_names or 'control' in group_names )
   delegate_to: "{{ target_host | default(inventory_hostname) }}"
   tags: chutes-cli
 
@@ -107,14 +106,14 @@
               remote host at {{ remote_hotkey_path | default('/etc/chutes-miner/hotkey.json') }}
           when: hotkey_copy is defined
 
-      # Check for hotkey file
+    # Check for hotkey file
     - name: Check if hotkey file exists
       ansible.builtin.stat:
         path: "{{ remote_hotkey_path | default('/etc/chutes-miner/hotkey.json') }}"
       register: hotkey_file
 
     - name: Display hotkey file status
-      assert:
+      ansible.builtin.assert:
         that: hotkey_file.stat.exists
         fail_msg: "Hotkey file does not exist"
         success_msg: "Hotkey file does exist"

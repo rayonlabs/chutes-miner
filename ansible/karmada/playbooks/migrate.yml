@@ -60,7 +60,7 @@
       register: migrated_marker
 
     - name: Group hosts by migration status
-      group_by:
+      ansible.builtin.group_by:
         key: "migration_{{ 'needed' if not migrated_marker.stat.exists else 'complete' }}"
 
 - name: Migrate Nodes
@@ -74,9 +74,9 @@
     - ../vars/migrate.yml
     - ../vars/chutes_nodes.yml
   handlers:
-    - import_tasks: ../handlers/main.yml
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
   tasks:
-
     - name: Ensure ansible directory exists
       ansible.builtin.file:
         path: /etc/ansible
@@ -104,7 +104,6 @@
 
     - name: Reset node system
       block:
-
         - name: Check if node has been reset
           ansible.builtin.stat:
             path: /etc/ansible/.reset
@@ -124,7 +123,6 @@
 
     - name: Setup node
       block:
-
         - name: Check if node has been setup
           ansible.builtin.stat:
             path: /etc/ansible/.setup
@@ -144,7 +142,6 @@
 
     - name: Node k3s Setup
       block:
-
         - name: Check if k3s has been setup
           ansible.builtin.stat:
             path: /etc/ansible/.k3s
@@ -164,7 +161,6 @@
 
     - name: Join node to karmada
       block:
-
         - name: Check if karmada has been setup
           ansible.builtin.stat:
             path: /etc/ansible/.karmada
@@ -184,7 +180,6 @@
 
     - name: Add node to chutes
       block:
-
         - name: Check if node has been added
           ansible.builtin.stat:
             path: /etc/ansible/.added

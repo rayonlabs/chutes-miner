@@ -27,10 +27,10 @@
       when: microk8s_service_file.stat.exists
 
     - name: Wait for MicroK8s services to be stopped
-      ansible.builtin.command:
-        cmd: systemctl is-active {{ item }}
+      ansible.builtin.systemd:
+        name: "{{ item }}"
       register: service_status
-      until: service_status.stdout == "inactive" or service_status.stdout == "unknown"
+      until: service_status.status.ActiveState == "inactive" or service_status.status.ActiveState == "unknown"
       retries: 10
       delay: 3
       failed_when: false
