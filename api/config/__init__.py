@@ -21,42 +21,53 @@ class Validator(BaseModel):
     socket: str
 
 
-def create_kubernetes_client(cls: Any = client.CoreV1Api, context: Optional[str] = None):
+def create_kubernetes_client(cls: Any = client.CoreV1Api, karmada_api: bool = False):
     """
     Create a k8s client.
     """
     try:
-        if os.getenv("KUBECONFIG") is not None:
-            load_kube_config(config_file=os.getenv("KUBECONFIG"), context=context)
+        client = None
+        if karmada_api:
+            api_endpoint = os.getenv('KARMADA_APISERVER_ENDPOINT')
+            if not api_endpoint:
+                raise RuntimeError("Karmada API client requested but api endpoint is not in environment.")
+            karmada_config = client.Configuration()
+            karmada_config.host = os.getenv(api_endpoint)
+            with open('/var/run/secrets/kubernetes.io/serviceaccount/token', 'r') as f:
+                token = f.read().strip()
+            karmada_config.api_key = {'authorization': f'Bearer {token}'}
+            karmada_config.ssl_ca_cert = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+            client = cls(karmada_config)
         elif os.getenv("KUBERNETES_SERVICE_HOST") is not None:
             load_incluster_config()
+            client = cls()
         else:
             raise RuntimeError(
                 "Unable to determine kubernetes configuration from environment. Set either 'KUBECONFIG' or 'KUBERNETES_SERVICE_HOST' environment variable."
             )
-        return cls()
+        return client
     except Exception as exc:
         raise Exception(f"Failed to create Kubernetes client: {str(exc)}")
 
 
 @lru_cache(maxsize=2)
-def k8s_core_client(context: Optional[str] = None) -> client.CoreV1Api:
-    return create_kubernetes_client(context=context)
+def k8s_core_client(karmada_api: bool = False) -> client.CoreV1Api:
+    return create_kubernetes_client(karmada_api=karmada_api)
 
 
 @lru_cache(maxsize=1)
-def k8s_app_client(context: Optional[str] = None) -> client.AppsV1Api:
-    return create_kubernetes_client(cls=client.AppsV1Api, context=context)
+def k8s_app_client(karmada_api: bool = False) -> client.AppsV1Api:
+    return create_kubernetes_client(cls=client.AppsV1Api, karmada_api=karmada_api)
 
 
 @lru_cache(maxsize=1)
-def k8s_api_client(context: Optional[str] = None) -> client.ApiClient:
-    return create_kubernetes_client(cls=client.ApiClient, context=context)
+def k8s_api_client(karmada_api: bool = False) -> client.ApiClient:
+    return create_kubernetes_client(cls=client.ApiClient, karmada_api=karmada_api)
 
 
 @lru_cache(maxsize=1)
-def k8s_custom_objects_client(context: Optional[str] = None) -> client.CustomObjectsApi:
-    return create_kubernetes_client(cls=client.CustomObjectsApi, context=context)
+def k8s_custom_objects_client(karmada_api: bool = False) -> client.CustomObjectsApi:
+    return create_kubernetes_client(cls=client.CustomObjectsApi, karmada_api=karmada_api)
 
 
 @lru_cache(maxsize=32)

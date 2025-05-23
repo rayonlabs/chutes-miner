@@ -32,7 +32,8 @@ from sqlalchemy.exc import IntegrityError
 from kubernetes.client.rest import ApiException
 from typing import Tuple, Dict, List
 from api.auth import sign_request
-from api.config import settings, k8s_core_client, k8s_app_client, Validator, validator_by_hotkey
+from api.config import settings, Validator, validator_by_hotkey
+from api.k8s.operator import K8sOperator
 from api.util import sse_message
 from api.database import get_session
 from api.server.schemas import Server, ServerArgs
@@ -94,7 +95,7 @@ async def gather_gpu_info(
     deployment_ready = False
     try:
         for event in watch.Watch().stream(
-            k8s_app_client().list_namespaced_deployment,
+            K8sOperator().get_deployments,
             namespace=namespace,
             field_selector=f"metadata.name={deployment_name}",
             timeout_seconds=settings.graval_bootstrap_timeout,
@@ -165,9 +166,8 @@ async def deploy_graval(
     node_labels = node_object.metadata.labels or {}
 
     # Double check that we don't already have chute deployments.
-    existing_deployments = k8s_app_client().list_namespaced_deployment(
-        namespace=settings.namespace,
-        label_selector="chute/chute=true,app=graval",
+    existing_deployments = K8sOperator().get_deployments(
+        label_selector="chute/chute=true,app=graval"
     )
     if any(
         [dep for dep in existing_deployments.items if dep.spec.template.spec.node_name == node_name]
@@ -265,46 +265,8 @@ async def deploy_graval(
     )
 
     # Deploy!
-    try:
-        created_service = k8s_core_client().create_namespaced_service(
-            namespace=settings.namespace, body=service
-        )
-        created_deployment = k8s_app_client().create_namespaced_deployment(
-            namespace=settings.namespace, body=deployment
-        )
-
-        # Track the verification port.
-        expected_port = created_service.spec.ports[0].node_port
-        async with get_session() as session:
-            result = await session.execute(
-                update(Server)
-                .where(Server.server_id == node_object.metadata.uid)
-                .values(verification_port=created_service.spec.ports[0].node_port)
-                .returning(Server.verification_port)
-            )
-            port = result.scalar_one_or_none()
-            if port != expected_port:
-                raise DeploymentFailure(
-                    f"Unable to track verification port for newly added node: {expected_port=} actual_{port=}"
-                )
-            await session.commit()
-        return created_deployment, created_service
-    except ApiException as exc:
-        try:
-            k8s_core_client().delete_namespaced_service(
-                name=f"graval-service-{nice_name}",
-                namespace=settings.namespace,
-            )
-        except Exception:
-            ...
-        try:
-            k8s_core_client().delete_namespaced_deployment(
-                name=f"graval-{nice_name}",
-                namespace=settings.namespace,
-            )
-        except Exception:
-            ...
-        raise DeploymentFailure(f"Failed to deploy GraVal: {str(exc)}:\n{traceback.format_exc()}")
+    K8sOperator().deploy_graval(node_object, deployment, service)
+    
 
 
 async def track_server(
@@ -325,7 +287,7 @@ async def track_server(
     if labels_to_add:
         current_labels.update(labels_to_add)
         body = {"metadata": {"labels": current_labels}}
-        node_object = k8s_core_client().patch_node(name=node_object.metadata.name, body=body)
+        node_object = K8sOperator().patch_node(name=node_object.metadata.name, body=body)
     labels = current_labels
 
     # Extract node information from kubernetes meta.
@@ -471,15 +433,11 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
         node_uid = node_object.metadata.uid
         nice_name = node_name.replace(".", "-")
         try:
-            k8s_core_client().delete_namespaced_service(
-                name=f"graval-service-{nice_name}", namespace=settings.namespace
-            )
+            K8sOperator().delete_service(f"graval-service-{nice_name}")
         except Exception:
             ...
         try:
-            k8s_app_client().delete_namespaced_deployment(
-                name=f"graval-{nice_name}", namespace=settings.namespace
-            )
+            K8sOperator().delete_deployment(f"graval-{nice_name}")
             label_selector = f"graval-node={nice_name}"
 
             from api.k8s import wait_for_deletion

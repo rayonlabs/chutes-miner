@@ -5,4 +5,6 @@ SEARCH_DEPLOYMENTS_PATH = "/apis/search.karmada.io/v1alpha1/search/cache/apis/ap
 
 CHUTE_CODE_CM_PREFIX = "chute-code"
 CHUTE_SVC_PREFIX = "chute-svc"
-CHUTE_DEPLOY_PREFIX = "chute-deploy"
+CHUTE_DEPLOY_PREFIX = "chute"
+CHUTE_PP_PREFIX = "chute-pp"
+GRAVAL_PP_PREFIX="graval-pp"

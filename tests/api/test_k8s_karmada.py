@@ -14,7 +14,7 @@ from kubernetes.client.rest import ApiException
 from api.deployment.schemas import Deployment
 import api.k8s as k8s
 from api.exceptions import DeploymentFailure
-from api.k8s.constants import SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
+from api.k8s.constants import CHUTE_DEPLOY_PREFIX, SEARCH_DEPLOYMENTS_PATH, SEARCH_NODES_PATH, SEARCH_PODS_PATH
 from api.k8s.operator import K8sOperator, KarmadaK8sOperator
 from api.config import settings
 
@@ -187,14 +187,14 @@ def test_extract_deployment_info(mock_k8s_api_client, create_api_test_pods):
     deployment = MagicMock()
     deployment.metadata.uid = "test-uid"
     deployment.metadata.name = "test-deployment"
-    deployment.metadata.namespace = "test-namespace"
+    deployment.metadata.namespace = "chutes"
     deployment.metadata.labels = {
         "chutes/deployment-id": "test-deployment-id",
         "chutes/chute-id": "test-chute-id",
-        "chutes/version": "1.0.0",
+        "chutes/version": "1.0.0"
     }
     deployment.spec.template.spec.node_selector = {"key": "value"}
-    deployment.spec.selector.match_labels = {"app": "test"}
+    deployment.spec.selector.match_labels = {"app": "chute"}
 
     # Setup is_deployment_ready mock
     deployment.status.available_replicas = 1
@@ -215,10 +215,7 @@ def test_extract_deployment_info(mock_k8s_api_client, create_api_test_pods):
     mock_k8s_api_client.call_api.assert_called_once_with(
         SEARCH_PODS_PATH,
         "GET",
-        query_params={
-            "fieldSelector": f"metadata.namespace={deployment.metadata.namespace}",
-            "labelSelector": "app=test",
-        },
+        query_params={},
         response_type="object",
         _return_http_data_only=True,
     )
@@ -275,33 +272,33 @@ async def test_get_deployment(
 ):
     """Test getting a single deployment by ID."""
     deployments = create_api_test_deployments(1)
-    pods = create_api_test_pods(1)
+    pods = create_api_test_pods(1, base_name=deployments[0]['metadata']['name'])
     responses = get_api_responses(deployments, pods)
+    deployment_name = deployments[0]["metadata"]["name"]
+    responses[f"{SEARCH_DEPLOYMENTS_PATH}/{CHUTE_DEPLOY_PREFIX}-{deployment_name}"] = {
+            "kind": "DeploymentList",
+            "apiVersion": "v1",
+            "items": deployments,
+        }
 
     mock_k8s_api_client.call_api.side_effect = get_mock_call_api_side_effect(responses)
 
     # Call the function
-    deployment_name = deployments[0]["metadata"]["name"]
     result = await k8s.get_deployment(deployment_name)
 
     # Assertions
     api_calls = [
         call(
-            SEARCH_DEPLOYMENTS_PATH,
+            f"{SEARCH_DEPLOYMENTS_PATH}/{CHUTE_DEPLOY_PREFIX}-{deployment_name}",
             "GET",
-            query_params={
-                "fieldSelector": f"metadata.namespace={settings.namespace},metadata.name=chute-{deployment_name}"
-            },
+            query_params={},
             response_type="object",
             _return_http_data_only=True,
         ),
         call(
             SEARCH_PODS_PATH,
             "GET",
-            query_params={
-                "fieldSelector": f"metadata.namespace={deployments[0]["metadata"]["namespace"]}",
-                "labelSelector": f"app={deployments[0]["metadata"]["name"]}",
-            },
+            query_params={},
             response_type="object",
             _return_http_data_only=True,
         ),
@@ -362,7 +359,7 @@ async def test_get_deployed_chutes(
     """Test getting all deployed chutes."""
     # Setup mock
     deployments = create_api_test_deployments(1)
-    pods = create_api_test_pods(1)
+    pods = create_api_test_pods(1, base_name=deployments[0]['metadata']['name'])
     responses = get_api_responses(deployments, pods)
 
     mock_k8s_api_client.call_api.side_effect = get_mock_call_api_side_effect(responses)
@@ -375,20 +372,14 @@ async def test_get_deployed_chutes(
         call(
             SEARCH_DEPLOYMENTS_PATH,
             "GET",
-            query_params={
-                "fieldSelector": f"metadata.namespace={settings.namespace}",
-                "labelSelector": "chutes/chute=true",
-            },
+            query_params={},
             response_type="object",
             _return_http_data_only=True,
         ),
         call(
             SEARCH_PODS_PATH,
             "GET",
-            query_params={
-                "fieldSelector": f"metadata.namespace={deployments[0]["metadata"]["namespace"]}",
-                "labelSelector": f"app={deployments[0]["metadata"]["name"]}",
-            },
+            query_params={},
             response_type="object",
             _return_http_data_only=True,
         ),
@@ -453,11 +444,7 @@ async def test_delete_code_success(mock_k8s_core_client, mock_k8s_custom_objects
     mock_k8s_core_client.delete_namespaced_config_map.assert_called_once()
     # Verify the name is based on the UUID generated from chute_id and version
     assert "chute-code-" in mock_k8s_core_client.delete_namespaced_config_map.call_args[1]["name"]
-    mock_k8s_custom_objects_client.delete_namespaced_custom_object.assert_called_once()
-    assert (
-        mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_args[1]["plural"]
-        == "propagationpolicies"
-    )
+
 
 
 @pytest.mark.asyncio
@@ -472,11 +459,6 @@ async def test_delete_code_not_found(mock_k8s_core_client, mock_k8s_custom_objec
 
     # Assertions
     mock_k8s_core_client.delete_namespaced_config_map.assert_called_once()
-    mock_k8s_custom_objects_client.delete_namespaced_custom_object.assert_called_once()
-    assert (
-        mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_args[1]["plural"]
-        == "propagationpolicies"
-    )
 
 
 @pytest.mark.asyncio
@@ -522,7 +504,7 @@ async def test_wait_for_deletion_with_pods(mock_k8s_api_client, mock_watch, crea
     mock_watch.stream.return_value = [{"type": "DELETED"}]
 
     # Call the function
-    await k8s.wait_for_deletion("app=test")
+    await k8s.wait_for_deletion("app=chute")
 
     # Assertions
     assert mock_k8s_api_client.call_api.call_count == 2
@@ -545,7 +527,7 @@ async def test_undeploy_success(
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
         mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
-        assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count == 2
+        assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -565,7 +547,7 @@ async def test_undeploy_with_service_error(
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
         mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
-        assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count == 2
+        assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count == 1
 
 
 # Tests for create_code_config_map

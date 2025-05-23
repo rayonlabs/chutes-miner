@@ -480,7 +480,10 @@ def create_api_test_pods():
                     "finalizers": None,
                     "generateName": f"{base_name}-",
                     "generation": None,
-                    "labels": {"app": base_name, "pod-template-hash": "5bf549858c"},
+                    "labels": {
+                        "app": base_name, 
+                        "pod-template-hash": "5bf549858c"
+                    },
                     "name": pod_name,
                     "namespace": namespace,
                     "ownerReferences": [
@@ -650,7 +653,7 @@ def create_api_test_deployments():
             deployments = test_deployments(3)  # Creates 3 test deployments
     """
 
-    def _generate_deployments(count=1, name="test-app", namespace="default"):
+    def _generate_deployments(count=1, name="test-app", namespace="chutes"):
         deployments = []
 
         for i in range(count):
@@ -668,7 +671,7 @@ def create_api_test_deployments():
                     "creationTimestamp": current_timestamp,
                     "generation": 1,
                     "name": app_name,
-                    "namespace": "default",
+                    "namespace": namespace,
                     "resourceVersion": str(1000 + i),
                     "uid": str(uuid.uuid4()),
                     "labels": {
