@@ -79,28 +79,13 @@ spec:
               value: http://squid.chutes.svc.cluster.local:{{ .Values.squid.service.port }}
             - name: REGISTRY_PROXY_PORT
               value: "{{ .Values.registry.service.nodePort }}"
-              {{ if .Values.multiCluster }}
-            - name: KUBECONFIG
-              value: "/tmp/kube/config"
-              {{- end }}
           resources:
             {{- toYaml .Values.gepetto.resources | nindent 12 }}
           volumeMounts:
             - name: gepetto-code
               mountPath: /app/gepetto.py
               subPath: gepetto.py
-            {{ if .Values.multiCluster }}
-            - name: kubeconfig-volume
-              mountPath: /tmp/kube/config
-              readOnly: true
-              {{- end }}
       volumes:
         - name: gepetto-code
           configMap:
             name: gepetto-code
-        {{ if .Values.multiCluster }}
-        - name: kubeconfig-volume
-          hostPath:
-            path: {{ .Values.kubeconfig.hostPath }}
-            type: File
-          {{- end }}
