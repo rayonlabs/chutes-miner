@@ -4,6 +4,7 @@ Application-wide settings.
 
 import os
 import json
+from loguru import logger
 import redis.asyncio as redis
 from functools import lru_cache
 from typing import Any, List, Optional
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 from substrateinterface import Keypair
 from pydantic_settings import BaseSettings
 from kubernetes import client
-from kubernetes.config import load_incluster_config
+from kubernetes.config import load_kube_config, load_incluster_config
 
 
 class Validator(BaseModel):
@@ -26,28 +27,22 @@ def create_kubernetes_client(cls: Any = client.CoreV1Api, karmada_api: bool = Fa
     Create a k8s client.
     """
     try:
-        client = None
         if karmada_api:
-            api_endpoint = os.getenv("KARMADA_APISERVER_ENDPOINT")
-            if not api_endpoint:
-                raise RuntimeError(
-                    "Karmada API client requested but api endpoint is not in environment."
-                )
-            karmada_config = client.Configuration()
-            karmada_config.host = os.getenv(api_endpoint)
-            with open("/var/run/secrets/kubernetes.io/serviceaccount/token", "r") as f:
-                token = f.read().strip()
-            karmada_config.api_key = {"authorization": f"Bearer {token}"}
-            karmada_config.ssl_ca_cert = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-            client = cls(karmada_config)
+            kubeconfig_path = "/etc/karmada/kubeconfig"
+    
+            if not os.path.exists(kubeconfig_path):
+                raise RuntimeError(f"Karmada kubeconfig not found at {kubeconfig_path}")
+            
+            logger.debug(f"Loading in Karmada API server config [{cls=}]")
+            load_kube_config(config_file=kubeconfig_path, context="karmada-apiserver")
         elif os.getenv("KUBERNETES_SERVICE_HOST") is not None:
+            logger.debug(f"Loading in cluster config [{cls=}]")
             load_incluster_config()
-            client = cls()
         else:
             raise RuntimeError(
                 "Unable to determine kubernetes configuration from environment. Set either 'KUBECONFIG' or 'KUBERNETES_SERVICE_HOST' environment variable."
             )
-        return client
+        return cls()
     except Exception as exc:
         raise Exception(f"Failed to create Kubernetes client: {str(exc)}")
 

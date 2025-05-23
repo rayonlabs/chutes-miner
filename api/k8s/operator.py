@@ -73,8 +73,10 @@ class K8sOperator(abc.ABC):
             # Detection logic
             nodes = k8s_core_client().list_node(label_selector="karmada-control-plane=true")
             if nodes.items:
+                logger.debug(f"Creating K8S Operator for Karmada")
                 cls._instance = super().__new__(KarmadaK8sOperator)
             else:
+                logger.debug(f"Creating K8S Operator for K3S")
                 cls._instance = super().__new__(SingleClusterK8sOperator)
         except Exception:
             cls._instance = super().__new__(SingleClusterK8sOperator)

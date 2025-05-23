@@ -23,6 +23,7 @@ spec:
       labels:
         {{- include "minerApi.labels" . | nindent 8 }}
     spec:
+      serviceAccountName: chutes
       {{- with .Values.minerApi.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -71,9 +72,22 @@ spec:
               value: {{ .Values.validators | toJson | quote }}
             - name: REGISTRY_PROXY_PORT
               value: "{{ .Values.registry.service.nodePort }}"
+            
           ports:
             - name: http
               containerPort: {{ .Values.minerApi.service.targetPort }}
               protocol: TCP
           resources:
             {{- toYaml .Values.minerApi.resources | nindent 12 }}
+          volumeMounts:
+          {{ if .Values.multiCluster }}
+          - name: karmada-kubeconfig
+            mountPath: /etc/karmada
+            readOnly: true
+          {{- end }}
+      volumes:
+      {{ if .Values.multiCluster }}
+      - name: karmada-kubeconfig
+        secret:
+          secretName: karmada-kubeconfig
+      {{- end }}

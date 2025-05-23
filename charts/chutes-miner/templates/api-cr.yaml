@@ -12,23 +12,3 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["get", "list", "create", "delete", "watch"]
-{{ if .Values.multiCluster }}
-# Karmada API permissions  
-- apiGroups: ["cluster.karmada.io"]
-  resources: ["clusters"]
-  verbs: ["get", "list", "watch", "create", "update", "patch"]
-
-- apiGroups: ["policy.karmada.io"]
-  resources: ["propagationpolicies", "clusterpropagationpolicies"]
-  verbs: ["get", "list", "watch", "create", "update", "patch"]
-
-# Standard Kubernetes resources in Karmada API context
-- apiGroups: [""]
-  resources: ["deployments", "services", "configmaps"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-- apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-{{- end }}

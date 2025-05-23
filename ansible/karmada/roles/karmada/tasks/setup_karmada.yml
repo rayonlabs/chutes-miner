@@ -113,6 +113,7 @@
     state: present
     kind: Node
     name: "{{ inventory_hostname }}"
+    context: default
     definition:
       metadata:
         labels:
@@ -168,13 +169,53 @@
       changed_when:
         - mv_result.rc == 0
 
-- name: Apply karmada search resources
+- name: Copy karmada yaml files to target host
+  copy:
+    src: "{{ item }}"
+    dest: "/tmp/{{ item }}"
+    mode: '0644'
+  loop:
+    - karmada-search.yaml
+    - cluster-proxy.rbac.yaml
+
+- name: Apply karmada resources
   kubernetes.core.k8s:
     state: present
-    src: karmada-search.yaml
+    src: "/tmp/{{ item }}"
     context: karmada-apiserver
     wait: true
     wait_timeout: 60
+  loop:
+    - karmada-search.yaml
+    - cluster-proxy.rbac.yaml
+
+- name: Setup Karmada API Server secret for chutes
+  block:
+    - name: Get secret from source namespace
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: "{{ secret_name | default('karmada-kubeconfig') }}"
+        namespace: "{{ source_namespace | default('karmada-system') }}"
+      register: source_api_secret
+
+    - name: Copy secret to target namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ secret_name | default('karmada-kubeconfig') }}"
+            namespace: "{{ target_namespace }}"
+            labels: "{{ source_api_secret.resources[0].metadata.labels | default({}) }}"
+            annotations: "{{ source_api_secret.resources[0].metadata.annotations | default({}) }}"
+          type: "{{ source_api_secret.resources[0].type }}"
+          data: "{{ source_api_secret.resources[0].data }}"
+      vars:
+        source_namespace: karmada-system
+        target_namespace: chutes
+        secret_name: karmada-kubeconfig
 
 - name: Check whether kubectl is installed on control node
   delegate_to: 127.0.0.1
