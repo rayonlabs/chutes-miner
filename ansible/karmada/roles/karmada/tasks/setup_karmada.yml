@@ -170,10 +170,10 @@
         - mv_result.rc == 0
 
 - name: Copy karmada yaml files to target host
-  copy:
+  ansible.builtin.copy:
     src: "{{ item }}"
     dest: "/tmp/{{ item }}"
-    mode: '0644'
+    mode: "0644"
   loop:
     - karmada-search.yaml
     - cluster-proxy.rbac.yaml

@@ -1,3 +1,4 @@
+---
 - name: Add NVIDIA Helm repository
   kubernetes.core.helm_repository:
     name: nvidia
