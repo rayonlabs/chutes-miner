@@ -9,6 +9,11 @@
   when: inventory_hostname in groups['control']
   tags: karmada-install
 
+- name: Setup GPU operator deployments
+  ansible.builtin.include_tasks: setup_gpu_operator.yml
+  when: inventory_hostname in groups['control']
+  tags: karmada-gpu-operator
+
 - name: Join member clusters
   ansible.builtin.include_tasks: join_clusters.yml
   when: inventory_hostname in groups['workers']

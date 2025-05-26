@@ -1,0 +1,34 @@
+- name: Add NVIDIA Helm repository
+  kubernetes.core.helm_repository:
+    name: nvidia
+    repo_url: https://helm.ngc.nvidia.com/nvidia
+
+- name: Install GPU Operator
+  kubernetes.core.helm:
+    name: gpu-operator
+    chart_ref: nvidia/gpu-operator
+    release_namespace: gpu-operator
+    create_namespace: true
+    state: present
+    force: true
+    kubeconfig: "{{ karmada_kubeconfig_path | default(omit) }}"
+    context: karmada-apiserver
+    values:
+      nodeSelector:
+        kubernetes.io/gpu: "true"
+      driver:
+        enabled: true
+      toolkit:
+        enabled: true
+      devicePlugin:
+        enabled: true
+      operator:
+        upgradeCRD: false
+      containerRuntime:
+        socketPath: "/run/k3s/containerd/containerd.sock"
+
+- name: Create GPU operator propagation policies
+  kubernetes.core.k8s:
+    src: gpu_operator_pp.yaml
+    state: present
+    context: karmada-apiserver

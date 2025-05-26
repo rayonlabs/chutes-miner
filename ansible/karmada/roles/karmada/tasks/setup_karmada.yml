@@ -197,6 +197,7 @@
         kind: Secret
         name: "{{ secret_name | default('karmada-kubeconfig') }}"
         namespace: "{{ source_namespace | default('karmada-system') }}"
+        context: default
       register: source_api_secret
 
     - name: Copy secret to target namespace
@@ -212,6 +213,7 @@
             annotations: "{{ source_api_secret.resources[0].metadata.annotations | default({}) }}"
           type: "{{ source_api_secret.resources[0].type }}"
           data: "{{ source_api_secret.resources[0].data }}"
+        context: default
       vars:
         source_namespace: karmada-system
         target_namespace: chutes

@@ -1,0 +1,98 @@
+---
+# PropagationPolicy for GPU Operator Namespace
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: gpu-operator-namespace-policy
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: Namespace
+      name: gpu-operator
+  placement:
+    clusterAffinity:
+      clusterNames: []
+---
+# PropagationPolicy for GPU Operator Resources
+apiVersion: policy.karmada.io/v1alpha1
+kind: ClusterPropagationPolicy
+metadata:
+  name: gpu-operator-crd-policy
+spec:
+  resourceSelectors:
+    # GPU Operator CRDs
+    - apiVersion: apiextensions.k8s.io/v1
+      kind: CustomResourceDefinition
+      name: nvidiadrivers.nvidia.com
+    - apiVersion: apiextensions.k8s.io/v1
+      kind: CustomResourceDefinition
+      name: nodefeaturegroups.nfd.k8s-sigs.io
+    - apiVersion: apiextensions.k8s.io/v1
+      kind: CustomResourceDefinition
+      name: nodefeaturerules.nfd.k8s-sigs.io
+    - apiVersion: apiextensions.k8s.io/v1
+      kind: CustomResourceDefinition
+      name: nodefeatures.nfd.k8s-sigs.io
+    - apiVersion: apiextensions.k8s.io/v1
+      kind: CustomResourceDefinition
+      name: clusterpolicies.nvidia.com
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/instance: gpu-operator
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/instance: gpu-operator
+    - apiVersion: nvidia.com/v1
+      kind: ClusterPolicy
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/instance: gpu-operator
+  placement:
+    clusterAffinity:
+      clusterNames: []
+---
+# PropagationPolicy for GPU Operator Resources
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: gpu-operator-resources-policy
+spec:
+  resourceSelectors:
+    # GPU Operator RBAC
+    - apiVersion: v1
+      kind: ServiceAccount
+      namespace: gpu-operator
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/instance: gpu-operator
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      namespace: gpu-operator
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      namespace: gpu-operator
+    # GPU Operator ConfigMaps and Secrets
+    - apiVersion: v1
+      kind: ConfigMap
+      namespace: gpu-operator
+    - apiVersion: v1
+      kind: Secret
+      namespace: gpu-operator
+    # GPU Operator Deployments and DaemonSets
+    - apiVersion: apps/v1
+      kind: Deployment
+      namespace: gpu-operator
+    - apiVersion: apps/v1
+      kind: DaemonSet
+      namespace: gpu-operator
+    # GPU Operator Services
+    - apiVersion: v1
+      kind: Service
+      namespace: gpu-operator
+  placement:
+    clusterAffinity:
+      clusterNames: []
