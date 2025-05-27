@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict
 import uuid
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, Mock, patch, call
 from kubernetes.client.rest import ApiException
 
 
@@ -500,19 +500,15 @@ async def test_wait_for_deletion_with_pods(mock_k8s_api_client, mock_watch, crea
 
     mock_k8s_api_client.call_api.side_effect = [
         {"kind": "PodList", "apiVersion": "v1", "items": pods},  # Initial check - pods exist
+        {"kind": "PodList", "apiVersion": "v1", "items": pods},  # Initial watch check - pods exist
         {"kind": "PodList", "apiVersion": "v1", "items": []},  # Check in the watch loop - pods gone
     ]
-
-    # Setup watch to return one event
-    mock_watch.stream.return_value = [{"type": "DELETED"}]
 
     # Call the function
     await k8s.wait_for_deletion("app=chute")
 
     # Assertions
-    assert mock_k8s_api_client.call_api.call_count == 2
-    mock_watch.stream.assert_called_once()
-    mock_watch.stop.assert_called_once()
+    assert mock_k8s_api_client.call_api.call_count == 3
 
 
 # Tests for undeploy
@@ -760,6 +756,130 @@ async def test_deploy_chute_api_exception(
     # Call the function and expect exception
     with pytest.raises(DeploymentFailure, match="Failed to deploy chute"):
         await k8s.deploy_chute(sample_chute, sample_server)
+
+    # Verify cleanup was attempted
+    mock_k8s_core_client.delete_namespaced_service.assert_called_once()
+    mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count = 3
+
+
+
+# Tests for deploy_chute
+@pytest.mark.asyncio
+async def test_deploy_graval_success(
+    mock_k8s_core_client,
+    mock_k8s_app_client,
+    mock_k8s_custom_objects_client,
+    mock_db_session
+):
+    """Test successful deployment of a chute."""
+    # Setup mocks for kubernetes deployment and service creation
+    
+    mock_node = MagicMock()
+    mock_node.metadata.name = "test-server"
+
+    mock_deployment = MagicMock()
+    mock_service = MagicMock()
+    mock_service.spec.ports = [MagicMock(node_port=30000)]
+
+    mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
+    mock_k8s_core_client.create_namespaced_service.return_value = mock_service
+
+    # Setup session mock for deployment retrieval
+    # Setup session mock for deployment retrieval
+    mock_deployment_db = MagicMock(spec=Deployment)
+    mock_deployment_db.deployment_id = uuid.uuid4()
+    mock_result = MagicMock()
+    mock_result.unique.return_value = mock_result
+    mock_result.scalar_one_or_none.side_effect = [30000]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    # Call the function
+    with patch("api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
+        created_deployment, created_service = await K8sOperator().deploy_graval(
+            mock_node, mock_deployment, mock_service
+        )
+
+    # Assertions
+    assert mock_db_session.commit.call_count == 1
+    mock_k8s_core_client.create_namespaced_service.assert_called_once()
+    mock_k8s_app_client.create_namespaced_deployment.assert_called_once()
+    assert created_deployment == mock_deployment
+    assert created_service == mock_service
+
+    mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 1
+    for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
+        assert mock_call[2]["plural"] == "propagationpolicies"
+
+@pytest.mark.asyncio
+async def test_deploy_graval_port_mismatch(
+    mock_k8s_core_client,
+    mock_k8s_app_client,
+    mock_k8s_custom_objects_client,
+    mock_db_session
+):
+    """Test handling when deployment disappears mid-flight."""
+    # Setup mocks for kubernetes deployment and service creation
+
+    mock_node = MagicMock()
+    mock_node.metdata.name = "test-server"
+
+    mock_deployment = MagicMock()
+    mock_service = MagicMock()
+    mock_service.spec.ports = [MagicMock(node_port=30000)]
+
+    mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
+    mock_k8s_core_client.create_namespaced_service.return_value = mock_service
+
+    # Setup session mock to return None for deployment
+    # Setup session mock for deployment retrieval
+    mock_result = MagicMock()
+    mock_result.unique.return_value = mock_result
+    mock_result.scalar_one_or_none.side_effect = [32000]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    # Call the function and expect exception
+    with pytest.raises(DeploymentFailure, match="Unable to track verification port for newly added node: expected_port=30000 actual_port=32000"):
+        await K8sOperator().deploy_graval(mock_node, mock_deployment, mock_service)
+
+    mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 3
+    for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
+        assert mock_call[2]["plural"] == "propagationpolicies"
+
+@pytest.mark.asyncio
+async def test_deploy_graval_api_exception(
+    mock_k8s_core_client,
+    mock_k8s_app_client,
+    mock_k8s_custom_objects_client,
+    mock_db_session,
+    sample_server,
+    sample_chute,
+):
+    """Test handling of API exception during deployment."""
+    # Setup mock to raise ApiException
+    error = ApiException(status=500, reason="Internal error")
+    mock_k8s_app_client.create_namespaced_deployment.side_effect = error
+
+    mock_node = MagicMock()
+    mock_node.metdata.name = "test-server"
+
+    mock_deployment = MagicMock()
+    mock_service = MagicMock()
+    mock_service.spec.ports = [MagicMock(node_port=30000)]
+
+    # Setup session mock for deployment retrieval
+    mock_result = MagicMock()
+    mock_result.unique.return_value = mock_result
+    mock_result.scalar_one_or_none.side_effect = [30000]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    # Setup service creation to succeed
+    mock_service = MagicMock()
+    mock_service.spec.ports = [MagicMock(node_port=30000)]
+    mock_k8s_core_client.create_namespaced_service.return_value = mock_service
+
+    # Call the function and expect exception
+    with pytest.raises(DeploymentFailure, match="Failed to deploy GraVal:"):
+        await K8sOperator().deploy_graval(mock_node, mock_deployment, mock_service)
 
     # Verify cleanup was attempted
     mock_k8s_core_client.delete_namespaced_service.assert_called_once()

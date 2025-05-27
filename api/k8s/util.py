@@ -58,7 +58,7 @@ def build_chute_deployment(deployment_id, chute: Chute, server: Server) -> V1Dep
                 ),
                 spec=V1PodSpec(
                     node_name=server.name,
-                    runtime_class_name="nvidia-container-runtime",
+                    runtime_class_name=settings.nvidia_runtime,
                     volumes=[
                         V1Volume(
                             name="code",

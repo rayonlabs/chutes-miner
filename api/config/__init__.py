@@ -28,7 +28,7 @@ def create_kubernetes_client(cls: Any = client.CoreV1Api, karmada_api: bool = Fa
     """
     try:
         if karmada_api:
-            kubeconfig_path = "/etc/karmada/kubeconfig"
+            kubeconfig_path = os.path.expanduser(os.getenv("KUBECONFIG", "/etc/karmada/kubeconfig"))
     
             if not os.path.exists(kubeconfig_path):
                 raise RuntimeError(f"Karmada kubeconfig not found at {kubeconfig_path}")
@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     graval_bootstrap_image: str = os.getenv(
         "GRAVAL_BOOTSTRAP_IMAGE", "parachutes/graval-bootstrap:latest"
     )
+    nvidia_runtime: str = os.getenv("NVIDIA_RUNTIME", "nvidia")
     graval_bootstrap_timeout: int = int(os.getenv("GRAVAL_BOOTSTRAP_TIMEOUT", "900"))
     miner_ss58: str = os.environ["MINER_SS58"]
     miner_keypair: Keypair = Keypair.create_from_seed(os.environ["MINER_SEED"])

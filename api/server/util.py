@@ -31,7 +31,8 @@ from sqlalchemy import update, select
 from sqlalchemy.exc import IntegrityError
 from typing import Tuple, Dict, List
 from api.auth import sign_request
-from api.config import settings, Validator, validator_by_hotkey
+from api.config import k8s_api_client, k8s_app_client, settings, Validator, validator_by_hotkey
+from api.k8s.constants import GRAVAL_DEPLOY_PREFIX, GRAVAL_SVC_PREFIX
 from api.k8s.operator import K8sOperator
 from api.util import sse_message
 from api.database import get_session
@@ -92,13 +93,12 @@ async def gather_gpu_info(
     start_time = time.time()
     deployment_ready = False
     try:
-        for event in watch.Watch().stream(
-            K8sOperator().get_deployments,
+        for event in K8sOperator().watch_deployments(
             namespace=namespace,
             field_selector=f"metadata.name={deployment_name}",
-            timeout_seconds=settings.graval_bootstrap_timeout,
+            timeout=settings.graval_bootstrap_timeout,
         ):
-            deployment = event["object"]
+            deployment = event.object
             if deployment.status.conditions:
                 for condition in deployment.status.conditions:
                     if condition.type == "Failed" and condition.status == "True":
@@ -185,7 +185,7 @@ async def deploy_graval(
     nice_name = node_name.replace(".", "-")
     deployment = V1Deployment(
         metadata=V1ObjectMeta(
-            name=f"graval-{nice_name}",
+            name=f"{GRAVAL_DEPLOY_PREFIX}-{nice_name}",
             labels={
                 "app": "graval",
                 "chute/chute": "false",
@@ -199,7 +199,7 @@ async def deploy_graval(
                 metadata=V1ObjectMeta(labels={"app": "graval", "graval-node": node_name}),
                 spec=V1PodSpec(
                     node_name=node_name,
-                    runtime_class_name="nvidia-container-runtime",
+                    runtime_class_name=settings.nvidia_runtime,
                     containers=[
                         V1Container(
                             name="graval",
@@ -252,7 +252,7 @@ async def deploy_graval(
     # And the service that exposes it.
     service = V1Service(
         metadata=V1ObjectMeta(
-            name=f"graval-service-{nice_name}",
+            name=f"{GRAVAL_SVC_PREFIX}-{nice_name}",
             labels={"app": "graval", "graval-node": node_name},
         ),
         spec=V1ServiceSpec(
@@ -263,7 +263,7 @@ async def deploy_graval(
     )
 
     # Deploy!
-    K8sOperator().deploy_graval(node_object, deployment, service)
+    return await K8sOperator().deploy_graval(node_object, deployment, service)
 
 
 async def track_server(
@@ -426,23 +426,12 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
     started_at = time.time()
 
     async def _cleanup(delete_node: bool = True):
-        node_name = node_object.metadata.name
+
+        await K8sOperator().cleanup_graval(node_object)
+
         node_uid = node_object.metadata.uid
-        nice_name = node_name.replace(".", "-")
-        try:
-            K8sOperator().delete_service(f"graval-service-{nice_name}")
-        except Exception:
-            ...
-        try:
-            K8sOperator().delete_deployment(f"graval-{nice_name}")
-            label_selector = f"graval-node={nice_name}"
-
-            from api.k8s import wait_for_deletion
-
-            await wait_for_deletion(label_selector)
-        except Exception:
-            ...
-        if delete_node and False:
+        node_name = node_object.metadata.name.replace(".", "-")
+        if delete_node:
             logger.info(f"Purging failed server: {node_name=} {node_uid=}")
             async with get_session() as session:
                 node = (

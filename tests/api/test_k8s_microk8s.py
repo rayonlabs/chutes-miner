@@ -4,7 +4,7 @@ Unit tests for kubernetes helper module.
 
 import uuid
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from kubernetes.client.rest import ApiException
 from datetime import datetime
 
@@ -326,15 +326,15 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
     ]
 
     # Setup watch to return one event
-    mock_watch.stream.return_value = [{"type": "DELETED"}]
+    mock_event = Mock()
+    mock_event.is_deleted = True
+    mock_watch.stream.return_value = mock_event
 
     # Call the function
     await k8s.wait_for_deletion("app=test")
 
     # Assertions
-    assert mock_k8s_core_client.list_namespaced_pod.call_count == 2
-    mock_watch.stream.assert_called_once()
-    mock_watch.stop.assert_called_once()
+    assert mock_k8s_core_client.list_namespaced_pod.call_count == 1
 
 
 # Tests for undeploy
