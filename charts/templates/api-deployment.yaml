@@ -64,8 +64,6 @@ spec:
               value: {{ include "postgresql.url" . }}
             - name: REDIS_URL
               value: {{ include "redis.url" . }}
-            - name: SQUID_PORT
-              value: "{{ .Values.squid.service.port }}"
             - name: VALIDATORS
               value: {{ .Values.validators | toJson | quote }}
             - name: REGISTRY_PROXY_PORT

@@ -17,7 +17,6 @@ We've tried to automate the bulk of the process via ansible, helm/kubernetes, so
      - [Redis](#-redis)
      - [GraVal Bootstrap](#-graval-bootstrap)
      - [Regstry Proxy](#-registry-proxy)
-     - [Squid Proxy](#-squid-proxy)
      - [API](#-api)
      - [Gepetto](#%EF%B8%8F-gepetto)
 - [Getting Started](#-getting-started)
@@ -111,14 +110,6 @@ The registry proxy itself is an nginx server that performs an auth subrequest to
 The miner API code that injects the signatures is here: https://github.com/rayonlabs/chutes-miner/blob/main/api/registry/router.py
 
 Nginx then proxies the request upstream back to the validator in question (based on the hotkey as part of the subdomain), which validates the signatures and replaces those headers with basic auth that can be used with our self-hosted registry: https://github.com/rayonlabs/chutes-api/blob/main/api/registry/router.py
-
-*__this is installed and configured automatically when deploying via helm charts__*
-
-#### 🦑 Squid proxy
-
-In order to prevent some amount of abuse of the platform, chutes are limited to HTTPS traffic, and only through a squid proxy. The squid proxy server does not currently cache, rather it's used to filter the list of upstream domains the chutes are allowed to connect to, e.g. huggingface, S3, etc.
-
-The list of allowed domains will change over time, but can be found in the configmap within the charts directory [here](/charts/templates/squid-cm.yaml)
 
 *__this is installed and configured automatically when deploying via helm charts__*
 

@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     subtensor: str = os.getenv("SUBTENSOR_ADDRESS", "wss://entrypoint-finney.opentensor.ai:443")
     namespace: str = os.getenv("CHUTES_NAMESPACE", "chutes")
     graval_bootstrap_image: str = os.getenv(
-        "GRAVAL_BOOTSTRAP_IMAGE", "parachutes/graval-bootstrap:latest"
+        "GRAVAL_BOOTSTRAP_IMAGE", "parachutes/graval-bootstrap:0.1.1-opencl",
     )
     graval_bootstrap_timeout: int = int(os.getenv("GRAVAL_BOOTSTRAP_TIMEOUT", "900"))
     miner_ss58: str = os.environ["MINER_SS58"]
@@ -75,7 +75,6 @@ class Settings(BaseSettings):
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
     registry_proxy_port: int = int(os.getenv("REGISTRY_PROXY_PORT", "30500"))
     prometheus_url: str = f"http://prometheus-server.{os.getenv('CHUTES_NAMESPACE', 'chutes')}.svc.cluster.local:{os.getenv('PROMETHEUS_PORT', '80')}"
-    squid_url: Optional[str] = os.getenv("SQUID_URL", None)
 
     cache_max_age_days: int = int(os.getenv("CACHE_MAX_AGE_DAYS", "7"))
     cache_max_size_gb: int = int(os.getenv("CACHE_MAX_SIZE_GB", "500"))

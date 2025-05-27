@@ -363,7 +363,6 @@ async def deploy_chute(chute_id: str, server_id: str):
         "chutes/chute": "true",
         "chutes/chute-id": chute.chute_id,
         "chutes/version": chute.version,
-        "squid-access": "true",
     }
 
     deployment = V1Deployment(
@@ -475,14 +474,6 @@ async def deploy_chute(chute_id: str, server_id: str):
                                 V1EnvVar(
                                     name="NCCL_DEBUG",
                                     value="INFO",
-                                ),
-                                V1EnvVar(
-                                    name="HTTP_PROXY",
-                                    value=settings.squid_url or "",
-                                ),
-                                V1EnvVar(
-                                    name="HTTPS_PROXY",
-                                    value=settings.squid_url or "",
                                 ),
                                 V1EnvVar(
                                     name="NCCL_SOCKET_IFNAME",
