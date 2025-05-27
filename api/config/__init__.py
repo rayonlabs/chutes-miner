@@ -29,10 +29,10 @@ def create_kubernetes_client(cls: Any = client.CoreV1Api, karmada_api: bool = Fa
     try:
         if karmada_api:
             kubeconfig_path = os.path.expanduser(os.getenv("KUBECONFIG", "/etc/karmada/kubeconfig"))
-    
+
             if not os.path.exists(kubeconfig_path):
                 raise RuntimeError(f"Karmada kubeconfig not found at {kubeconfig_path}")
-            
+
             logger.debug(f"Loading in Karmada API server config [{cls=}]")
             load_kube_config(config_file=kubeconfig_path, context="karmada-apiserver")
         elif os.getenv("KUBERNETES_SERVICE_HOST") is not None:

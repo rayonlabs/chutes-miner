@@ -10,7 +10,6 @@ import asyncio
 import traceback
 import api.constants as cst
 from loguru import logger
-from kubernetes import watch
 from kubernetes.client import (
     V1Node,
     V1Deployment,
@@ -31,7 +30,7 @@ from sqlalchemy import update, select
 from sqlalchemy.exc import IntegrityError
 from typing import Tuple, Dict, List
 from api.auth import sign_request
-from api.config import k8s_api_client, k8s_app_client, settings, Validator, validator_by_hotkey
+from api.config import settings, Validator, validator_by_hotkey
 from api.k8s.constants import GRAVAL_DEPLOY_PREFIX, GRAVAL_SVC_PREFIX
 from api.k8s.operator import K8sOperator
 from api.util import sse_message
@@ -426,7 +425,6 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
     started_at = time.time()
 
     async def _cleanup(delete_node: bool = True):
-
         await K8sOperator().cleanup_graval(node_object)
 
         node_uid = node_object.metadata.uid

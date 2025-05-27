@@ -1,8 +1,5 @@
-import asyncio
 from functools import lru_cache
 import math
-import signal
-import sys
 import time
 import uuid
 import traceback
@@ -81,10 +78,10 @@ class K8sOperator(abc.ABC):
             # Detection logic
             nodes = k8s_core_client().list_node(label_selector="karmada-control-plane=true")
             if nodes.items:
-                logger.debug(f"Creating K8S Operator for Karmada")
+                logger.debug("Creating K8S Operator for Karmada")
                 cls._instance = super().__new__(KarmadaK8sOperator)
             else:
-                logger.debug(f"Creating K8S Operator for K3S")
+                logger.debug("Creating K8S Operator for K3S")
                 cls._instance = super().__new__(SingleClusterK8sOperator)
         except Exception:
             cls._instance = super().__new__(SingleClusterK8sOperator)
@@ -163,7 +160,7 @@ class K8sOperator(abc.ABC):
     ) -> Generator[WatchEvent, None, None]:
         """
         Watch pods and yield events with type and pod object.
-        
+
         Yields:
             dict: Event with 'type' ('ADDED', 'MODIFIED', 'DELETED') and 'object' (V1Pod)
         """
@@ -264,7 +261,7 @@ class K8sOperator(abc.ABC):
         Get deployments, optinally filtering by namespace and labels
         """
         raise NotImplementedError()
-    
+
     @abc.abstractmethod
     def watch_deployments(
         self,
@@ -275,7 +272,7 @@ class K8sOperator(abc.ABC):
     ) -> Generator[WatchEvent, None, None]:
         """
         Watch deployments and yield events with type and deployment object.
-        
+
         Yields:
             dict: Event with 'type' ('ADDED', 'MODIFIED', 'DELETED') and 'object' (V1Deployment)
         """
@@ -337,9 +334,7 @@ class K8sOperator(abc.ABC):
         # w = watch.Watch()
         try:
             for event in self.watch_pods(
-                namespace=settings.namespace,
-                label_selector=label_selector,
-                timeout=timeout_seconds
+                namespace=settings.namespace, label_selector=label_selector, timeout=timeout_seconds
             ):
                 if event.is_deleted:
                     logger.success(f"Deletion of {label_selector=} is complete")
@@ -481,12 +476,15 @@ class K8sOperator(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def deploy_graval(node: V1Node, deployment: V1Deployment, service: V1Service) -> Tuple[V1Deployment, V1Service]:
+    async def deploy_graval(
+        node: V1Node, deployment: V1Deployment, service: V1Service
+    ) -> Tuple[V1Deployment, V1Service]:
         raise NotImplementedError()
 
     @abc.abstractmethod
     async def cleanup_graval(self, node: V1Node):
         raise NotImplementedError()
+
 
 # Legacy single-cluster implementation
 class SingleClusterK8sOperator(K8sOperator):
@@ -508,12 +506,7 @@ class SingleClusterK8sOperator(K8sOperator):
     def patch_node(self, name, body):
         return k8s_core_client().patch_node(name=name, body=body)
 
-    def watch_pods(self, 
-                   namespace = None, 
-                   label_selector = None, 
-                   field_selector = None, 
-                   timeout=120):
-        
+    def watch_pods(self, namespace=None, label_selector=None, field_selector=None, timeout=120):
         if label_selector:
             label_selector = (
                 label_selector
@@ -609,7 +602,7 @@ class SingleClusterK8sOperator(K8sOperator):
         )
 
         return deployment_list
-    
+
     def watch_deployments(
         self,
         namespace: Optional[str] = None,
@@ -854,7 +847,6 @@ class KarmadaK8sOperator(K8sOperator):
         # when chute is deployed.
         self.karmada_core_client.create_namespaced_config_map(namespace=namespace, body=config_map)
 
-
     async def undeploy(self, deployment_id: str) -> None:
         """Delete a deployment, and associated service."""
         await super().undeploy(deployment_id)
@@ -986,18 +978,13 @@ class KarmadaK8sOperator(K8sOperator):
             name=pp_name,
         )
 
-    def watch_pods(self, 
-                          namespace = None, 
-                          label_selector = None, 
-                          field_selector = None, 
-                          timeout=120):
-        
+    def watch_pods(self, namespace=None, label_selector=None, field_selector=None, timeout=120):
         for event in self._watch_resources(
-            timeout, 
+            timeout,
             self._get_pods,
             namespace=namespace,
             label_selector=label_selector,
-            field_selector=field_selector
+            field_selector=field_selector,
         ):
             yield event
 
@@ -1036,70 +1023,55 @@ class KarmadaK8sOperator(K8sOperator):
         ]
 
         return deploy_list
-    
-    def watch_deployments(self, 
-                          namespace = None, 
-                          label_selector = None, 
-                          field_selector = None, 
-                          timeout=120):
-        
+
+    def watch_deployments(
+        self, namespace=None, label_selector=None, field_selector=None, timeout=120
+    ):
         for event in self._watch_resources(
-            timeout, 
+            timeout,
             self.get_deployments,
             namespace=namespace,
             label_selector=label_selector,
-            field_selector=field_selector
+            field_selector=field_selector,
         ):
             yield event
 
     def _watch_resources(self, timeout, search_func, *search_args, **search_kwargs):
         previous_state = {}
-    
+
         start_time = time.time()
-        
+
         while True:
             try:
                 # Get current deployments from search API
-                current_list = search_func(
-                    *search_args,
-                    **search_kwargs
-                )
-                
-                current_state = {
-                    resource.metadata.uid: resource for resource in current_list.items
-                }
-                
+                current_list = search_func(*search_args, **search_kwargs)
+
+                current_state = {resource.metadata.uid: resource for resource in current_list.items}
+
                 # Find added deployments
                 for uid, resource in current_state.items():
                     if uid not in previous_state:
-                        yield WatchEvent(
-                            type=WatchEventType.ADDED,
-                            object=resource
-                        )
-                    elif (previous_state[uid].metadata.resource_version != 
-                          resource.metadata.resource_version):
-                        yield WatchEvent(
-                            type=WatchEventType.MODIFIED,
-                            object=resource
-                        )
-                
+                        yield WatchEvent(type=WatchEventType.ADDED, object=resource)
+                    elif (
+                        previous_state[uid].metadata.resource_version
+                        != resource.metadata.resource_version
+                    ):
+                        yield WatchEvent(type=WatchEventType.MODIFIED, object=resource)
+
                 # Find deleted deployments
                 for uid, resource in previous_state.items():
                     if uid not in current_state:
-                        yield WatchEvent(
-                            type=WatchEventType.DELETED,
-                            object=resource
-                        )
-                
+                        yield WatchEvent(type=WatchEventType.DELETED, object=resource)
+
                 # Update previous state
                 previous_state = current_state
-                
+
                 # Check timeout
                 if time.time() - start_time >= timeout:
                     break
-                    
+
                 time.sleep(2)
-                
+
             except Exception as e:
                 logger.error(f"Error in watch_deployments: {e}")
                 break
@@ -1192,7 +1164,6 @@ class KarmadaK8sOperator(K8sOperator):
         return response
 
     async def deploy_graval(self, node: V1Node, deployment: V1Deployment, service: V1Service):
-
         try:
             created_service = self.karmada_core_client.create_namespaced_service(
                 namespace=settings.namespace, body=service
@@ -1248,8 +1219,9 @@ class KarmadaK8sOperator(K8sOperator):
         except Exception:
             ...
 
-        
-    def _cleanup_graval_deployment(self, node: V1Node, service: V1Service, deployment: V1Deployment):
+    def _cleanup_graval_deployment(
+        self, node: V1Node, service: V1Service, deployment: V1Deployment
+    ):
         try:
             self.delete_service(service.metadata.name)
         except Exception:
@@ -1259,6 +1231,8 @@ class KarmadaK8sOperator(K8sOperator):
         except Exception:
             ...
         try:
-            self._delete_propagation_policy(f"{GRAVAL_PP_PREFIX}-{node.metadata.name.replace('.', '-')}")
+            self._delete_propagation_policy(
+                f"{GRAVAL_PP_PREFIX}-{node.metadata.name.replace('.', '-')}"
+            )
         except Exception:
             ...

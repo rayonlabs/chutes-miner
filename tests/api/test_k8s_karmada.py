@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict
 import uuid
 import pytest
-from unittest.mock import AsyncMock, MagicMock, Mock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch, call
 from kubernetes.client.rest import ApiException
 
 
@@ -762,18 +762,14 @@ async def test_deploy_chute_api_exception(
     mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count = 3
 
 
-
 # Tests for deploy_chute
 @pytest.mark.asyncio
 async def test_deploy_graval_success(
-    mock_k8s_core_client,
-    mock_k8s_app_client,
-    mock_k8s_custom_objects_client,
-    mock_db_session
+    mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client, mock_db_session
 ):
     """Test successful deployment of a chute."""
     # Setup mocks for kubernetes deployment and service creation
-    
+
     mock_node = MagicMock()
     mock_node.metadata.name = "test-server"
 
@@ -810,12 +806,10 @@ async def test_deploy_graval_success(
     for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
         assert mock_call[2]["plural"] == "propagationpolicies"
 
+
 @pytest.mark.asyncio
 async def test_deploy_graval_port_mismatch(
-    mock_k8s_core_client,
-    mock_k8s_app_client,
-    mock_k8s_custom_objects_client,
-    mock_db_session
+    mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client, mock_db_session
 ):
     """Test handling when deployment disappears mid-flight."""
     # Setup mocks for kubernetes deployment and service creation
@@ -838,12 +832,16 @@ async def test_deploy_graval_port_mismatch(
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
     # Call the function and expect exception
-    with pytest.raises(DeploymentFailure, match="Unable to track verification port for newly added node: expected_port=30000 actual_port=32000"):
+    with pytest.raises(
+        DeploymentFailure,
+        match="Unable to track verification port for newly added node: expected_port=30000 actual_port=32000",
+    ):
         await K8sOperator().deploy_graval(mock_node, mock_deployment, mock_service)
 
     mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 3
     for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
         assert mock_call[2]["plural"] == "propagationpolicies"
+
 
 @pytest.mark.asyncio
 async def test_deploy_graval_api_exception(
