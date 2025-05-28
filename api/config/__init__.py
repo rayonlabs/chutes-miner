@@ -4,6 +4,7 @@ Application-wide settings.
 
 import os
 import json
+from loguru import logger
 import redis.asyncio as redis
 from functools import lru_cache
 from typing import Any, List, Optional
@@ -21,28 +22,49 @@ class Validator(BaseModel):
     socket: str
 
 
-def create_kubernetes_client(cls: Any = client.CoreV1Api):
+def create_kubernetes_client(cls: Any = client.CoreV1Api, karmada_api: bool = False):
     """
     Create a k8s client.
     """
     try:
-        if os.getenv("KUBERNETES_SERVICE_HOST") is not None:
+        if karmada_api:
+            kubeconfig_path = os.path.expanduser(os.getenv("KUBECONFIG", "/etc/karmada/kubeconfig"))
+
+            if not os.path.exists(kubeconfig_path):
+                raise RuntimeError(f"Karmada kubeconfig not found at {kubeconfig_path}")
+
+            logger.debug(f"Loading in Karmada API server config [{cls=}]")
+            load_kube_config(config_file=kubeconfig_path, context="karmada-apiserver")
+        elif os.getenv("KUBERNETES_SERVICE_HOST") is not None:
+            logger.debug(f"Loading in cluster config [{cls=}]")
             load_incluster_config()
         else:
-            load_kube_config(config_file=os.getenv("KUBECONFIG"))
+            raise RuntimeError(
+                "Unable to determine kubernetes configuration from environment. Set either 'KUBECONFIG' or 'KUBERNETES_SERVICE_HOST' environment variable."
+            )
         return cls()
     except Exception as exc:
         raise Exception(f"Failed to create Kubernetes client: {str(exc)}")
 
 
-@lru_cache(maxsize=1)
-def k8s_core_client():
-    return create_kubernetes_client()
+@lru_cache(maxsize=2)
+def k8s_core_client(karmada_api: bool = False) -> client.CoreV1Api:
+    return create_kubernetes_client(karmada_api=karmada_api)
 
 
 @lru_cache(maxsize=1)
-def k8s_app_client():
-    return create_kubernetes_client(cls=client.AppsV1Api)
+def k8s_app_client(karmada_api: bool = False) -> client.AppsV1Api:
+    return create_kubernetes_client(cls=client.AppsV1Api, karmada_api=karmada_api)
+
+
+@lru_cache(maxsize=1)
+def k8s_api_client(karmada_api: bool = False) -> client.ApiClient:
+    return create_kubernetes_client(cls=client.ApiClient, karmada_api=karmada_api)
+
+
+@lru_cache(maxsize=1)
+def k8s_custom_objects_client(karmada_api: bool = False) -> client.CustomObjectsApi:
+    return create_kubernetes_client(cls=client.CustomObjectsApi, karmada_api=karmada_api)
 
 
 @lru_cache(maxsize=32)
@@ -68,6 +90,7 @@ class Settings(BaseSettings):
     graval_bootstrap_image: str = os.getenv(
         "GRAVAL_BOOTSTRAP_IMAGE", "parachutes/graval-bootstrap:0.1.2-opencl",
     )
+    nvidia_runtime: str = os.getenv("NVIDIA_RUNTIME", "nvidia")
     graval_bootstrap_timeout: int = int(os.getenv("GRAVAL_BOOTSTRAP_TIMEOUT", "900"))
     miner_ss58: str = os.environ["MINER_SS58"]
     miner_keypair: Keypair = Keypair.create_from_seed(os.environ["MINER_SEED"])

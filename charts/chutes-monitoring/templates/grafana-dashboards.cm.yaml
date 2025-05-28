@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  labels:
+    grafana_dashboard: "1"
+data:
+  http-tcp-monitoring.json: |
+{{ .Files.Get "dashboards/http-tcp-monitoring-dashboard.json" | indent 4 }}
+  k8s-cluster.json: |
+{{ .Files.Get "dashboards/k8s-cluster.json" | indent 4 }}

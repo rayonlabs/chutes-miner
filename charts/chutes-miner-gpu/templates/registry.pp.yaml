@@ -1,0 +1,25 @@
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: gpu-operator-resources-policy
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: ConfigMap
+      namespace: chutes
+      labelSelector:
+        matchLabels:
+          {{- include "registry.labels" . | nindent 10 }}
+    - apiVersion: apps/v1
+      kind: DaemonSet
+      namespace: chutes
+      labelSelector:
+        matchLabels:
+          {{- include "registry.labels" . | nindent 10 }}
+    # GPU Operator Services
+    - apiVersion: v1
+      kind: Service
+      namespace: chutes
+      labelSelector:
+        matchLabels:
+          {{- include "registry.labels" . | nindent 10 }}

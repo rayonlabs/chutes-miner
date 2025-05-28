@@ -1,0 +1,146 @@
+cache:
+  max_age_days: 30
+  max_size_gb: 500
+  overrides:
+# Add any per-node cache size (in GB) overrides here, e.g.:
+#    chutes-miner-gpu-0: 1000
+#    chutes-miner-gpu-1: 1500
+
+# Set this value to true if oeprating a mutli cluster karmada environment
+multiCluster: true
+kubeconfig:
+  hostPath: '/home/ubuntu/.kube/config'
+  localPath: /tmp/kube/config
+
+validators:
+  defaultRegistry: registry.chutes.ai
+  defaultApi: https://api.chutes.ai
+  supported:
+    - hotkey: 5Dt7HZ7Zpw4DppPxFM7Ke3Cm7sDAWhsZXmM5ZAmE7dSVJbcQ
+      registry: registry.chutes.ai
+      api: https://api.chutes.ai
+      socket: wss://ws.chutes.ai
+
+minerApi:
+  image: localhost:5000/miner:karmada
+  imagePullPolicy: Always
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "1"
+      memory: "4Gi"
+  service:
+    type: NodePort
+    nodePort: 32000
+    port: 8000
+    targetPort: 8000
+  nodeSelector: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: nvidia.com/gpu.present
+            operator: NotIn
+            values: ["true"]
+  tolerations: []
+
+
+gepetto:
+  image: localhost:5000/miner:karmada
+  imagePullPolicy: Always
+  resources:
+    requests:
+      cpu: "1"
+      memory: "2Gi"
+    limits:
+      cpu: "1"
+      memory: "4Gi"
+  nodeSelector: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: nvidia.com/gpu.present
+            operator: NotIn
+            values: ["true"]
+  tolerations: []
+
+postgres:
+  image: postgres:16
+  imagePullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+  resources:
+    requests:
+      cpu: "1"
+      memory: "4Gi"
+    limits:
+      cpu: "1"
+      memory: "4Gi"
+  database:
+    name: chutes
+    user: chutes
+    passwordKey: "postgres-password"
+  service:
+    type: ClusterIP
+    port: 5432
+    targetPort: 5432
+  nodeSelector: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: In
+            values:
+            - chutes-miner-cpu-0
+  tolerations: []
+
+redis:
+  image: redis:7
+  imagePullPolicy: IfNotPresent
+  replicaCount: 1
+  nodeSelector: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: nvidia.com/gpu.present
+            operator: NotIn
+            values: ["true"]
+  tolerations: []
+  resources:
+    requests:
+      cpu: 1
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    port: 6379
+  password:
+    passwordKey: "redis-password"
+  config:
+    customArgs: []
+
+registry:
+  service:
+    # BE SURE THIS MATCHES registry_port IN ANSIBLE!
+    nodePort: 30500
+
+auditExporter:
+  image: parachutes/miner:latest
+  nodeSelector:
+    kubernetes.io/hostname: chutes-miner-cpu-0
+
+failedChuteCleanup:
+  image: bitnami/kubectl:latest
+  nodeSelector:
+    kubernetes.io/hostname: chutes-miner-cpu-0

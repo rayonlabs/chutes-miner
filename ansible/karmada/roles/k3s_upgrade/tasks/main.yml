@@ -1,0 +1,70 @@
+---
+# with_fileglob doesn't work with remote_src, it tries to find the file on the
+# local control-plane instead of the remote host. Shell supports wildcards.
+
+- name: Get k3s installed version
+  ansible.builtin.command: k3s --version
+  register: k3s_version_output
+  changed_when: false
+
+- name: Set k3s installed version
+  ansible.builtin.set_fact:
+    installed_k3s_version: "{{ k3s_version_output.stdout_lines[0].split(' ')[2] }}"
+
+# We should be downloading and installing the newer version only if we are in the following case :
+#   - the installed version of K3s on the nodes is older than the requested version in ansible vars
+
+- name: Update node only if needed
+  when: installed_k3s_version is version(k3s_version, '<')
+  block:
+    - name: Find K3s service files
+      ansible.builtin.find:
+        paths: "{{ systemd_dir }}"
+        patterns: k3s*.service
+      register: k3s_service_files
+
+    - name: Save current K3s service
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ item.path }}.bak"
+        remote_src: true
+        mode: preserve
+        force: true
+      loop: "{{ k3s_service_files.files }}"
+
+    - name: Install new K3s Version
+      ansible.builtin.command:
+        cmd: /usr/local/bin/k3s-install.sh
+      environment:
+        INSTALL_K3S_SKIP_START: "true"
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      changed_when: true
+
+    - name: Restore K3s service
+      ansible.builtin.copy:
+        src: "{{ item.path }}.bak"
+        dest: "{{ item.path }}"
+        remote_src: true
+        mode: preserve
+        force: true
+      loop: "{{ k3s_service_files.files }}"
+
+    - name: Clean up temporary K3s service backups
+      ansible.builtin.file:
+        path: "{{ item.path }}.bak"
+        state: absent
+      loop: "{{ k3s_service_files.files }}"
+
+    - name: Restart K3s service [server]
+      when: control in group_names
+      ansible.builtin.systemd:
+        daemon_reload: true
+        name: k3s
+      notify: restart k3s
+
+    - name: Restart K3s service [agent]
+      when: workers in group_names
+      ansible.builtin.systemd:
+        daemon_reload: true
+        name: k3s-agent
+      notify: restart k3s agent

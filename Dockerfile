@@ -1,5 +1,5 @@
 # Base layer.
-FROM python:3.12 as base
+FROM python:3.12 AS base
 RUN apt update && apt -y install net-tools procps vim jq bc curl
 RUN useradd chutes -s /bin/bash -d /home/chutes && mkdir -p /home/chutes && chown chutes:chutes /home/chutes
 RUN mkdir -p /app && chown chutes:chutes /app
@@ -22,6 +22,30 @@ ADD --chown=chutes audit_exporter.py /app/audit_exporter.py
 ADD --chown=chutes gepetto.py /app/gepetto.py
 ENV PYTHONPATH=/app
 ENTRYPOINT ["poetry", "run", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+# Miner/Registry
+FROM base AS registry
+USER chutes
+COPY --chown=chutes pyproject.toml poetry.lock /app/
+WORKDIR /app
+RUN poetry install --no-root
+COPY --chown=chutes api/config /app/api/config
+COPY --chown=chutes api/auth.py /app/api/auth.py
+COPY --chown=chutes api/constants.py /app/api/constants.py
+COPY --chown=chutes registry /app/registry
+ENV PYTHONPATH=/app
+ENTRYPOINT ["poetry", "run", "uvicorn", "registry.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+FROM api AS sql
+USER root
+RUN apt-get update
+RUN apt-get install -y postgresql-client
+USER chutes
+WORKDIR /app
+ADD --chown=chutes scripts /app/scripts
+RUN chmod +x /app/scripts/*.sh
+RUN poetry add psycopg2-binary
+ENTRYPOINT ["/app/scripts/seed.sh"]
 
 # Cache cleaner.
 FROM python:3.10-slim AS cacheclean

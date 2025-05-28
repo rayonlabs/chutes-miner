@@ -1,0 +1,26 @@
+# K3s configuration
+# k3s_server_location: "/opt/k3s-data"  # Alternative location if needed
+
+# For registries configuration
+# registries_config_yaml: |
+#   mirrors:
+#     docker.io:
+#       endpoint:
+#         - "https://registry-1.docker.io"
+#     my-private-registry.example.com:
+#       endpoint:
+#         - "https://my-private-registry.example.com"
+#   configs:
+#     my-private-registry.example.com:
+#       auth:
+#         username: myuser
+#         password: mypassword
+#       tls:
+#         cert_file: /etc/rancher/k3s/registry-cert.pem
+#         key_file: /etc/rancher/k3s/registry-key.pem
+#         ca_file: /etc/rancher/k3s/registry-ca.pem
+
+# Extra manifests to deploy with K3s
+# extra_manifests:
+#   - "files/manifests/dashboard.yaml"
+#   - "files/manifests/metrics-server.yaml"
