@@ -25,5 +25,6 @@ class Chute(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
     ban_reason = Column(String, nullable=True)
+    chutes_version = Column(String)
 
     deployments = relationship("Deployment", back_populates="chute", cascade="all, delete-orphan")

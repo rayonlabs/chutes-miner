@@ -418,14 +418,13 @@ class Gepetto:
         except Exception as exc:
             logger.warning(f"Error purging {instance_id=} from {vali.hotkey=}: {exc}")
 
-    async def undeploy(self, deployment_id: str):
+    async def undeploy(self, deployment_id: str, instance_id: str = None):
         """
         Delete a deployment.
         """
         logger.info(f"Removing all traces of deployment: {deployment_id}")
 
         # Clean up the database.
-        instance_id = None
         chute_id = None
         validator_hotkey = None
         async with get_session() as session:
@@ -439,7 +438,8 @@ class Gepetto:
                 .scalar_one_or_none()
             )
             if deployment:
-                instance_id = deployment.instance_id
+                if not instance_id:
+                    instance_id = deployment.instance_id
                 chute_id = deployment.chute_id
                 validator_hotkey = deployment.validator
                 await session.delete(deployment)
@@ -689,6 +689,7 @@ class Gepetto:
                 version=chute_dict["version"],
                 supported_gpus=chute_dict["supported_gpus"],
                 gpu_count=chute_dict["node_selector"]["gpu_count"],
+                chutes_version=chute_dict["chutes_version"],
                 ban_reason=None,
             )
             session.add(chute)
@@ -706,100 +707,104 @@ class Gepetto:
         """
         A rolling update event, meaning we need to re-create a single instance.
         """
-        chute_id = event_data["chute_id"]
-        version = event_data["new_version"]
-        validator_hotkey = event_data["validator"]
-        instance_id = event_data["instance_id"]
-        logger.info(f"Received rolling update event for {chute_id=} {version=} {instance_id=}")
+        async with self._scale_lock:
+            chute_id = event_data["chute_id"]
+            version = event_data["new_version"]
+            validator_hotkey = event_data["validator"]
+            instance_id = event_data["instance_id"]
+            logger.info(f"Received rolling update event for {chute_id=} {version=} {instance_id=}")
 
-        if (validator := validator_by_hotkey(validator_hotkey)) is None:
-            logger.warning(f"Validator not found: {validator_hotkey}")
-            return
-
-        # Remove the instance/deployment.
-        server_id = None
-        async with get_session() as session:
-            deployment = (
-                (
-                    await session.execute(
-                        select(Deployment).where(Deployment.instance_id == instance_id)
-                    )
-                )
-                .unique()
-                .scalar_one_or_none()
-            )
-            if deployment:
-                server_id = deployment.server.server_id
-                await self.undeploy(deployment.deployment_id)
-            deployment = None
-
-        # Make sure the local chute is updated.
-        if (chute := await self.load_chute(chute_id, version, validator_hotkey)) is None:
-            chute_dict = None
-            try:
-                async with aiohttp.ClientSession(raise_for_status=True) as session:
-                    headers, _ = sign_request(purpose="miner")
-                    async with session.get(
-                        f"{validator.api}/miner/chutes/{chute_id}/{version}", headers=headers
-                    ) as resp:
-                        chute_dict = await resp.json()
-            except Exception:
-                logger.error(f"Error loading remote chute data: {chute_id=} {version=}")
+            if (validator := validator_by_hotkey(validator_hotkey)) is None:
+                logger.warning(f"Validator not found: {validator_hotkey}")
                 return
 
-            async with get_session() as db:
-                chute = (
-                    (await db.execute(select(Chute).where(Chute.chute_id == chute_id)))
+            # Remove the instance/deployment.
+            server_id = None
+            async with get_session() as session:
+                deployment = (
+                    (
+                        await session.execute(
+                            select(Deployment).where(Deployment.instance_id == instance_id)
+                        )
+                    )
                     .unique()
                     .scalar_one_or_none()
                 )
-                if chute:
-                    for key in (
-                        "image",
-                        "code",
-                        "filename",
-                        "ref_str",
-                        "version",
-                        "supported_gpus",
-                    ):
-                        setattr(chute, key, chute_dict.get(key))
-                    chute.gpu_count = chute_dict["node_selector"]["gpu_count"]
-                else:
-                    chute = Chute(
-                        chute_id=chute_id,
-                        validator=validator.hotkey,
-                        name=chute_dict["name"],
-                        image=chute_dict["image"],
-                        code=chute_dict["code"],
-                        filename=chute_dict["filename"],
-                        ref_str=chute_dict["ref_str"],
-                        version=chute_dict["version"],
-                        supported_gpus=chute_dict["supported_gpus"],
-                        gpu_count=chute_dict["node_selector"]["gpu_count"],
-                        ban_reason=None,
-                    )
-                    db.add(chute)
-                await db.commit()
-                await db.refresh(chute)
-                await k8s.create_code_config_map(chute)
-
-        # Deploy the new version.
-        if server_id:
-            logger.info(f"Attempting to deploy {chute.chute_id=} on {server_id=}")
-            deployment = None
-            try:
-                deployment, k8s_dep, k8s_svc = await k8s.deploy_chute(chute.chute_id, server_id)
-                logger.success(
-                    f"Successfully updated {chute_id=} to {version=} on {server_id=}: {deployment.deployment_id=}"
-                )
-                await self.announce_deployment(deployment)
-            except DeploymentFailure as exc:
-                logger.error(
-                    f"Unhandled error attempting to deploy {chute.chute_id=} on {server_id=}: {exc}\n{traceback.format_exc()}"
-                )
                 if deployment:
+                    server_id = deployment.server.server_id
                     await self.undeploy(deployment.deployment_id)
-                return
+                deployment = None
+
+            # Make sure the local chute is updated.
+            if (chute := await self.load_chute(chute_id, version, validator_hotkey)) is None:
+                chute_dict = None
+                try:
+                    async with aiohttp.ClientSession(raise_for_status=True) as session:
+                        headers, _ = sign_request(purpose="miner")
+                        async with session.get(
+                            f"{validator.api}/miner/chutes/{chute_id}/{version}", headers=headers
+                        ) as resp:
+                            chute_dict = await resp.json()
+                except Exception:
+                    logger.error(f"Error loading remote chute data: {chute_id=} {version=}")
+                    return
+
+                async with get_session() as db:
+                    chute = (
+                        (await db.execute(select(Chute).where(Chute.chute_id == chute_id)))
+                        .unique()
+                        .scalar_one_or_none()
+                    )
+                    if chute:
+                        for key in (
+                            "image",
+                            "code",
+                            "filename",
+                            "ref_str",
+                            "version",
+                            "supported_gpus",
+                            "chutes_version",
+                        ):
+                            setattr(chute, key, chute_dict.get(key))
+                        chute.gpu_count = chute_dict["node_selector"]["gpu_count"]
+                        chute.ban_reason = None
+                    else:
+                        chute = Chute(
+                            chute_id=chute_id,
+                            validator=validator.hotkey,
+                            name=chute_dict["name"],
+                            image=chute_dict["image"],
+                            code=chute_dict["code"],
+                            filename=chute_dict["filename"],
+                            ref_str=chute_dict["ref_str"],
+                            version=chute_dict["version"],
+                            supported_gpus=chute_dict["supported_gpus"],
+                            gpu_count=chute_dict["node_selector"]["gpu_count"],
+                            chutes_version=chute_dict["chutes_version"],
+                            ban_reason=None,
+                        )
+                        db.add(chute)
+                    await db.commit()
+                    await db.refresh(chute)
+                    await k8s.create_code_config_map(chute)
+
+            # Deploy the new version.
+            if server_id:
+                logger.info(f"Attempting to deploy {chute.chute_id=} on {server_id=}")
+                deployment = None
+                try:
+                    deployment, k8s_dep, k8s_svc = await k8s.deploy_chute(chute.chute_id, server_id)
+                    logger.success(
+                        f"Successfully updated {chute_id=} to {version=} on {server_id=}: {deployment.deployment_id=}"
+                    )
+                    await self.announce_deployment(deployment)
+                except DeploymentFailure as exc:
+                    logger.error(
+                        f"Unhandled error attempting to deploy {chute.chute_id=} on {server_id=}: {exc}\n{traceback.format_exc()}"
+                    )
+                    if deployment:
+                        await self.undeploy(deployment.deployment_id)
+                    return
 
     async def chute_updated(self, event_data: Dict[str, Any]):
         """

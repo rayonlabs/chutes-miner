@@ -9,19 +9,11 @@ import uvicorn
 import asyncio
 import json
 import base64
-from pydantic import BaseModel
+import aiohttp
 from graval.miner import Miner
 from substrateinterface import Keypair, KeypairType
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.responses import PlainTextResponse
-
-
-class Cipher(BaseModel):
-    ciphertext: str
-    iv: str
-    length: int
-    device_id: int
-    seed: int
 
 
 def main():
@@ -34,23 +26,20 @@ def main():
     parser.add_argument(
         "--validator-whitelist",
         type=str,
-        required=True,
     )
     parser.add_argument(
         "--hotkey",
         type=str,
-        required=True,
     )
     args = parser.parse_args()
 
     miner = Miner()
-    # Dummy init.
-    gpu_count = miner.initialize(0)
     miner._init_seed = None
+    miner._init_iter = None
     app = FastAPI(
         title="GraVal bootstrap",
         description="GPU info plz",
-        version="0.0.1",
+        version="0.1.2",
     )
     gpu_lock = asyncio.Lock()
 
@@ -58,6 +47,8 @@ def main():
         """
         Verify the authenticity of a request.
         """
+        if not whitelist or not whitelist[0]:
+            return
         miner_hotkey = request.headers.get("X-Chutes-Miner")
         validator_hotkey = request.headers.get("X-Chutes-Validator")
         nonce = request.headers.get("X-Chutes-Nonce")
@@ -97,41 +88,58 @@ def main():
         """
         Get the list of devices, only used by internal components.
         """
-        verify_request(request, [args.hotkey])  # only allow requests from myself
+        verify_request(request, [args.hotkey])
         return {
-            "devices": [miner.get_device_info(idx) for idx in range(gpu_count)],
+            "devices": [miner.get_device_info(idx) for idx in range(miner._device_count)],
         }
 
-    @app.post("/challenge/decrypt")
+    @app.post("/decrypt")
     async def decryption_challenge(request: Request):
         """
         Perform a decryption challenge.
         """
         request_body = await request.body()
         sha2 = hashlib.sha256(request_body).hexdigest()
-        verify_request(request, args.validator_whitelist.split(","), extra_key=sha2)
+        verify_request(request, (args.validator_whitelist or "").split(","), extra_key=sha2)
         body = json.loads(request_body.decode())
-        cipher = Cipher(**body)
+        seed = body.get("seed", 42)
+        bytes_ = base64.b64decode(body.get("ciphertext"))
+        iterations = body.get("iterations", 1)
+        iv = bytes_[:16]
+        ciphertext = bytes_[16:]
+        device_index = body.get("device_index", 0)
         async with gpu_lock:
-            if not miner._init_seed != cipher.seed:
-                miner.initialize(cipher.seed)
-                miner._init_seed = cipher.seed
+            if miner._init_seed != seed or miner._init_iter != iterations:
+                miner.initialize(seed, iterations=iterations)
+                miner._init_seed = seed
+                miner._init_iter = iterations
             return {
                 "plaintext": miner.decrypt(
-                    base64.b64decode(cipher.ciphertext.encode()),
-                    bytes.fromhex(cipher.iv),
-                    cipher.length,
-                    cipher.device_id,
+                    ciphertext,
+                    iv,
+                    len(ciphertext),
+                    device_index,
                 )
             }
 
-    @app.get("/challenge/info", response_class=PlainTextResponse)
+    @app.get("/info", response_class=PlainTextResponse)
     async def info_challenge(request: Request, challenge: str):
         """
         Perform a device info challenge.
         """
-        verify_request(request, args.validator_whitelist.split(","))
+        verify_request(request, (args.validator_whitelist or "").split(","))
         return miner.process_device_info_challenge(challenge)
+
+    @app.post("/remote_token", response_class=PlainTextResponse)
+    async def get_remote_token(request: Request):
+        """
+        Load a remote token to check inbound vs outbound IPs.
+        """
+        verify_request(request, (args.validator_whitelist or "").split(","))
+        token_url = json.loads(await request.body())["token_url"]
+        async with aiohttp.ClientSession() as session:
+            async with session.get(token_url) as resp:
+                return (await resp.json())["token"]
 
     uvicorn.run(app=app, host="0.0.0.0", port=args.port)
 

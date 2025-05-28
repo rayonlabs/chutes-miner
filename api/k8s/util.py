@@ -36,7 +36,6 @@ def build_chute_deployment(deployment_id, chute: Chute, server: Server) -> V1Dep
         "chutes/chute": "true",
         "chutes/chute-id": chute.chute_id,
         "chutes/version": chute.version,
-        "squid-access": "true",
     }
     return V1Deployment(
         metadata=V1ObjectMeta(
@@ -147,14 +146,6 @@ def build_chute_deployment(deployment_id, chute: Chute, server: Server) -> V1Dep
                                 V1EnvVar(
                                     name="NCCL_DEBUG",
                                     value="INFO",
-                                ),
-                                V1EnvVar(
-                                    name="HTTP_PROXY",
-                                    value=settings.squid_url or "",
-                                ),
-                                V1EnvVar(
-                                    name="HTTPS_PROXY",
-                                    value=settings.squid_url or "",
                                 ),
                                 V1EnvVar(
                                     name="NCCL_SOCKET_IFNAME",

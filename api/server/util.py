@@ -522,7 +522,7 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
         else:
             error_message = f"GPU verification failed for {validator.hotkey}, aborting!"
             yield sse_message(error_message)
-            GraValBootstrapFailure(error_message)
+            raise GraValBootstrapFailure(error_message)
 
     except Exception as exc:
         error_message = (
