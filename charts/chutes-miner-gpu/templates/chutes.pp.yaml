@@ -1,0 +1,22 @@
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: chutes-resource-policy
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: ConfigMap
+      namespace: chutes
+      name: chutes-cache-cleaner
+    - apiVersion: batch/v1
+      kind: CronJob
+      namespace: chutes
+      name: failed-chute-cleanup
+    - apiVersion: v1
+      kind: Secret
+      namespace: chutes
+      name: miner-credentials
+  placement:
+    clusterAffinity:
+      clusterNames: []

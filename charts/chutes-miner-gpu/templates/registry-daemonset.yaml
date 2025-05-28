@@ -31,6 +31,28 @@ spec:
             - name: registry-nginx-config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
+        - name: auth
+          image: "{{ .Values.auth.image }}"
+          imagePullPolicy: {{ .Values.auth.imagePullPolicy }}
+          env:
+            - name: MINER_SS58
+              valueFrom:
+                secretKeyRef:
+                  name: miner-credentials
+                  key: ss58
+            - name: MINER_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: miner-credentials
+                  key: seed
+            - name: VALIDATORS
+              value: {{ .Values.validators | toJson | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.auth.resources | nindent 12 }}
       volumes:
         - name: registry-nginx-config
           configMap:

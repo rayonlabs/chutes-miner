@@ -37,7 +37,6 @@
 
 # Setup optional private registry configuration
 - name: Setup private registry configuration
-  when: registries_config_yaml is defined
   block:
     - name: Make k3s config directory
       ansible.builtin.file:

@@ -1,12 +1,22 @@
 # Registry mirrors configuration
 mirrors:
-  "{{ registry_hostname }}:{{ registry_port | default('5000') }}":
+  "{{ registry_hostname }}:{{ registry_port | default('30500') }}":
     endpoint:
-      - "{{ registry_protocol | default('http') }}://{{ registry_hostname }}:{{ registry_port | default('5000') }}"
+      - "{{ registry_protocol | default('http') }}://{{ registry_hostname }}:{{ registry_port | default('30500') }}"
 
 # Configure registry authentication if needed
 configs:
-  "{{ registry_hostname }}:{{ registry_port | default('5000') }}":
+  "{{ registry_hostname }}:{{ registry_port | default('30500') }}":
+{% if registry_protocol | default('http') == 'http' %}
+    tls:
+      insecure_skip_verify: true
+{% else %}
+    tls:
+      cert_file: ""
+      key_file: ""
+      ca_file: ""
+      insecure_skip_verify: false
+{% endif %}
 {% if use_registry_auth | default(false) %}
     auth:
       username: "{{ registry_username }}"

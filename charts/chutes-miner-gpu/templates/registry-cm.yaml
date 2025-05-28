@@ -51,7 +51,7 @@ data:
             }
             location = /auth {
                 internal;
-                proxy_pass http://api:{{ .Values.minerApi.service.port }}/registry/auth;
+                proxy_pass http://api:{{ .Values.auth.service.port }}/registry/auth;
                 auth_request_set $auth_resp_authorization $upstream_http_authorization;
                 proxy_set_header X-Chutes-Hotkey $http_x_chutes_hotkey;
                 proxy_set_header X-Chutes-Signature $http_x_chutes_signature;

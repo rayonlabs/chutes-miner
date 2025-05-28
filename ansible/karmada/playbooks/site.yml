@@ -19,6 +19,9 @@
   tags:
     - add-nodes
     - common
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
   tasks:
     - name: Include common role
       ansible.builtin.include_role:
@@ -36,6 +39,9 @@
   tags:
     - add-nodes
     - k3s
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
   tasks:
     - name: Include k3s role
       ansible.builtin.include_role:
@@ -53,6 +59,9 @@
   tags:
     - add-nodes
     - karmada
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
   tasks:
     - name: Include karmada role
       ansible.builtin.include_role:
@@ -70,6 +79,9 @@
   tags:
     - add-nodes
     - gpu
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
   tasks:
     - name: Include gpu role
       ansible.builtin.include_role:

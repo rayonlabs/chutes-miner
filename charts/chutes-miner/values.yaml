@@ -131,32 +131,9 @@ redis:
     customArgs: []
 
 registry:
-  image: nginx:1.27
-  imagePullPolicy: IfNotPresent
-  resources:
-    requests:
-      cpu: 500m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
   service:
-    type: ClusterIP
-    port: 5000
-    targetPort: 5000
     # BE SURE THIS MATCHES registry_port IN ANSIBLE!
     nodePort: 30500
-  nodeSelector:
-    nvidia.com/gpu.present: "true"
-  config:
-    workerProcesses: 1
-    workerConnections: 1024
-    keepaliveTimeout: 65
-    clientMaxBodySize: "0"
-    validators:
-      allowedHosts:
-        - "registry.chutes.ai"
-      defaultUpstream: "registry.chutes.ai"
 
 auditExporter:
   image: parachutes/miner:latest
