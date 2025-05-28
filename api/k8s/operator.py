@@ -925,7 +925,7 @@ class KarmadaK8sOperator(K8sOperator):
             namespace=settings.namespace,
             resource_selectors=[
                 ResourceSelector(
-                    api_version="v1", kind="Deployment", name=deployment.metadata.name
+                    api_version="apps/v1", kind="Deployment", name=deployment.metadata.name
                 ),
                 ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name),
                 ResourceSelector(
