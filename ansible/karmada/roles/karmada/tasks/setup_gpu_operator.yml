@@ -30,6 +30,12 @@
 
 - name: Create GPU operator propagation policies
   kubernetes.core.k8s:
-    src: gpu_operator_pp.yaml
+    src: gpu_operator.pp.yaml
+    state: present
+    context: karmada-apiserver
+
+- name: Create chutes propagation policies
+  kubernetes.core.k8s:
+    src: gpu_operator.pp.yaml
     state: present
     context: karmada-apiserver

@@ -1,0 +1,14 @@
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: chutes-resource-policy
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: ConfigMap
+      namespace: chutes
+      name: chutes-cache-cleaner
+  placement:
+    clusterAffinity:
+      clusterNames: []
