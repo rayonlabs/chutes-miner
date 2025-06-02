@@ -26,6 +26,7 @@
   ansible.builtin.copy:
     src: gpu-operator.pp.yaml
     dest: /tmp/gpu-operator.pp.yaml
+    mode: "0644"
 
 - name: Create GPU operator propagation policies
   kubernetes.core.k8s:
@@ -33,4 +34,3 @@
     state: present
     namespace: gpu-operator
     context: karmada-apiserver
-
