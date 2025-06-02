@@ -19,7 +19,7 @@
         cmd: |
           set -o pipefail
           microk8s kubectl config get-contexts -o name | grep '^default$'
-        exceutable: /bin/bash
+        executable: /bin/bash
       register: default_context_exists
       changed_when: false
       failed_when: false
@@ -70,61 +70,17 @@
 
 - name: Verify the gepetto-code configmap
   tags: verify-gepetto
-  block:
-    # Install chutes-miner if not present
-    # Create virtual environment for chutes-miner
-    - name: Create virtual environment for chutes-miner
-      ansible.builtin.command: python3 -m venv /opt/chutes-miner-venv
-      args:
-        creates: /opt/chutes-miner-venv
-
-    # Install chutes-miner by properly activating the venv first
-    - name: Install packages with activated venv
-      ansible.builtin.shell: |
-        source /opt/chutes-miner-venv/bin/activate
-        pip install kubernetes openshift pyyaml
-        deactivate
-      register: venv_install
-      args:
-        executable: /bin/bash
-      changed_when: venv_install.rc == 0
-
-    - name: Get current gepetto-code configmap
-      kubernetes.core.k8s_info:
-        kind: ConfigMap
+  kubernetes.core.k8s:
+    state: present # Ensures it exists and matches this definition. Updates if different.
+    context: default # Or your specific context name
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
         name: gepetto-code
         namespace: chutes
-        context: default
-      register: configmap_data
-      vars:
-        ansible_python_interpreter: "/opt/chutes-miner-venv/bin/python"
-
-    - name: Extract gepetto.py content to local file
-      ansible.builtin.copy:
-        content: "{{ configmap_data.resources[0].data['gepetto.py'] }}"
-        dest: /tmp/gepetto.py
-        mode: "0644"
-
-    - name: Check if reconsile method is already modified
-      ansible.builtin.command: grep -q "Skipping reconsiliation, currently migrating" /tmp/gepetto.py
-      register: grep_result
-      failed_when: false
-      changed_when: false
-
-    - name: Display verification status
-      ansible.builtin.debug:
-        msg: "Gepetto reconsile method {{ 'is' if grep_result.rc == 0 else 'is NOT' }} disabled."
-
-    - name: Fail with helpful message if reconcile method is not disabled
-      ansible.builtin.fail:
-        msg: >
-          The Gepetto reconcile method is not disabled. \
-
-          This likely means you need to update the configmap before continuing.
-          Please manually update the reconcile method gepetto before proceeding.
-      when: grep_result.rc != 0
-
-    - name: Clean up temporary file
-      ansible.builtin.file:
-        path: /tmp/gepetto.py
-        state: absent
+      data:
+        # This uses the 'file' lookup to read the content from your Ansible controller
+        # at the specified relative path.
+        gepetto.py: "{{ lookup('file', 'files/gepetto.py') }}"
+      
