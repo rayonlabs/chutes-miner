@@ -1,4 +1,9 @@
 ---
+- name: Install python3-kubernetes package
+  ansible.builtin.apt:
+    name: python3-kubernetes
+    state: present
+
 - name: Check if containerd config file exists
   ansible.builtin.stat:
     path: /etc/containerd/config.toml

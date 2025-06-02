@@ -10,3 +10,16 @@
 - name: Setup k3s kubectl
   ansible.builtin.include_tasks: setup_kubectl.yml
   tags: k3s-kubectl
+
+- name: Add chutes labels to nodes
+  kubernetes.core.k8s:
+    state: present
+    kind: Node
+    name: "{{ inventory_hostname }}"
+    context: default
+    definition:
+      metadata:
+        labels:
+          chutes/external-ip: "{{ ansible_host }}"
+    merge_type: strategic-merge
+  when: inventory_hostname in groups['workers']

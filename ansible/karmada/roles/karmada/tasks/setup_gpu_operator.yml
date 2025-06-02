@@ -15,27 +15,22 @@
     kubeconfig: "{{ karmada_kubeconfig_path | default(omit) }}"
     context: karmada-apiserver
     values:
-      nodeSelector:
-        kubernetes.io/gpu: "true"
       driver:
-        enabled: true
+        enabled: false
       toolkit:
-        enabled: true
-      devicePlugin:
-        enabled: true
+        enabled: false
       operator:
         upgradeCRD: false
-      containerRuntime:
-        socketPath: "/run/k3s/containerd/containerd.sock"
+
+- name: Copy propagation policy
+  ansible.builtin.copy:
+    src: gpu-operator.pp.yaml
+    dest: /tmp/gpu-operator.pp.yaml
 
 - name: Create GPU operator propagation policies
   kubernetes.core.k8s:
-    src: gpu_operator.pp.yaml
+    src: /tmp/gpu-operator.pp.yaml
     state: present
+    namespace: gpu-operator
     context: karmada-apiserver
 
-- name: Create chutes propagation policies
-  kubernetes.core.k8s:
-    src: gpu_operator.pp.yaml
-    state: present
-    context: karmada-apiserver

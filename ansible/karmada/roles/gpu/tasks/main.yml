@@ -88,33 +88,16 @@
       changed_when: nvidia_permissions.changed | default(false)
 
     - name: Create NVIDIA character device symlinks
-      block:
-        - name: Find NVIDIA character devices
-          ansible.builtin.find:
-            paths: /dev
-            patterns: "nvidia[0-9]"
-            file_type: any
-          register: nvidia_devices
-
-        - name: Get device information for each NVIDIA device
-          ansible.builtin.stat:
-            path: "{{ item.path }}"
-          register: nvidia_stat_results
-          loop: "{{ nvidia_devices.files }}"
-
-        - name: Create directories for NVIDIA character device symlinks
-          ansible.builtin.file:
-            path: "/dev/char/{{ item.stat.rdev_major }}:{{ item.stat.rdev_minor }}"
-            state: directory
-            mode: "0755"
-          loop: "{{ nvidia_stat_results.results }}"
-
-        - name: Create NVIDIA character device symlinks
-          ansible.builtin.file:
-            src: "{{ item.stat.path }}"
-            dest: "/dev/char/{{ item.stat.rdev_major }}:{{ item.stat.rdev_minor }}/{{ item.stat.path | basename }}"
-            state: link
-          loop: "{{ nvidia_stat_results.results }}"
+      when: inventory_hostname in groups['workers']
+      shell: |
+        ls /dev/nvidia? | egrep 'nvidia[0-9]' | while read i
+        do
+          N=$(echo $i | sed 's/\/dev\/nvidia//');
+          MAJ=$(ls -l $i | awk '{print $5}' | cut -d, -f1)
+          MIN=$(ls -l $i | awk '{print $6}')
+          mkdir -p /dev/char/$MAJ:$MIN
+          ln -sf $i /dev/char/$MAJ:$MIN
+        done
 
     - name: Configure file limits
       ansible.builtin.blockinfile:
@@ -131,6 +114,43 @@
         - /etc/pam.d/common-session
         - /etc/pam.d/common-session-noninteractive
 
+- name: Ensure k3s containerd config template exists
+  tags:
+    - gpu-container-setup
+  block:
+    - name: Check if k3s containerd config template exists
+      ansible.builtin.stat:
+        path: "/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
+      register: k3s_config_tmpl_stat
+
+    - name: Check if k3s active containerd config exists (fallback)
+      ansible.builtin.stat:
+        path: "/var/lib/rancher/k3s/agent/etc/containerd/config.toml"
+      register: k3s_config_toml_stat
+      when: not k3s_config_tmpl_stat.stat.exists
+
+    - name: Create k3s containerd config template from active config if template is missing
+      ansible.builtin.copy:
+        src: "/var/lib/rancher/k3s/agent/etc/containerd/config.toml"
+        dest: "/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
+        remote_src: yes
+        owner: root    
+        group: root    
+        mode: '0644'   
+      when:
+        - not k3s_config_tmpl_stat.stat.exists
+        - k3s_config_toml_stat.stat.exists # Only copy if the .toml source exists
+      notify:
+        - restart k3s
+                      
+
+    - name: Fail if neither k3s containerd config template nor active config can be found
+      ansible.builtin.fail:
+        msg: "Critical: Neither k3s containerd config template nor active config.toml found. Cannot proceed with NVIDIA toolkit configuration."
+      when:
+        - not k3s_config_tmpl_stat.stat.exists
+        - not k3s_config_toml_stat.stat.exists
+
 - name: Setup NVIDIA Container Toolkit
   tags:
     - gpu-container-setup
@@ -143,8 +163,7 @@
     - name: Configure NVIDIA Container Toolkit
       ansible.builtin.shell: |
         nvidia-ctk runtime configure --runtime=docker --set-as-default
-        nvidia-ctk runtime configure --runtime=containerd --set-as-default
-        nvidia-ctk runtime configure --runtime=crio --set-as-default --config=/etc/crio/crio.conf.d/99-nvidia.conf
+        nvidia-ctk runtime configure --runtime=containerd --config=/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
       register: container_runtime
       notify: restart k3s
       changed_when: >

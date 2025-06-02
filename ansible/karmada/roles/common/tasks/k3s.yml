@@ -53,4 +53,3 @@
         src: registries.yaml.j2
         dest: /etc/rancher/k3s/registries.yaml
         mode: "0644"
-      notify: restart k3s

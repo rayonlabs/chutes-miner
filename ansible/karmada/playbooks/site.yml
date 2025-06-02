@@ -66,6 +66,8 @@
     - name: Include karmada role
       ansible.builtin.include_role:
         name: karmada
+        apply:
+          tags: karmada
       when: "not skip_configuration | default(false)"
 
     - name: Record karmada role completion

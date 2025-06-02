@@ -103,16 +103,3 @@
       ansible.builtin.command:
         cmd: k3s kubectl get nodes
       changed_when: false
-
-    - name: Add chutes labels to nodes
-      kubernetes.core.k8s:
-        state: present
-        kind: Node
-        name: "{{ inventory_hostname }}"
-        context: default
-        definition:
-          metadata:
-            labels:
-              chutes/external-ip: "{{ ansible_host }}"
-        merge_type: strategic-merge
-      when: inventory_hostname in groups['workers']
