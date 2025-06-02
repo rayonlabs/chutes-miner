@@ -24,17 +24,8 @@ ENV PYTHONPATH=/app
 ENTRYPOINT ["poetry", "run", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 # Miner/Registry
-FROM base AS registry
-USER chutes
-COPY --chown=chutes pyproject.toml poetry.lock /app/
-WORKDIR /app
-RUN poetry install --no-root
-COPY --chown=chutes api/config /app/api/config
-COPY --chown=chutes api/auth.py /app/api/auth.py
-COPY --chown=chutes api/constants.py /app/api/constants.py
-COPY --chown=chutes registry /app/registry
-ENV PYTHONPATH=/app
-ENTRYPOINT ["poetry", "run", "uvicorn", "registry.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+FROM api AS registry
+ENTRYPOINT ["poetry", "run", "uvicorn", "api.registry.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 FROM api AS sql
 USER root
