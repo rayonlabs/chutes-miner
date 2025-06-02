@@ -17,6 +17,18 @@ spec:
       kind: Secret
       namespace: chutes
       name: miner-credentials
+    - apiVersion: v1
+      kind: ServiceAccount
+      namespace: chutes
+      name: chutes
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      namespace: chutes
+      name: chutes
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      namespace: chutes
+      name: chutes
   placement:
     clusterAffinity:
       clusterNames: []
