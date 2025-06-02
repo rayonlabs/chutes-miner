@@ -1215,36 +1215,36 @@ class Gepetto:
                         )
                     )
 
-            #     remote = (self.remote_chutes.get(deployment.validator) or {}).get(
-            #         deployment.chute_id
-            #     )
-            #     if not remote or remote["version"] != deployment.version:
-            #         update = updating.get(deployment.validator, {}).get(deployment.chute_id)
-            #         if update:
-            #             logger.warning(f"Skipping reconciliation for chute with rolling {update=}")
-            #             all_deployments.add(deployment.deployment_id)
-            #             if deployment.instance_id:
-            #                 all_instances.add(deployment.instance_id)
-            #             continue
-            #         logger.warning(
-            #             f"Chute: {deployment.chute_id} version={deployment.version} on validator {deployment.validator} not found"
-            #         )
-            #         identifier = (
-            #             f"{deployment.validator}:{deployment.chute_id}:{deployment.version}"
-            #         )
-            #         if identifier not in chutes_to_remove:
-            #             chutes_to_remove.add(identifier)
-            #             tasks.append(
-            #                 asyncio.create_task(
-            #                     self.chute_deleted(
-            #                         {
-            #                             "chute_id": deployment.chute_id,
-            #                             "version": deployment.version,
-            #                             "validator": deployment.validator,
-            #                         }
-            #                     )
-            #                 )
-            #             )
+                #     remote = (self.remote_chutes.get(deployment.validator) or {}).get(
+                #         deployment.chute_id
+                #     )
+                #     if not remote or remote["version"] != deployment.version:
+                #         update = updating.get(deployment.validator, {}).get(deployment.chute_id)
+                #         if update:
+                #             logger.warning(f"Skipping reconciliation for chute with rolling {update=}")
+                #             all_deployments.add(deployment.deployment_id)
+                #             if deployment.instance_id:
+                #                 all_instances.add(deployment.instance_id)
+                #             continue
+                #         logger.warning(
+                #             f"Chute: {deployment.chute_id} version={deployment.version} on validator {deployment.validator} not found"
+                #         )
+                #         identifier = (
+                #             f"{deployment.validator}:{deployment.chute_id}:{deployment.version}"
+                #         )
+                #         if identifier not in chutes_to_remove:
+                #             chutes_to_remove.add(identifier)
+                #             tasks.append(
+                #                 asyncio.create_task(
+                #                     self.chute_deleted(
+                #                         {
+                #                             "chute_id": deployment.chute_id,
+                #                             "version": deployment.version,
+                #                             "validator": deployment.validator,
+                #                         }
+                #                     )
+                #                 )
+                #             )
 
                 # Delete any deployments from the DB that either never made it past the stub stage or that aren't in k8s anymore.
                 if not deployment.stub and deployment.deployment_id not in k8s_chute_ids:
@@ -1434,7 +1434,6 @@ class Gepetto:
                     logger.warning(f"Server/node {node_id} not tracked in inventory, ignoring...")
 
             await asyncio.gather(*tasks)
-        
 
     async def reconciler(self):
         """

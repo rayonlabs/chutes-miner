@@ -819,7 +819,7 @@ class KarmadaK8sOperator(K8sOperator):
     async def get_deployment(self, deployment_id: str) -> Dict:
         """Get a single deployment by ID."""
         deployment_name = f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}"
-        deploy_list =  self.get_deployments(field_selector=f"metadata.name={deployment_name}")
+        deploy_list = self.get_deployments(field_selector=f"metadata.name={deployment_name}")
 
         if len(deploy_list.items) == 0:
             logger.warning(f"Failed to find deployment {deployment_name}")
