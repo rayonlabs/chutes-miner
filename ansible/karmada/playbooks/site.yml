@@ -53,6 +53,26 @@
         k3s_setup: true
       when: "not skip_configuration | default(false)"
 
+- name: GPU Setup
+  hosts: workers
+  become: true
+  tags:
+    - add-nodes
+    - gpu
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
+  tasks:
+    - name: Include gpu role
+      ansible.builtin.include_role:
+        name: gpu
+      when: "not skip_configuration | default(false)"
+
+    - name: Record gpu role completion
+      ansible.builtin.set_fact:
+        gpu_setup: true
+      when: "not skip_configuration | default(false)"
+
 - name: Setup Karmada Control Plane and Member Clusters
   hosts: all
   become: true
@@ -73,26 +93,6 @@
     - name: Record karmada role completion
       ansible.builtin.set_fact:
         karmada_setup: true
-      when: "not skip_configuration | default(false)"
-
-- name: GPU Setup
-  hosts: workers
-  become: true
-  tags:
-    - add-nodes
-    - gpu
-  handlers:
-    - name: Global handlers
-      ansible.builtin.import_tasks: ../handlers/main.yml
-  tasks:
-    - name: Include gpu role
-      ansible.builtin.include_role:
-        name: gpu
-      when: "not skip_configuration | default(false)"
-
-    - name: Record gpu role completion
-      ansible.builtin.set_fact:
-        gpu_setup: true
       when: "not skip_configuration | default(false)"
 
 - name: Mark configuration as complete
