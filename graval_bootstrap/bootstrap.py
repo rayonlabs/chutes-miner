@@ -39,7 +39,7 @@ def main():
     app = FastAPI(
         title="GraVal bootstrap",
         description="GPU info plz",
-        version="0.1.1",
+        version="0.1.2",
     )
     gpu_lock = asyncio.Lock()
 
@@ -103,8 +103,8 @@ def main():
         verify_request(request, (args.validator_whitelist or "").split(","), extra_key=sha2)
         body = json.loads(request_body.decode())
         seed = body.get("seed", 42)
-        iterations = body.get("iterations", 1)
         bytes_ = base64.b64decode(body.get("ciphertext"))
+        iterations = body.get("iterations", 1)
         iv = bytes_[:16]
         ciphertext = bytes_[16:]
         device_index = body.get("device_index", 0)

@@ -26,6 +26,8 @@ There are three main private networks you could use: 10.0.0.0/8, 172.16.0.0/12, 
 
 The chutes API/validator sends traffic directly to each GPU node, and does not route through the main CPU node at all. For the system to work, this means each GPU node must have a publicly routeable IP address on each GPU node that is not behind a shared IP (since it uses kubernetes nodePort services).  This IP is the public IPv4, and must not be something in the private IP range like 192.168.0.0/16, 10.0.0.0/8, etc.
 
+This public IP *must* be dedicated, and be the same for both egress and ingress. This means, for a node to pass validation, when the validator connects to it, the IP address you advertise as a miner must match the IP address the validator sees when your node fetches a remote token, i.e. you can't use a shared IP with NAT/port-mapping if the underlying nodes route back out to the internet with some other IPs.
+
 ## 1. Install ansible (on your local system, not the miner node(s))
 
 ### Mac

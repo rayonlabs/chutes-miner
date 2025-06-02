@@ -487,7 +487,7 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
             await wait_for_deletion(label_selector)
         except Exception:
             ...
-        if delete_node and False:
+        if delete_node:
             logger.info(f"Purging failed server: {node_name=} {node_uid=}")
             async with get_session() as session:
                 node = (
@@ -580,7 +580,7 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
         else:
             error_message = f"GPU verification failed for {validator.hotkey}, aborting!"
             yield sse_message(error_message)
-            GraValBootstrapFailure(error_message)
+            raise GraValBootstrapFailure(error_message)
 
     except Exception as exc:
         error_message = (
