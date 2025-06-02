@@ -23,6 +23,7 @@ from kubernetes.client import (
 )
 
 from api.chute.schemas import Chute
+from api.k8s.constants import CHUTE_DEPLOY_PREFIX, CHUTE_SVC_PREFIX
 from api.server.schemas import Server
 from api.config import settings
 
@@ -39,7 +40,7 @@ def build_chute_deployment(deployment_id, chute: Chute, server: Server) -> V1Dep
     }
     return V1Deployment(
         metadata=V1ObjectMeta(
-            name=f"chute-{deployment_id}",
+            name=f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}",
             labels=deployment_labels,
         ),
         spec=V1DeploymentSpec(
@@ -240,7 +241,7 @@ def build_chute_deployment(deployment_id, chute: Chute, server: Server) -> V1Dep
 def build_chute_service(deployment_id, chute: Chute):
     return V1Service(
         metadata=V1ObjectMeta(
-            name=f"chute-service-{deployment_id}",
+            name=f"{CHUTE_SVC_PREFIX}-{deployment_id}",
             labels={
                 "chutes/deployment-id": deployment_id,
                 "chutes/chute": "true",

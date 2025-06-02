@@ -691,7 +691,7 @@ class SingleClusterK8sOperator(K8sOperator):
         except ApiException as exc:
             try:
                 k8s_core_client().delete_namespaced_service(
-                    name=f"chute-service-{deployment_id}",
+                    name=f"{CHUTE_SVC_PREFIX}-{deployment_id}",
                     namespace=settings.namespace,
                 )
             except Exception:
@@ -818,10 +818,12 @@ class KarmadaK8sOperator(K8sOperator):
 
     async def get_deployment(self, deployment_id: str) -> Dict:
         """Get a single deployment by ID."""
-        deployment_path = f"{SEARCH_DEPLOYMENTS_PATH}/{CHUTE_DEPLOY_PREFIX}-{deployment_id}"
+        deployment_name = f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}"
+        deploy_list =  self.get_deployments(field_selector=f"metadata.name={deployment_name}")
 
-        response = self._search(deployment_path)
-        deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1DeploymentList")
+        if len(deploy_list.items) == 0:
+            logger.warning(f"Failed to find deployment {deployment_name}")
+            raise ApiException(status=404, reason=f"Failed to find deployment {deployment_name}")
 
         # Handle case where no deployments found or more than one found
         return self._extract_deployment_info(deploy_list.items[0])
