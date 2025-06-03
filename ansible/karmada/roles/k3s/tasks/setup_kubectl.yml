@@ -1,12 +1,10 @@
 ---
-
 - name: Copy cluster configuration to ansible controller
   vars:
     cluster_context: "{{ inventory_hostname }}"
     cluster_kubeconfig: "{{ controller_kubectl_staging_dir }}/{{ inventory_hostname }}"
     merged_kubeconfig: "{{ controller_kubectl_staging_dir }}/config"
   block:
-
     - name: Verify kubeconfig staging dir exists
       delegate_to: 127.0.0.1
       become: false
@@ -16,7 +14,7 @@
         mode: "0750"
       run_once: true
 
-    - name: "Fetch k3s.yaml from {{ inventory_hostname }} to controller"
+    - name: "Fetch k3s.yaml from {{ inventory_hostname }}"
       ansible.builtin.fetch:
         src: /etc/rancher/k3s/k3s.yaml
         dest: "{{ cluster_kubeconfig }}"
@@ -102,6 +100,7 @@
       ansible.builtin.copy:
         src: "{{ controller_kubectl_staging_dir }}/config"
         dest: /home/{{ ansible_user }}/.kube/member.config
+        mode: "0600"
 
     - name: Merge k3s member configs for user
       ansible.builtin.shell: |
@@ -152,6 +151,7 @@
       ansible.builtin.copy:
         src: "{{ controller_kubectl_staging_dir }}/config"
         dest: ~/.kube/member.config
+        mode: "0600"
 
     - name: Merge k3s member configs for root
       ansible.builtin.shell: |

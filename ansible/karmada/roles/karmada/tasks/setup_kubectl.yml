@@ -2,7 +2,6 @@
 - name: Setup karmada kubeconfig
   when: inventory_hostname in groups['control']
   block:
-
     - name: Get Karmada API kubeconfig
       ansible.builtin.shell:
         cmd: |
@@ -53,7 +52,7 @@
             - mv_result.rc == 0
 
 - name: Setup kubectl on ansible controller
-  when: 
+  when:
     - setup_controller_kubeconfig
     - inventory_hostname == groups['control'][0]
   block:
@@ -61,7 +60,7 @@
       ansible.builtin.file:
         path: "{{ controller_kubectl_staging_dir }}"
         state: directory
-        mode: '0700'
+        mode: "0700"
       delegate_to: localhost
       become: false
       run_once: true # Only needs to run once per playbook execution
@@ -77,7 +76,7 @@
 
     - name: Apply karmada-apiserver kubeconfig to control node
       when:
-        - kubectl_installed.rc == 0 
+        - kubectl_installed.rc == 0
       vars:
         kubeconfig: "{{ controller_kubectl_staging_dir }}/karmada-apiserver"
       block:
