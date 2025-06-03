@@ -9,6 +9,11 @@
   when: inventory_hostname in groups['control']
   tags: karmada-install
 
+- name: Setup kubectl
+  ansible.builtin.include_tasks: setup_kubectl.yml
+  when: inventory_hostname in groups['control']
+  tags: karmada-kubectl
+
 - name: Setup GPU operator deployments
   ansible.builtin.include_tasks: setup_gpu_operator.yml
   when: inventory_hostname in groups['control']
@@ -23,7 +28,3 @@
   ansible.builtin.include_tasks: setup_monitoring.yml
   when: inventory_hostname in groups['control']
   tags: monitoring
-
-- name: Setup kubectl
-  ansible.builtin.include_tasks: setup_kubectl.yml
-  tags: karmada-kubectl

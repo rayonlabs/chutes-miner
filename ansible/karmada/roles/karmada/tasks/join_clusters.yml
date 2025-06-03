@@ -2,13 +2,13 @@
 - name: Register member clusters with Karmada
   when: inventory_hostname in groups['workers']
   ansible.builtin.command: >
-    kubectl karmada  --kubeconfig={{ kubeconfig_dir }}/karmada-apiserver
+    kubectl karmada
     join
     {{ cluster_name }}
-    --cluster-kubeconfig={{ kubeconfig_dir }}/{{ cluster_name }}
+    --cluster-context={{ cluster_name }}
+    --karmada-context=karmada-apiserver
   register: join_result
-  delegate_to: 127.0.0.1
-  become: false
+  delegate_to: "{{ groups['control'][0] }}"
   failed_when:
     - join_result.rc != 0
     - "'the same cluster has been registered' not in join_result.stderr"
@@ -20,9 +20,8 @@
 
 - name: Verify that member clusters are registered
   ansible.builtin.command: >
-    kubectl --kubeconfig={{ kubeconfig_dir }}/karmada-apiserver get clusters -A
-  delegate_to: 127.0.0.1
-  become: false
+    kubectl --context karmada-apiserver get clusters -A
+  delegate_to: "{{ groups['control'][0] }}"
   register: clusters_result
   changed_when: false
 
