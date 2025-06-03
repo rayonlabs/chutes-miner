@@ -1,7 +1,7 @@
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy
 metadata:
-  name: gpu-operator-resources-policy
+  name: chutes-resources-policy
 spec:
   resourceSelectors:
     - apiVersion: v1

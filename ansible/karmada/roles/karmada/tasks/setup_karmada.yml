@@ -102,12 +102,6 @@
   delay: 30
   until: karmada_wait.rc == 0
 
-- name: Install python3-kubernetes package
-  ansible.builtin.apt:
-    name: python3-kubernetes
-    state: present
-  become: true
-
 - name: Add karmada-control-plane label to control nodes
   kubernetes.core.k8s:
     state: present
@@ -119,75 +113,6 @@
         labels:
           karmada-control-plane: "true"
     merge_type: strategic-merge
-
-- name: Get Karmada kubeconfig
-  ansible.builtin.shell:
-    cmd: |
-      set -o pipefail
-      kubectl -n {{ karmada_namespace }} get secret karmada-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d
-    executable: /bin/bash
-  register: karmada_kubeconfig
-  changed_when: false
-
-- name: Setup Karmada API kubeconfig
-  vars:
-    kubeconfig: "{{ karmada_kubeconfig_temp_dir }}/karmada-apiserver"
-  block:
-    - name: Save Karmada kubeconfig to file
-      ansible.builtin.copy:
-        content: "{{ karmada_kubeconfig.stdout }}"
-        dest: "{{ kubeconfig }}"
-        mode: "0600"
-
-    - name: Change server address in kubeconfig for API server
-      ansible.builtin.shell: |
-        KUBECONFIG={{ kubeconfig }} kubectl config set-cluster karmada-apiserver --server=https://127.0.0.1:{{ karmada_api_server_node_port }}
-      register: csa_result
-      changed_when:
-        - csa_result.rc == 0
-
-    - name: Merge API Server kubeconfig for user
-      ansible.builtin.shell: |
-        TFILE=$(mktemp)
-        mkdir -p /home/{{ ansible_user }}/.kube
-        touch /home/{{ ansible_user }}/.kube/config
-        KUBECONFIG={{ kubeconfig }}:/home/{{ ansible_user }}/.kube/config kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} /home/{{ ansible_user }}/.kube/config
-        chown -R {{ ansible_user }}:{{ ansible_user }} /home/{{ ansible_user }}/.kube
-      register: mv_result
-      changed_when:
-        - mv_result.rc == 0
-
-    - name: Merge API Server kubeconfig for root
-      ansible.builtin.shell: |
-        TFILE=$(mktemp)
-        mkdir -p ~/.kube
-        touch ~/.kube/config
-        KUBECONFIG={{ kubeconfig }}:~/.kube/config kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} ~/.kube/config
-      register: mv_result
-      changed_when:
-        - mv_result.rc == 0
-
-- name: Copy karmada yaml files to target host
-  ansible.builtin.copy:
-    src: "{{ item }}"
-    dest: "/tmp/{{ item }}"
-    mode: "0644"
-  loop:
-    - karmada-search.yaml
-    - cluster-proxy.rbac.yaml
-
-- name: Apply karmada resources
-  kubernetes.core.k8s:
-    state: present
-    src: "/tmp/{{ item }}"
-    context: karmada-apiserver
-    wait: true
-    wait_timeout: 60
-  loop:
-    - karmada-search.yaml
-    - cluster-proxy.rbac.yaml
 
 - name: Setup Karmada API Server secret for chutes
   block:
@@ -218,44 +143,3 @@
         source_namespace: karmada-system
         target_namespace: chutes
         secret_name: karmada-kubeconfig
-
-- name: Check whether kubectl is installed on control node
-  delegate_to: 127.0.0.1
-  become: false
-  ansible.builtin.command: kubectl
-  register: kubectl_installed
-  ignore_errors: true
-  changed_when: false
-
-- name: Apply karmada-apiserver kubeconfig to control node
-  when: kubectl_installed.rc == 0 and inventory_hostname == groups['control'][0]
-  vars:
-    kubeconfig: "{{ kubeconfig_dir }}/karmada-apiserver"
-  block:
-    - name: Copy kubeconfig to control node
-      ansible.builtin.fetch:
-        src: "{{ karmada_kubeconfig_temp_dir }}/karmada-apiserver"
-        dest: "{{ kubeconfig }}"
-        flat: true
-
-    - name: Change server address in kubeconfig on control node
-      ansible.builtin.shell: |
-        KUBECONFIG={{ kubeconfig }} kubectl config set-cluster karmada-apiserver --server=https://{{ ansible_host }}:{{ karmada_api_server_node_port }}
-      delegate_to: 127.0.0.1
-      become: false
-      register: csa_result
-      changed_when:
-        - csa_result.rc == 0
-
-    - name: Merge with any existing kubeconfig on control node
-      ansible.builtin.shell: |
-        TFILE=$(mktemp)
-        mkdir -p ~/.kube
-        touch ~/.kube/config
-        KUBECONFIG={{ kubeconfig }}:~/.kube/config kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} ~/.kube/config
-      delegate_to: 127.0.0.1
-      become: false
-      register: mv_result
-      changed_when:
-        - mv_result.rc == 0

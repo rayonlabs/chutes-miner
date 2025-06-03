@@ -23,3 +23,7 @@
   ansible.builtin.include_tasks: setup_monitoring.yml
   when: inventory_hostname in groups['control']
   tags: monitoring
+
+- name: Setup kubectl
+  ansible.builtin.include_tasks: setup_kubectl.yml
+  tags: karmada-kubectl

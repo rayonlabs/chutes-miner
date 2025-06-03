@@ -10,7 +10,9 @@ timezone: UTC
 swap_disable: true
 
 # Local kubectl setup
-kubeconfig_dir: "{{ '~/.kube' | expanduser }}/chutes" # noqa var-naming[no-role-prefix]
+setup_controller_kubeconfig: true
+controller_kubeconfig: ~/.kube/config
+controller_kubectl_staging_dir: "{{ '~/.kube' | expanduser }}/chutes" # noqa var-naming[no-role-prefix]
 
 # System packages to install
 system_packages:
