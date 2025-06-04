@@ -36,3 +36,12 @@
         that: delete_output.rc == 0
         fail_msg: "Failed to delete node {{ inventory_hostname }}"
         success_msg: "Successfully deleted {{ inventory_hostname }}"
+
+    - name: Remove node from microk8s
+      ansible.builtin.command: >
+        microk8s remove-node {{ inventory_hostname }}
+      register: delete_node_output
+      failed_when: delete_node_output.rc != 0
+      changed_when: false
+      delegate_to: "{{ groups['microk8s'][0] }}"
+
