@@ -29,7 +29,7 @@ def get_prometheus_metrics(end_time) -> dict:
     """
     Query prometheus to get both duration and count metrics for each chute that ran during the target time range.
     """
-    prom = PrometheusConnect(url="http://prometheus-server")
+    prom = PrometheusConnect(url=settings.prometheus_url)
 
     # Query for compute time.
     duration_query = 'sum(increase(invocation_duration_sum{status="200"}[1h])) by (chutes_deployment_id, chute_id, function)'
@@ -79,11 +79,11 @@ def get_prometheus_uptime() -> float:
     Get the prometheus-server deployment uptime in seconds.
     """
     pods = k8s_core_client().list_namespaced_pod(
-        namespace=settings.namespace,
+        namespace=settings.monitoring_namespace,
         label_selector="app.kubernetes.io/name=prometheus,app.kubernetes.io/component=server",
     )
     if not pods.items:
-        raise ValueError(f"No Prometheus server pods found in namespace {settings.namespace}")
+        raise ValueError(f"No Prometheus server pods found in namespace {settings.monitoring_namespace}")
     pod = pods.items[0]
     container_status = next(
         (status for status in pod.status.container_statuses if status.name == "prometheus-server"),
@@ -146,7 +146,7 @@ async def generate_current_miner_audit_info() -> dict:
     # Display some summary info here.
     uptime_message = "Prometheus has been running the entire audit time slice."
     if prometheus_uptime == -1:
-        uptime_message = f"Prometheus uptime could not be determined! Check the prometheus-server deployment in namespace {settings.namespace}!"
+        uptime_message = f"Prometheus uptime could not be determined! Check the prometheus-server deployment in namespace {settings.monitoring_namespace}!"
     elif prometheus_uptime < 60 * 60:
         uptime_message = f"Prometheus uptime is only {prometheus_uptime} seconds, and could therefore have generated incomplete data."
     logger.info(f"Prometheus status: {uptime_message}")

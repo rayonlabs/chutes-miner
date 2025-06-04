@@ -70,7 +70,6 @@ spec:
               value: {{ .Values.validators | toJson | quote }}
             - name: REGISTRY_PROXY_PORT
               value: "{{ .Values.registry.service.nodePort }}"
-            
           ports:
             - name: http
               containerPort: {{ .Values.minerApi.service.targetPort }}
