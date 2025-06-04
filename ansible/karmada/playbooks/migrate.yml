@@ -133,6 +133,11 @@
             name: common
           when: not setup_marker.stat.exists
 
+        - name: GPU Setup
+          ansible.builtin.include_role:
+            name: gpu
+          when: not setup_marker.stat.exists
+
         - name: Mark node as setp
           ansible.builtin.file:
             path: /etc/ansible/.setup
@@ -206,5 +211,5 @@
         - reset_marker.stat.exists
         - setup_marker.stat.exists
         - k3s_marker.stat.exists
-        - karmada.stat.exists
+        - karmada_marker.stat.exists
         - added_marker.stat.exists

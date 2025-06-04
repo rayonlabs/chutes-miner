@@ -73,7 +73,10 @@
         - mv_result.rc == 0
 
 - name: Setup kubectl for user
-  when: user_kubectl | default(true)
+  when: 
+    - user_kubectl | default(true)
+  vars:
+    control_host: "{{ groups['control'][0] }}"
   block:
     - name: Create directory .kube
       ansible.builtin.file:
@@ -162,7 +165,7 @@
       changed_when:
         - mv_result.rc == 0
 
-    - name: Configure default KUBECONFIG for user
+    - name: Configure default KUBECONFIG for root
       ansible.builtin.lineinfile:
         path: ~/.bashrc
         regexp: export KUBECONFIG=~/.kube/config
@@ -174,6 +177,46 @@
         path: ~/.bashrc
         regexp: \.\s+<\(kubectl completion bash\)
         line: ". <(kubectl completion bash)  # Added by k3s-ansible"
+
+- name: Setup kubectl for cluster on control node
+  when: inventory_hostname in groups['workers']
+  vars:
+    control_node: "{{ groups['control'][0] }}"
+    member_kubeconfig: /tmp/karmada/member.config
+  block:
+
+    - name: Ensure karmada dir exists
+      ansible.builtin.file:
+        path: /tmp/karmada
+        state: directory
+        mode: "0755"
+      delegate_to: "{{ control_node }}"
+
+    - name: Copy member config
+      ansible.builtin.copy:
+        src: "{{ controller_kubectl_staging_dir }}/config"
+        dest: "{{ member_kubeconfig }}"
+      delegate_to: "{{ control_node }}"
+
+    - name: Merge k3s member configs for user
+      ansible.builtin.shell: |
+        TFILE=$(mktemp)
+        KUBECONFIG=~{{ hostvars[control_node]['ansible_user'] }}/.kube/config:{{ member_kubeconfig }} kubectl config view --flatten > ${TFILE}
+        mv ${TFILE} ~{{ hostvars[control_node]['ansible_user'] }}/.kube/config
+      delegate_to: "{{ control_node }}"
+      register: mv_result
+      changed_when:
+        - mv_result.rc == 0
+
+    - name: Merge k3s member configs for root
+      ansible.builtin.shell: |
+        TFILE=$(mktemp)
+        KUBECONFIG=~/.kube/config:{{ member_kubeconfig }} kubectl config view --flatten > ${TFILE}
+        mv ${TFILE} ~/.kube/config
+      delegate_to: "{{ control_node }}"
+      register: mv_result
+      changed_when:
+        - mv_result.rc == 0
 
 - name: "Clean up staging directory on Ansible controller"
   ansible.builtin.file:

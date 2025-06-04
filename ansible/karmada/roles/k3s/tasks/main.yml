@@ -16,7 +16,7 @@
     state: present
     kind: Node
     name: "{{ inventory_hostname }}"
-    context: default
+    context: "{{ inventory_hostname }}"
     definition:
       metadata:
         labels:

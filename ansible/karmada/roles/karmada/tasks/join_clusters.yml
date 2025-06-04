@@ -2,11 +2,15 @@
 - name: Register member clusters with Karmada
   when: inventory_hostname in groups['workers']
   ansible.builtin.command: >
-    kubectl karmada
+    kubectl
+    karmada
     join
     {{ cluster_name }}
+    --kubeconfig=/root/.kube/config
     --cluster-context={{ cluster_name }}
     --karmada-context=karmada-apiserver
+  environment:
+    KUBECONFIG: "/root/.kube/config"
   register: join_result
   delegate_to: "{{ groups['control'][0] }}"
   failed_when:
@@ -21,6 +25,8 @@
 - name: Verify that member clusters are registered
   ansible.builtin.command: >
     kubectl --context karmada-apiserver get clusters -A
+  environment:
+    KUBECONFIG: "/root/.kube/config"
   delegate_to: "{{ groups['control'][0] }}"
   register: clusters_result
   changed_when: false
