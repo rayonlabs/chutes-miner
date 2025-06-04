@@ -15,6 +15,9 @@ fullnameOverride: ''
 prometheus:
   deploy: true
   karmadaToken: REPLACEME
+  createSecret: false
+  alertmanager:
+    enabled: false
   federation:
     enabled: false
     scrapeInterval: '15s'
@@ -32,11 +35,9 @@ prometheus:
     #     caFile: ''
     #     insecureSkipVerify: ''
 
-
-  serviceAccount:
-    createSecret: false
-  service:
-    type: ClusterIP
+  serviceAccounts:
+    server:
+      create: true
   scrape:
     scrapePrometheus: true
     scrapePods: true

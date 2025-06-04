@@ -44,8 +44,21 @@ grafana:
     default: grafana-dashboards
   
 prometheus:
-  service:
-    type: ClusterIP
+  fullnameOverride: prometheus
+  
+  server:
+    fullnameOverride: prometheus-server
+    service:
+      type: ClusterIP
+    extraConfigmapMounts:
+      - name: prometheus-scrape-configs
+        mountPath: /etc/prometheus/custom_scrape_configs
+        configMap: prometheus-scrape-configs
+
+  scrapeConfigFiles:
+    - /etc/prometheus/custom_scrape_configs/federation.yaml
+    - /etc/prometheus/custom_scrape_configs/karmada.yaml
+    
   karmadaToken: "{{ api_server_token }}"
   scrape:
     scrapeKarmada: true

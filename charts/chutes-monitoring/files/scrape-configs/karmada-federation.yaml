@@ -1,4 +1,5 @@
 # Federation jobs configuration
+scrape_configs:
 {{- range $cluster := .Values.prometheus.federation.clusters }}
 - job_name: 'federate-{{ $cluster.name }}'
   scrape_interval: {{ $.Values.prometheus.federation.scrapeInterval | default "15s" }}

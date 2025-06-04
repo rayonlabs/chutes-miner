@@ -1,42 +1,16 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: prometheus-conf
+  name: prometheus-scrape-configs
   namespace: "{{ .Release.namespace }}"
 data:
-  prometheus.yml: |
-    global:
-      scrape_interval: 15s
-      evaluation_interval: 15s
-    scrape_configs:
-      # Include standard scrape configs from files
-{{- if .Values.prometheus.scrape.scrapePrometheus }}
-{{ .Files.Get "files/scrape-configs/prometheus-self.yaml" | indent 6 }}
-{{- end }}
-{{- if .Values.prometheus.scrape.scrapePods }}
-{{ .Files.Get "files/scrape-configs/kubernetes-pods.yaml" | indent 6 }}
-{{- end }}
-{{- if .Values.prometheus.scrape.scrapeNodes }}
-{{ .Files.Get "files/scrape-configs/kubernetes-nodes.yaml" | indent 6 }}
-{{ .Files.Get "files/scrape-configs/node-exporter.yaml" | indent 6 }}
-{{- end }}
 {{- if .Values.prometheus.scrape.scrapeKarmada }}
 {{- $karmadaTemplate := .Files.Get "files/scrape-configs/karmada.yaml" }}
-{{ tpl $karmadaTemplate . | indent 6 }}
+  karmada.yaml: |
+{{ tpl $karmadaTemplate . | indent 4 }}
 {{- end }}
 {{- if .Values.prometheus.federation.enabled }}
 {{- $karmadaFederationTemplate := .Files.Get "files/scrape-configs/karmada-federation.yaml" }}
-{{ tpl $karmadaFederationTemplate . | indent 6 }}
+  federation.yaml: |
+{{ tpl $karmadaFederationTemplate . | indent 4 }}
 {{- end }}
-      # Custom scrape configs from values
-{{- if .Values.prometheus.scrape.customScrapeConfigs  }}
-{{ .Values.prometheus.scrape.customScrapeConfigs | indent 6 }}
-{{- end }}
-{{- if .Values.prometheus.additionalConfigs }}
-  # Additional configs
-  {{- range $key, $value := .Values.prometheus.additionalConfigs }}
-  {{ $key }}: |
-{{ $value | indent 4 }}
-  {{- end }}
-{{- end }}
-

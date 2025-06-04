@@ -28,10 +28,6 @@ dependencies:
     version: 8.11.3
     repository: https://grafana.github.io/helm-charts
     condition: grafana.deploy
-  - name: prometheus-node-exporter
-    version: 4.45.2
-    repository: https://prometheus-community.github.io/helm-charts
-    condition: prometheus-node-exporter.deploy
-  - name: kube-state-metrics
-    version: 5.33.0 # specify the version you want, e.g., "4.4.1"
+  - name: prometheus
+    version: 27.19.0
     repository: https://prometheus-community.github.io/helm-charts

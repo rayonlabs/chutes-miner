@@ -1,16 +1,22 @@
----
 grafana:
   deploy: false
 
 prometheus:
-  service:
-    type: NodePort
-    nodePort: 30090
-  serviceAccount:
-    createSecret: true
-  propagationPolicies:
-    create: true
-  networkPolicies:
-    create: true
+  fullnameOverride: prometheus
+  
+  server:
+    fullnameOverride: prometheus-server
+    service:
+      type: NodePort
+      nodePort: 30090
+
+  networkPolicy:
+    enabled: true
     allowedCIDRs:
       - "{{ ansible_host }}/32"
+  
+  createSecret: true
+
+  propagationPolicies:
+    create: true
+  

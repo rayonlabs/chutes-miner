@@ -1,4 +1,4 @@
-{{- if .Values.prometheus.networkPolicies.create }}
+{{- if .Values.prometheus.networkPolicy.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -7,9 +7,10 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: prometheus-server
+      app.kubernetes.io/name: prometheus
+      app.kubernetes.io/component: server
   ingress:
-  {{- range .Values.prometheus.networkPolicies.allowedCIDRs }}
+  {{- range .Values.prometheus.networkPolicy.allowedCIDRs }}
   - from:
     - ipBlock:
         cidr: {{ . }}
