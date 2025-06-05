@@ -22,7 +22,7 @@ validators:
       socket: wss://ws.chutes.ai
 
 minerApi:
-  image: localhost:5000/miner:karmada
+  image: parachutes/miner:karmada
   imagePullPolicy: Always
   resources:
     requests:
@@ -49,7 +49,7 @@ minerApi:
 
 
 gepetto:
-  image: localhost:5000/miner:karmada
+  image: parachutes/miner:karmada
   imagePullPolicy: Always
   resources:
     requests:
@@ -136,7 +136,7 @@ registry:
     nodePort: 30500
 
 auditExporter:
-  image: parachutes/miner:latest
+  image: parachutes/miner:karmada
   nodeSelector:
     kubernetes.io/hostname: chutes-miner-cpu-0
 
