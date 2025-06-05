@@ -18,7 +18,7 @@ The migration process transforms your infrastructure from MicroK8s to Karmada/K3
 ### Infrastructure Requirements
 
 - **Control plane node**: A dedicated node to run the Karmada control plane
-- **Worker nodes**: Existing MicroK8s nodes to be migrated
+- **Microk8s nodes**: Existing MicroK8s nodes to be migrated
 - **Network connectivity**: All nodes must have a public IP
 - **SSH access**: Ansible must have sudo access to all nodes
 
@@ -68,12 +68,12 @@ all:
 run_cli_locally: false  # Set to true to run chutes-miner commands from Ansible controller
 
 # Hotkey configuration
-hotkey_path: ~/.bittensor/wallets/chutes-test/hotkeys/chutes-test
-remote_hotkey_path: /etc/chutes-miner/hotkey.json
+hotkey_path: ~/.bittensor/wallets/chutes-test/hotkeys/chutes-test # Path to hotkey on controller
+remote_hotkey_path: /etc/chutes-miner/hotkey.json # Path on host if running CLI remotely
 copy_hotkey_to_ansible_host: false # If running CLI from ansible hosts, set to true
 
 # API configuration
-miner_api_port: 32000  # Default Karmada API port
+miner_api_port: 32000  # Node port to use for miner API if running from ansible controller
 ```
 
 ### Auto-Generated Variables
