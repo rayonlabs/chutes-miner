@@ -3,14 +3,14 @@
 # Agents have no such limitation
 
 - name: Upgrade K3s Servers
-  hosts: server
+  hosts: control
   become: true
   serial: 1
   roles:
     - role: k3s_upgrade
 
 - name: Upgrade K3s Agents
-  hosts: agent
+  hosts: workers
   become: true
   roles:
     - role: k3s_upgrade
