@@ -44,4 +44,3 @@
       failed_when: delete_node_output.rc != 0
       changed_when: false
       delegate_to: "{{ groups['microk8s'][0] }}"
-

@@ -73,7 +73,7 @@
         - mv_result.rc == 0
 
 - name: Setup kubectl for user
-  when: 
+  when:
     - user_kubectl | default(true)
   vars:
     control_host: "{{ groups['control'][0] }}"
@@ -184,7 +184,6 @@
     control_node: "{{ groups['control'][0] }}"
     member_kubeconfig: /tmp/karmada/member.config
   block:
-
     - name: Ensure karmada dir exists
       ansible.builtin.file:
         path: /tmp/karmada
@@ -196,6 +195,7 @@
       ansible.builtin.copy:
         src: "{{ controller_kubectl_staging_dir }}/config"
         dest: "{{ member_kubeconfig }}"
+        mode: "0644"
       delegate_to: "{{ control_node }}"
 
     - name: Merge k3s member configs for user
