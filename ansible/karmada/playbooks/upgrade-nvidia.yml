@@ -1,0 +1,103 @@
+- name: Install NVIDIA CUDA Toolkit and Configure Container Runtimes
+  hosts: workers
+  serial: 1
+  become: yes
+  vars:
+    cuda_keyring_url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu{{ ubuntu_major }}{{ ubuntu_minor }}/x86_64/cuda-keyring_1.1-1_all.deb
+    cuda_keyring_file: /tmp/cuda-keyring_1.1-1_all.deb
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_SUSPEND: "y"
+
+    - name: Get list of installed CUDA/NVIDIA packages
+      shell: dpkg --list | egrep -i 'cuda|nvidia' | grep -v 'linux-nvidia' | awk '{print $2}' || true
+      register: nvidia_packages
+      changed_when: false
+
+    - name: Remove old CUDA/NVIDIA packages
+      apt:
+        name: "{{ nvidia_packages.stdout_lines }}"
+        state: absent
+        allow_change_held_packages: yes
+      when: nvidia_packages.stdout_lines | length > 0
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_SUSPEND: "y"
+
+    - name: Purge old CUDA/NVIDIA packages
+      shell: dpkg --purge {{ item }}
+      loop: "{{ nvidia_packages.stdout_lines }}"
+      when: nvidia_packages.stdout_lines | length > 0
+      failed_when: false
+
+    - name: Download CUDA keyring package
+      get_url:
+        url: "{{ cuda_keyring_url }}"
+        dest: "{{ cuda_keyring_file }}"
+        mode: '0644'
+
+    - name: Install CUDA keyring package
+      apt:
+        deb: "{{ cuda_keyring_file }}"
+        state: present
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Update apt cache after adding CUDA repository
+      apt:
+        update_cache: yes
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_SUSPEND: "y"
+
+    - name: Install CUDA toolkit and NVIDIA packages
+      apt:
+        name:
+          - cuda-toolkit-{{ cuda_version }}
+          - nvidia-open
+          - nvidia-fabricmanager-{{ nvidia_version }}
+          - nvidia-container-toolkit
+        state: present
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_SUSPEND: "y"
+
+    - name: Unmask nvidia-fabricmanager service
+      systemd:
+        name: nvidia-fabricmanager
+        masked: no
+
+    - name: Enable nvidia-fabricmanager service
+      systemd:
+        name: nvidia-fabricmanager
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Configure Docker runtime with nvidia-ctk
+      command: nvidia-ctk runtime configure --runtime=docker --set-as-default
+      register: docker_config
+      changed_when: docker_config.rc == 0
+
+    - name: Configure containerd runtime with nvidia-ctk
+      command: nvidia-ctk runtime configure --runtime=containerd --config=/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
+      register: containerd_config
+      changed_when: containerd_config.rc == 0
+
+    - name: Configure CRI-O runtime with nvidia-ctk
+      command: nvidia-ctk runtime configure --runtime=crio --set-as-default --config=/etc/crio/crio.conf.d/99-nvidia.conf
+      register: crio_config
+      changed_when: crio_config.rc == 0
+
+    - name: Reboot
+      reboot:
+        msg: "Rebooting..."
+        reboot_command: "reboot"
+        connect_timeout: 5
+        reboot_timeout: 900
+        pre_reboot_delay: 0
+        post_reboot_delay: 30
+        test_command: uptime
