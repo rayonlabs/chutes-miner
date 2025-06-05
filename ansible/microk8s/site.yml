@@ -216,7 +216,7 @@
           apt:
             name:
               - cuda-toolkit-{{ cuda_version }}
-              - cuda-drivers-{{ nvidia_version }}
+              - nvidia-open
               - nvidia-fabricmanager-{{ nvidia_version }}
             state: present
 
