@@ -83,7 +83,9 @@ def get_prometheus_uptime() -> float:
         label_selector="app.kubernetes.io/name=prometheus,app.kubernetes.io/component=server",
     )
     if not pods.items:
-        raise ValueError(f"No Prometheus server pods found in namespace {settings.monitoring_namespace}")
+        raise ValueError(
+            f"No Prometheus server pods found in namespace {settings.monitoring_namespace}"
+        )
     pod = pods.items[0]
     container_status = next(
         (status for status in pod.status.container_statuses if status.name == "prometheus-server"),

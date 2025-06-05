@@ -101,7 +101,6 @@ class Settings(BaseSettings):
     monitoring_namespace: str = os.getenv("MONITORING_NAMESPACE", "chutes")
     prometheus_url: str = f"http://prometheus-server.{os.getenv('MONITORING_NAMESPACE', 'chutes')}.svc.cluster.local:{os.getenv('PROMETHEUS_PORT', '80')}"
 
-
     cache_max_age_days: int = int(os.getenv("CACHE_MAX_AGE_DAYS", "7"))
     cache_max_size_gb: int = int(os.getenv("CACHE_MAX_SIZE_GB", "500"))
     cache_overrides: dict = json.loads(os.getenv("CACHE_OVERRIDES", "{}")) or {}
