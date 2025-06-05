@@ -1,5 +1,5 @@
 ---
 run_cli_locally: false
-hotkey_path: ~/.bittensor/wallets/chutes-test/hotkeys/chutes-test
+hotkey_path: ~/.bittensor/wallets/chutes/hotkeys/chutes
 remote_hotkey_path: /etc/chutes-miner/hotkey.json
 copy_hotkey_to_ansible_host: false

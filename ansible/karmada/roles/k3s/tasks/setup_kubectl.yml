@@ -22,7 +22,7 @@
 
     - name: Change server address in kubeconfig
       ansible.builtin.shell: |
-        KUBECONFIG={{ cluster_kubeconfig }} kubectl config set-cluster default --server=https://{{ ansible_host }}:{{ api_port | default('6443') }}
+        KUBECONFIG={{ cluster_kubeconfig }} kubectl config set-cluster default --server=https://{{ ansible_host }}:{{ k3s_api_port | default('6443') }}
       delegate_to: localhost
       become: false
       register: csa_result

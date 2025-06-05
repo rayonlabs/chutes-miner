@@ -58,8 +58,7 @@
 
     - name: Install or upgrade Monitoring on Karmada host
       ansible.builtin.command: >
-        helm upgrade --install monitoring chutes/monitoring
-        --version {{ karmada_monitoring_chart_version }}
+        helm upgrade --install monitoring /tmp/chutes-monitoring
         --namespace {{ karmada_monitoring_namespace }}
         --create-namespace
         -f /tmp/monitoring-host-values.yaml

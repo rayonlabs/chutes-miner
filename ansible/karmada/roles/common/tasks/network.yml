@@ -27,7 +27,7 @@
         - ufw_status['stdout'] == "Status':' active"
       community.general.ufw:
         rule: allow
-        port: "{{ api_port | default('6443') }}"
+        port: "{{ k3s_api_port | default('6443') }}"
         proto: tcp
         comment: Kubernetes API Server
 
@@ -41,7 +41,7 @@
         proto: "{{ item.proto }}"
         comment: "{{ item.comment }}"
       loop:
-        - { port: "{{ karmada_api_port | default('32443') }}", proto: tcp, comment: Karmada API Server }
+        - { port: "{{ karmada_api_server_node_port | default('32443') }}", proto: tcp, comment: Karmada API Server }
         - { port: "2379", proto: tcp, comment: etcd client }
         - { port: "30080", proto: tcp, comment: Grafana UI }
 

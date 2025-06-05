@@ -25,7 +25,5 @@ karmada_kubeconfig_temp_dir: /tmp/karmada-kubeconfigs
 karmada_apiserver_bind_address: 0.0.0.0
 
 # Monitoring configuration
-karmada_monitoring_chart_repo: https://kylewidmann.github.io/k8s-cluster/
-karmada_monitoring_chart_version: 0.2.0
 karmada_monitoring_namespace: monitoring
 karmada_grafana_password: chutethis # Should be overridden in group_vars with vault
