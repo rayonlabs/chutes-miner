@@ -1,3 +1,4 @@
+{{ if .Values.multiCluster }}
 ---
 apiVersion: search.karmada.io/v1alpha1
 kind: ResourceRegistry
@@ -15,3 +16,4 @@ spec:
       kind: Pod
     - apiVersion: apps/v1
       kind: Deployment
+{{- end }}

@@ -22,7 +22,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: api
+  name: auth
   labels:
     {{- include "registry.labels" $root | nindent 4 }}
 spec:

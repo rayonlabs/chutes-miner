@@ -1,3 +1,4 @@
+{{ if .Values.multiCluster }}
 ---
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy
@@ -32,3 +33,4 @@ spec:
   placement:
     clusterAffinity:
       clusterNames: []
+{{- end }}

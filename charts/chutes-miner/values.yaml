@@ -7,7 +7,7 @@ cache:
 #    chutes-miner-gpu-1: 1500
 
 # Set this value to true if oeprating a mutli cluster karmada environment
-multiCluster: true
+multiCluster: false
 kubeconfig:
   hostPath: '/home/ubuntu/.kube/config'
   localPath: /tmp/kube/config

@@ -70,6 +70,10 @@ spec:
               value: {{ .Values.validators | toJson | quote }}
             - name: REGISTRY_PROXY_PORT
               value: "{{ .Values.registry.service.nodePort }}"
+            {{ if not .Values.multiCluster }}
+            - name: NVIDIA_RUNTIME
+              value: nvidia-container-runtime
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.minerApi.service.targetPort }}

@@ -1,3 +1,4 @@
+{{ if .Values.multiCluster }}
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy
 metadata:
@@ -23,3 +24,4 @@ spec:
       labelSelector:
         matchLabels:
           {{- include "registry.labels" . | nindent 10 }}
+{{- end }}

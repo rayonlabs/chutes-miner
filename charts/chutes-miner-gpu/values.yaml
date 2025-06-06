@@ -1,3 +1,5 @@
+multiCluster: false
+
 validators:
   defaultRegistry: registry.chutes.ai
   defaultApi: https://api.chutes.ai
@@ -40,7 +42,7 @@ registry:
       defaultUpstream: "registry.chutes.ai"
 
 auth:
-  image: 3.89.161.195:5000/miner:registry
+  image: parachutes/registry:karmada
   imagePullPolicy: Always
   resources:
     requests:
