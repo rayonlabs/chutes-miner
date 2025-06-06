@@ -134,8 +134,10 @@
           when: not setup_marker.stat.exists
 
         - name: GPU Setup
-          ansible.builtin.include_role:
-            name: gpu
+          ansible.builtin.include_tasks:
+            file: ../roles/gpu/tasks/k3s-setup.yml
+            apply:
+              tags: gpu-setup
           when: not setup_marker.stat.exists
 
         - name: Mark node as setp

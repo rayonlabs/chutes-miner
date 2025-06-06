@@ -68,10 +68,10 @@
     - name: Wait for Monitoring components to be ready on host
       ansible.builtin.command: >
         kubectl -n {{ karmada_monitoring_namespace }} wait --for=condition=Ready pod
-        --selector="app=prometheus-server" --timeout=300s
+        --selector="app.kubernetes.io/component=server,app.kubernetes.io/name=prometheus" --timeout=30s
       register: monitoring_wait
       changed_when: false
-      retries: 10
+      retries: 5
       delay: 30
       until: monitoring_wait.rc == 0
       when:

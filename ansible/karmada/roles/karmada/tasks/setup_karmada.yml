@@ -107,7 +107,7 @@
     state: present
     kind: Node
     name: "{{ inventory_hostname }}"
-    context: default
+    context: "{{ inventory_hostname }}"
     definition:
       metadata:
         labels:
@@ -122,8 +122,18 @@
         kind: Secret
         name: "{{ secret_name | default('karmada-kubeconfig') }}"
         namespace: "{{ source_namespace | default('karmada-system') }}"
-        context: default
+        context: "{{ inventory_hostname }}"
       register: source_api_secret
+
+    - name: Create target namespace if it doesn't exist
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: chutes
+        context: "{{ inventory_hostname }}"
 
     - name: Copy secret to target namespace
       kubernetes.core.k8s:
@@ -138,7 +148,7 @@
             annotations: "{{ source_api_secret.resources[0].metadata.annotations | default({}) }}"
           type: "{{ source_api_secret.resources[0].type }}"
           data: "{{ source_api_secret.resources[0].data }}"
-        context: default
+        context: "{{ inventory_hostname }}"
       vars:
         source_namespace: karmada-system
         target_namespace: chutes
