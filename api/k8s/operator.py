@@ -572,7 +572,7 @@ class SingleClusterK8sOperator(K8sOperator):
 
     def get_deployments(
         self,
-        namespace: Optional[str] = None,
+        namespace: Optional[str] = settings.namespace,
         label_selector: Optional[Union[str | Dict[str, str]]] = None,
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
         timeout=120,
@@ -707,7 +707,7 @@ class SingleClusterK8sOperator(K8sOperator):
                 f"Failed to deploy chute {chute.chute_id} with version {chute.version}: {exc}\n{traceback.format_exc()}"
             )
 
-    async def deploy_graval(node: V1Node, deployment: V1Deployment, service: V1Service):
+    async def deploy_graval(self, node: V1Node, deployment: V1Deployment, service: V1Service):
         try:
             created_service = k8s_core_client().create_namespaced_service(
                 namespace=settings.namespace, body=service

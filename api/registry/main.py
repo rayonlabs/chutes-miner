@@ -5,7 +5,7 @@ Miner API entrypoint.
 import hashlib
 from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
-from registry.router import router as registry_router
+from api.registry.router import router as registry_router
 
 
 app = FastAPI(default_response_class=ORJSONResponse)
