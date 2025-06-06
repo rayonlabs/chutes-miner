@@ -1,0 +1,54 @@
+- name: Ensure k3s containerd config template exists
+  tags:
+    - gpu-container-setup
+  block:
+    - name: Check if k3s containerd config template exists
+      ansible.builtin.stat:
+        path: "/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
+      register: k3s_config_tmpl_stat
+
+    - name: Check if k3s active containerd config exists (fallback)
+      ansible.builtin.stat:
+        path: "/var/lib/rancher/k3s/agent/etc/containerd/config.toml"
+      register: k3s_config_toml_stat
+      when: not k3s_config_tmpl_stat.stat.exists
+
+    - name: Create k3s containerd config template from active config if template is missing
+      ansible.builtin.copy:
+        src: "/var/lib/rancher/k3s/agent/etc/containerd/config.toml"
+        dest: "/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      when:
+        - not k3s_config_tmpl_stat.stat.exists
+        - k3s_config_toml_stat.stat.exists # Only copy if the .toml source exists
+      notify:
+        - restart k3s
+
+    - name: Fail if neither k3s containerd config template nor active config can be found
+      ansible.builtin.fail:
+        msg: "Critical: Neither k3s containerd config template nor active config.toml found. Cannot proceed with NVIDIA toolkit configuration."
+      when:
+        - not k3s_config_tmpl_stat.stat.exists
+        - not k3s_config_toml_stat.stat.exists
+
+
+- name: Setup NVIDIA Container Toolkit
+  tags:
+    - gpu-container-setup
+  block:
+    - name: Install NVIDIA Container Toolkit
+      ansible.builtin.apt:
+        name: nvidia-container-toolkit
+        state: present
+
+    - name: Configure NVIDIA Container Toolkit
+      ansible.builtin.shell: |
+        nvidia-ctk runtime configure --runtime=docker --set-as-default
+        nvidia-ctk runtime configure --runtime=containerd --config=/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
+      register: container_runtime
+      notify: restart k3s
+      changed_when: >
+        container_runtime.stdout is search('changed|updated|modified') or  container_runtime.stderr is search('changed|updated|modified')

@@ -1,0 +1,37 @@
+{{- $root := . -}}
+{{- range .Values.validators.supported }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-{{ .hotkey | lower }}
+  labels:
+    {{- include "registry.labels" $root | nindent 4 }}
+spec:
+  type: NodePort
+  internalTrafficPolicy: Local
+  externalTrafficPolicy: Local
+  ports:
+    - port: {{ $root.Values.registry.service.port }}
+      targetPort: {{ $root.Values.registry.service.targetPort }}
+      protocol: TCP
+      nodePort: {{ $root.Values.registry.service.nodePort }}
+      name: http
+  selector:
+    {{- include "registry.labels" $root | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth
+  labels:
+    {{- include "registry.labels" $root | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ $root.Values.auth.service.port }}
+      targetPort: {{ $root.Values.auth.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "registry.labels" $root | nindent 4 }}
+{{- end }}

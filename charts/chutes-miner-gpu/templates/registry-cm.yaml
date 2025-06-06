@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-nginx-config
+  labels:
+    {{- include "registry.labels" . | nindent 4 }}
+data:
+  nginx.conf: |
+    user  nginx;
+    worker_processes  {{ .Values.registry.config.workerProcesses }};
+    error_log  /var/log/nginx/error.log notice;
+    pid        /var/run/nginx.pid;
+    events {
+        worker_connections  {{ .Values.registry.config.workerConnections }};
+    }
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+        map_hash_bucket_size 256;
+        map_hash_max_size 2048;
+        map $http_host $upstream_host {
+            default {{ .Values.validators.defaultRegistry }};
+            {{- range .Values.validators.supported }}
+            {{ .hotkey | lower }}.registry.chutes.svc.cluster.local {{ .registry }};
+            {{- end }}
+        }
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for" "upstream=$upstream_host"';
+        access_log  /var/log/nginx/access.log  main;
+        sendfile on;
+        keepalive_timeout  {{ .Values.registry.config.keepaliveTimeout }};
+        client_max_body_size {{ .Values.registry.config.clientMaxBodySize }};
+        server {
+            resolver 1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4;
+            listen {{ .Values.registry.service.targetPort }};
+            location /v2/ {
+                limit_except GET {
+                    deny all;
+                }
+                auth_request /auth;
+                auth_request_set $chutes_signature $upstream_http_x_chutes_signature;
+                auth_request_set $chutes_hotkey $upstream_http_x_chutes_hotkey;
+                auth_request_set $chutes_nonce $upstream_http_x_chutes_nonce;
+                proxy_set_header X-Chutes-Hotkey $chutes_hotkey;
+                proxy_set_header X-Chutes-Nonce $chutes_nonce;
+                proxy_set_header X-Chutes-Signature $chutes_signature;
+                proxy_pass https://$upstream_host;
+                proxy_set_header Host $upstream_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            }
+            location = /auth {
+                internal;
+                proxy_pass http://auth:{{ .Values.auth.service.port }}/registry/auth;
+                auth_request_set $auth_resp_authorization $upstream_http_authorization;
+                proxy_set_header X-Chutes-Hotkey $http_x_chutes_hotkey;
+                proxy_set_header X-Chutes-Signature $http_x_chutes_signature;
+                proxy_set_header X-Chutes-Nonce $http_x_chutes_nonce;
+                proxy_pass_request_body off;
+                proxy_set_header Content-Length "";
+                error_page 401 403 500 502 503 504 = @block;
+            }
+            location @block {
+                return 401;
+            }
+        }
+    }
