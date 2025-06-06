@@ -33,7 +33,7 @@
             TFILE=$(mktemp)
             mkdir -p /home/{{ ansible_user }}/.kube
             touch /home/{{ ansible_user }}/.kube/config
-            KUBECONFIG=/home/{{ ansible_user }}/.kube/config:{{ kubeconfig }} kubectl config view --flatten > ${TFILE}
+            KUBECONFIG={{ kubeconfig }}:/home/{{ ansible_user }}/.kube/config kubectl config view --flatten > ${TFILE}
             mv ${TFILE} /home/{{ ansible_user }}/.kube/config
             chown -R {{ ansible_user }}:{{ ansible_user }} /home/{{ ansible_user }}/.kube
           register: mv_result
@@ -45,7 +45,7 @@
             TFILE=$(mktemp)
             mkdir -p ~/.kube
             touch ~/.kube/config
-            KUBECONFIG=~/.kube/config:{{ kubeconfig }} kubectl config view --flatten > ${TFILE}
+            KUBECONFIG={{ kubeconfig }}:~/.kube/config kubectl config view --flatten > ${TFILE}
             mv ${TFILE} ~/.kube/config
           register: mv_result
           changed_when:
@@ -65,7 +65,7 @@
       become: false
       run_once: true # Only needs to run once per playbook execution
 
-    - name: Check whether kubectl is installed on control node
+    - name: Check whether kubectl is installed on ansible controller
       delegate_to: 127.0.0.1
       become: false
       ansible.builtin.command: kubectl
@@ -74,19 +74,19 @@
       ignore_errors: true
       changed_when: false
 
-    - name: Apply karmada-apiserver kubeconfig to control node
+    - name: Apply karmada-apiserver kubeconfig to ansible controller
       when:
         - kubectl_installed.rc == 0
       vars:
         kubeconfig: "{{ controller_kubectl_staging_dir }}/karmada-apiserver"
       block:
-        - name: Copy kubeconfig to control node
+        - name: Copy kubeconfig to ansible controller
           ansible.builtin.fetch:
             src: "{{ karmada_kubeconfig_temp_dir }}/karmada-apiserver"
             dest: "{{ kubeconfig }}"
             flat: true
 
-        - name: Change server address in kubeconfig on control node
+        - name: Change server address in kubeconfig on ansible controller
           ansible.builtin.shell: |
             KUBECONFIG={{ kubeconfig }} kubectl config set-cluster karmada-apiserver --server=https://{{ ansible_host }}:{{ karmada_api_server_node_port }}
           delegate_to: localhost
@@ -95,11 +95,11 @@
           changed_when:
             - csa_result.rc == 0
 
-        - name: Merge with any existing kubeconfig on control node
+        - name: Merge with any existing kubeconfig on ansible controller
           ansible.builtin.shell: |
             TFILE=$(mktemp)
             touch {{ controller_kubeconfig }}
-            KUBECONFIG={{ controller_kubeconfig }}:{{ kubeconfig }} kubectl config view --flatten > ${TFILE}
+            KUBECONFIG={{ kubeconfig }}:{{ controller_kubeconfig }} kubectl config view --flatten > ${TFILE}
             mv ${TFILE} {{ controller_kubeconfig }}
           delegate_to: localhost
           become: false
