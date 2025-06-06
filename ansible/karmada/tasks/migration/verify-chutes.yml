@@ -70,16 +70,31 @@
 
 - name: Verify the gepetto-code configmap
   tags: verify-gepetto
-  kubernetes.core.k8s:
-    state: present # Ensures it exists and matches this definition. Updates if different.
-    context: default # Or your specific context name
-    definition:
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: gepetto-code
-        namespace: chutes
-      data:
-        # This uses the 'file' lookup to read the content from your Ansible controller
-        # at the specified relative path.
-        gepetto.py: "{{ lookup('file', 'files/gepetto.py') }}"
+  block:
+    - name: Verify gepetto on micorK8s cluster
+      when: inventory_hostname in groups['microk8s']
+      kubernetes.core.k8s:
+        state: present # Ensures it exists and matches this definition. Updates if different.
+        context: default
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gepetto-code
+            namespace: chutes
+          data:
+            gepetto.py: "{{ lookup('file', 'files/gepetto.py') }}"
+
+    - name: Verify gepetto on k3s cluster
+      when: inventory_hostname in groups['control']
+      kubernetes.core.k8s:
+        state: present # Ensures it exists and matches this definition. Updates if different.
+        context: "{{ inventory_hostname }}"
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gepetto-code
+            namespace: chutes
+          data:
+            gepetto.py: "{{ lookup('file', 'files/gepetto.py') }}"
