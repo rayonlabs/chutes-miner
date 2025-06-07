@@ -133,14 +133,7 @@
             name: common
           when: not setup_marker.stat.exists
 
-        - name: GPU Setup
-          ansible.builtin.include_tasks:
-            file: ../roles/gpu/tasks/k3s-setup.yml
-            apply:
-              tags: gpu-setup
-          when: not setup_marker.stat.exists
-
-        - name: Mark node as setp
+        - name: Mark node as setup
           ansible.builtin.file:
             path: /etc/ansible/.setup
             state: touch
@@ -159,12 +152,33 @@
             name: k3s
           when: not k3s_marker.stat.exists
 
-        - name: Mark node as setp
+        - name: Mark k3s as setup
           ansible.builtin.file:
             path: /etc/ansible/.k3s
             state: touch
             mode: "0644"
           when: not k3s_marker.stat.exists
+
+    - name: Setup GPU
+      block:
+        - name: Check if GPU has been setup
+          ansible.builtin.stat:
+            path: /etc/ansible/.gpu
+          register: gpu_marker
+
+        - name: GPU Setup
+          ansible.builtin.include_tasks:
+            file: ../roles/gpu/tasks/k3s-setup.yml
+            apply:
+              tags: gpu-setup
+          when: not gpu_marker.stat.exists
+
+        - name: Mark GPU as setup
+          ansible.builtin.file:
+            path: /etc/ansible/.gpu
+            state: touch
+            mode: "0644"
+          when: not gpu_marker.stat.exists
 
     - name: Join node to karmada
       block:
@@ -178,7 +192,7 @@
             name: karmada
           when: not karmada_marker.stat.exists
 
-        - name: Mark node as setp
+        - name: Mark karmada as setup
           ansible.builtin.file:
             path: /etc/ansible/.karmada
             state: touch
@@ -213,5 +227,6 @@
         - reset_marker.stat.exists
         - setup_marker.stat.exists
         - k3s_marker.stat.exists
+        - gpu_marker.stat.exists
         - karmada_marker.stat.exists
         - added_marker.stat.exists

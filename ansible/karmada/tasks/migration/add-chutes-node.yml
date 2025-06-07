@@ -25,7 +25,7 @@
     - name: Run add node command locally
       ansible.builtin.command: >
         chutes-miner add-node --name {{ inventory_hostname }}  --hotkey {{ hotkey_path }}
-        --miner-api http://{{ ansible_host }}:{{ miner_api_port | default(32000) }}
+        --miner-api http://{{ hostvars[groups['control'][0]]['ansible_host'] }}:{{ miner_api_port | default(32000) }}
         --validator 5Dt7HZ7Zpw4DppPxFM7Ke3Cm7sDAWhsZXmM5ZAmE7dSVJbcQ
         --hourly-cost {{ chutes_nodes[inventory_hostname]['hourly_cost'] }}
         --gpu-short-ref {{ chutes_nodes[inventory_hostname]['gpu_type'] }}
@@ -36,9 +36,11 @@
       delegate_to: localhost
       when: run_cli_locally | default(false)
 
-    - name: Set add variable
+    - name: Set add output variable
       ansible.builtin.set_fact:
-        add_output: "{{ remote_add_output | default(local_add_output) }}"
+        add_output: >-
+          {{ remote_add_output if (remote_add_output is defined and
+            remote_add_output.stdout is defined) else local_add_output }}
 
     - name: Verify node added
       ansible.builtin.assert:

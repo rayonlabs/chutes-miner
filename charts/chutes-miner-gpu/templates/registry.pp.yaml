@@ -2,7 +2,7 @@
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy
 metadata:
-  name: chutes-resources-policy
+  name: registry-resource-policy
 spec:
   resourceSelectors:
     - apiVersion: v1

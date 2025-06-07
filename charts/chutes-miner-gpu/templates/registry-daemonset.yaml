@@ -48,7 +48,7 @@ spec:
             - name: VALIDATORS
               value: {{ .Values.validators | toJson | quote }}
           ports:
-            - name: http
+            - name: auth
               containerPort: {{ .Values.auth.service.targetPort }}
               protocol: TCP
           resources:

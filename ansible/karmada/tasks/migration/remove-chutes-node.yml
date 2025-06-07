@@ -27,9 +27,11 @@
       delegate_to: localhost
       when: run_cli_locally | default(false)
 
-    - name: Set delete variable
+    - name: Set delete output variable
       ansible.builtin.set_fact:
-        delete_output: "{{ remote_delete_output | default(local_delete_output) }}"
+        delete_output: >-
+          {{ remote_delete_output if (remote_delete_output is defined and
+            remote_delete_output.stdout is defined) else local_delete_output }}
 
     - name: Verify node deleted
       ansible.builtin.assert:

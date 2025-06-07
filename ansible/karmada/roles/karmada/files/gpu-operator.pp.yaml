@@ -5,6 +5,7 @@ kind: PropagationPolicy
 metadata:
   name: gpu-operator-namespace-policy
 spec:
+  priority: 100
   resourceSelectors:
     - apiVersion: v1
       kind: Namespace
@@ -20,6 +21,7 @@ metadata:
   name: gpu-operator-crd-policy
 spec:
   conflictResolution: Overwrite
+  priority: 90
   resourceSelectors:
     # GPU Operator CRDs
     - apiVersion: apiextensions.k8s.io/v1
@@ -63,6 +65,7 @@ metadata:
   name: gpu-operator-resources-policy
 spec:
   conflictResolution: Overwrite
+  priority: 80
   resourceSelectors:
     # GPU Operator RBAC
     - apiVersion: v1
@@ -84,16 +87,28 @@ spec:
     - apiVersion: v1
       kind: Secret
       namespace: gpu-operator
-    # GPU Operator Deployments and DaemonSets
+    # GPU Operator Services
+    - apiVersion: v1
+      kind: Service
+      namespace: gpu-operator
+  placement:
+    clusterAffinity:
+      clusterNames: []
+---
+# PropagationPolicy for GPU Operator Resources
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: gpu-operator-workload-policy
+spec:
+  conflictResolution: Overwrite
+  priority: 0
+  resourceSelectors:
     - apiVersion: apps/v1
       kind: Deployment
       namespace: gpu-operator
     - apiVersion: apps/v1
       kind: DaemonSet
-      namespace: gpu-operator
-    # GPU Operator Services
-    - apiVersion: v1
-      kind: Service
       namespace: gpu-operator
   placement:
     clusterAffinity:
