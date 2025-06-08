@@ -42,7 +42,8 @@
     - name: Install NVIDIA Container Toolkit
       ansible.builtin.apt:
         name: nvidia-container-toolkit
-        state: present
+        state: latest
+        update_cache: yes
 
     - name: Configure NVIDIA Container Toolkit
       ansible.builtin.shell: |

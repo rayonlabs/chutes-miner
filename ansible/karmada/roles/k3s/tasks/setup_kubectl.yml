@@ -201,10 +201,13 @@
     - name: Merge k3s member configs for user
       ansible.builtin.shell: |
         TFILE=$(mktemp)
-        KUBECONFIG={{ member_kubeconfig }}:~{{ hostvars[control_node]['ansible_user'] }}/.kube/config kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} ~{{ hostvars[control_node]['ansible_user'] }}/.kube/config
+        KUBECONFIG={{ member_kubeconfig }}:~{{ user }}/.kube/config kubectl config view --flatten > ${TFILE}
+        mv ${TFILE} ~{{ user }}/.kube/config
+        chown -R {{ user }}:{{ user }} ~{{ user }}/.kube
       delegate_to: "{{ control_node }}"
       register: mv_result
+      vars:
+        user: "{{ hostvars[control_node]['ansible_user'] }}"
       changed_when:
         - mv_result.rc == 0
 

@@ -2,6 +2,7 @@
 - name: Setup control plane
   hosts: control
   become: true
+  any_errors_fatal: true
   tags:
     - setup-control-plane
   tasks:
@@ -16,6 +17,25 @@
     - name: Karmada Setup
       ansible.builtin.include_role:
         name: karmada
+
+    - name: Create gepetto-cm on control cluster
+      kubernetes.core.k8s:
+        state: present # Ensures it exists and matches this definition. Updates if different.
+        context: "{{ inventory_hostname }}"
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gepetto-code
+            namespace: chutes
+          data:
+            gepetto.py: "../tasks/migration/files/gepetto.py') }}"
+            
+    - name: Mark node as configured
+      ansible.builtin.file:
+        path: /etc/ansible/.configured
+        state: touch
+        mode: "0644"
 
 - name: Prepare control planes and nodes
   hosts:
@@ -222,6 +242,21 @@
         path: /etc/ansible/.migrated
         state: touch
         mode: "0644"
+      when:
+        - removed_marker.stat.exists
+        - reset_marker.stat.exists
+        - setup_marker.stat.exists
+        - k3s_marker.stat.exists
+        - gpu_marker.stat.exists
+        - karmada_marker.stat.exists
+        - added_marker.stat.exists
+
+    - name: Mark node as configured
+      ansible.builtin.file:
+        path: /etc/ansible/.configured
+        state: touch
+        mode: "0644"
+      register: marker_result
       when:
         - removed_marker.stat.exists
         - reset_marker.stat.exists

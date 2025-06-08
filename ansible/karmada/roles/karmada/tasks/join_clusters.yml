@@ -29,8 +29,11 @@
     KUBECONFIG: "/root/.kube/config"
   delegate_to: "{{ groups['control'][0] }}"
   register: clusters_result
-  changed_when: false
+  changed_when: inventory_hostname in clusters_result.stdout
+  # Need to restart scheduler to propagate GPU clusterpolicy - seems like a karmada bug
+  notify: restart karmada scheduler
 
 - name: Display registered clusters
   ansible.builtin.debug:
     var: clusters_result.stdout_lines
+

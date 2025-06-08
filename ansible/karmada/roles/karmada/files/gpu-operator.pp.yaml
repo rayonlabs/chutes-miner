@@ -1,7 +1,7 @@
 ---
 # PropagationPolicy for GPU Operator Namespace
 apiVersion: policy.karmada.io/v1alpha1
-kind: PropagationPolicy
+kind: ClusterPropagationPolicy
 metadata:
   name: gpu-operator-namespace-policy
 spec:
@@ -39,6 +39,19 @@ spec:
     - apiVersion: apiextensions.k8s.io/v1
       kind: CustomResourceDefinition
       name: clusterpolicies.nvidia.com
+  placement:
+    clusterAffinity:
+      clusterNames: []
+---
+# PropagationPolicy for GPU Operator Resources
+apiVersion: policy.karmada.io/v1alpha1
+kind: ClusterPropagationPolicy
+metadata:
+  name: gpu-operator-cluster-rbac-policy
+spec:
+  conflictResolution: Overwrite
+  priority: 80
+  resourceSelectors:
     - apiVersion: rbac.authorization.k8s.io/v1
       kind: ClusterRole
       labelSelector:
@@ -49,6 +62,19 @@ spec:
       labelSelector:
         matchLabels:
           app.kubernetes.io/instance: gpu-operator
+  placement:
+    clusterAffinity:
+      clusterNames: []
+---
+# PropagationPolicy for GPU Operator Resources
+apiVersion: policy.karmada.io/v1alpha1
+kind: ClusterPropagationPolicy
+metadata:
+  name: gpu-operator-clusterpolicy-policy
+spec:
+  conflictResolution: Overwrite
+  priority: 20
+  resourceSelectors:
     - apiVersion: nvidia.com/v1
       kind: ClusterPolicy
       labelSelector:
@@ -65,7 +91,7 @@ metadata:
   name: gpu-operator-resources-policy
 spec:
   conflictResolution: Overwrite
-  priority: 80
+  priority: 10
   resourceSelectors:
     # GPU Operator RBAC
     - apiVersion: v1

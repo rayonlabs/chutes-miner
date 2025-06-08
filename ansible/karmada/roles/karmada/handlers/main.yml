@@ -1,0 +1,5 @@
+- name: restart karmada scheduler
+  ansible.builtin.command:
+    cmd: kubectl rollout restart deployment/karmada-scheduler -n karmada-system
+  delegate_to: "{{ groups['control'][0] }}"
+  listen: "restart karmada scheduler"

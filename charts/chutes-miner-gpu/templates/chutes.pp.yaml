@@ -1,4 +1,18 @@
 {{ if .Values.multiCluster }}
+# PropagationPolicy for GPU Operator Namespace
+apiVersion: policy.karmada.io/v1alpha1
+kind: ClusterPropagationPolicy
+metadata:
+  name: chutes-namespace-policy
+spec:
+  priority: 100
+  resourceSelectors:
+    - apiVersion: v1
+      kind: Namespace
+      name: chutes
+  placement:
+    clusterAffinity:
+      clusterNames: []
 ---
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy

@@ -48,3 +48,5 @@ nvidia_version: "575"
 skip_cuda: false
 # Flag to enable/disable IPv6. Some hosts may require IPv6 to be on.
 ipv6_enabled: true
+
+validator: 5Dt7HZ7Zpw4DppPxFM7Ke3Cm7sDAWhsZXmM5ZAmE7dSVJbcQ

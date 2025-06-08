@@ -18,14 +18,29 @@
       check_mode: false
       changed_when: false
 
-    - name: Filter NVIDIA/CUDA packages
+    - name: Find Name column index from dpkg header
+      ansible.builtin.set_fact:
+        name_column_index: >-
+          {{ (dpkg_list.stdout_lines | 
+              select('match', '^.*Name.*') | 
+              first | 
+              split() | 
+              list).index('Name') }}
+
+    - name: Filter NVIDIA/CUDA packages using column-based parsing
       ansible.builtin.set_fact:
         nvidia_cuda_packages: >-
-          {{ dpkg_list.stdout_lines |
-            select('match', '.*\\s+(cuda|nvidia).*') |
-            reject('match', '.*\\s+(nvidia-kernel|linux-(nvidia|modules|headers|image)).*') |
-            map('regex_replace', '^\\S+\\s+\\S+\\s+(\\S+)\\s+.*$', '\\1') |
-            list }}
+          {%- set packages = [] -%}
+          {%- for line in dpkg_list.stdout_lines -%}
+            {%- if line is match('^.*\\s+(cuda|nvidia).*') and 
+                  line is not match('.*\\s+(nvidia-kernel|linux-(nvidia|modules|headers|image)).*') -%}
+              {%- set fields = line.split() -%}
+              {%- if fields | length > name_column_index | int -%}
+                {%- set _ = packages.append(fields[name_column_index | int ]) -%}
+              {%- endif -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ packages }}
 
     - name: Remove NVIDIA/CUDA packages
       ansible.builtin.apt:
@@ -61,13 +76,22 @@
     - name: GPU Setup Tasks
       when: not skip_cuda | bool
       block:
-        - name: Install NVIDIA packages
+
+        - name: Install CUDA toolkit
+          ansible.builtin.apt:
+            name: cuda-toolkit-{{ cuda_version }}
+            state: present
+
+        - name: Install NVIDIA driver packages
           ansible.builtin.apt:
             name:
-              - cuda-toolkit-{{ cuda_version }}
               - cuda-drivers-{{ nvidia_version }}
               - nvidia-fabricmanager-{{ nvidia_version }}
             state: present
+          register: driver_install
+          notify: system reboot
+          # Only reboot if driver packages actually changed
+          changed_when: driver_install.changed
 
         - name: Configure NVIDIA Fabric Manager
           ansible.builtin.systemd:

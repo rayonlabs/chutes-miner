@@ -60,6 +60,7 @@
       ansible.builtin.command: >
         helm upgrade --install monitoring /tmp/chutes-monitoring
         --namespace {{ karmada_monitoring_namespace }}
+        --kube-context {{ inventory_hostname }}
         --create-namespace
         -f /tmp/monitoring-host-values.yaml
       register: monitoring_host_deployment
