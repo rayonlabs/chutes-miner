@@ -11,49 +11,44 @@
       register: cuda_check
       ignore_errors: true
 
-    - name: Get list of NVIDIA/CUDA packages
-      ansible.builtin.command:
-        cmd: dpkg --list
-      register: dpkg_list
-      check_mode: false
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_SUSPEND: "y"
+
+    - name: Get list of installed CUDA/NVIDIA packages
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          dpkg --list | egrep -i 'cuda|nvidia' | grep -v 'linux-nvidia' | awk '{print $2}' || true
+        executable: /bin/bash
+      register: nvidia_packages
       changed_when: false
 
-    - name: Find Name column index from dpkg header
-      ansible.builtin.set_fact:
-        name_column_index: >-
-          {{ (dpkg_list.stdout_lines |
-              select('match', '^.*Name.*') |
-              first |
-              split() |
-              list).index('Name') }}
-
-    - name: Filter NVIDIA/CUDA packages using column-based parsing
-      ansible.builtin.set_fact:
-        nvidia_cuda_packages: >-
-          {%- set packages = [] -%}
-          {%- for line in dpkg_list.stdout_lines -%}
-            {%- if line is match('^.*\\s+(cuda|nvidia).*') and
-                  line is not match('.*\\s+(nvidia-kernel|linux-(nvidia|modules|headers|image)).*') -%}
-              {%- set fields = line.split() -%}
-              {%- if fields | length > name_column_index | int -%}
-                {%- set _ = packages.append(fields[name_column_index | int ]) -%}
-              {%- endif -%}
-            {%- endif -%}
-          {%- endfor -%}
-          {{ packages }}
-
-    - name: Remove NVIDIA/CUDA packages
+    - name: Remove old CUDA/NVIDIA packages
       ansible.builtin.apt:
-        name: "{{ nvidia_cuda_packages }}"
+        name: "{{ nvidia_packages.stdout_lines }}"
         state: absent
         allow_change_held_packages: true
-        purge: true
-      register: gpu_setup
-      failed_when: false
       when:
         - not skip_cuda | bool
         - (cuda_check.failed or cuda_check.changed)
-        - nvidia_cuda_packages | length > 0
+        - nvidia_packages.stdout_lines | length > 0
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_SUSPEND: "y"
+
+    - name: Purge old CUDA/NVIDIA packages
+      ansible.builtin.command: dpkg --purge {{ item }}
+      loop: "{{ nvidia_packages.stdout_lines }}"
+      when:
+        - not skip_cuda | bool
+        - (cuda_check.failed or cuda_check.changed)
+        - nvidia_packages.stdout_lines | length > 0
+      failed_when: false
+      changed_when: true
 
     - name: Download and install CUDA keyring
       block:
