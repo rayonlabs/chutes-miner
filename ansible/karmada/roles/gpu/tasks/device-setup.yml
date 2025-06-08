@@ -21,10 +21,10 @@
     - name: Find Name column index from dpkg header
       ansible.builtin.set_fact:
         name_column_index: >-
-          {{ (dpkg_list.stdout_lines | 
-              select('match', '^.*Name.*') | 
-              first | 
-              split() | 
+          {{ (dpkg_list.stdout_lines |
+              select('match', '^.*Name.*') |
+              first |
+              split() |
               list).index('Name') }}
 
     - name: Filter NVIDIA/CUDA packages using column-based parsing
@@ -32,7 +32,7 @@
         nvidia_cuda_packages: >-
           {%- set packages = [] -%}
           {%- for line in dpkg_list.stdout_lines -%}
-            {%- if line is match('^.*\\s+(cuda|nvidia).*') and 
+            {%- if line is match('^.*\\s+(cuda|nvidia).*') and
                   line is not match('.*\\s+(nvidia-kernel|linux-(nvidia|modules|headers|image)).*') -%}
               {%- set fields = line.split() -%}
               {%- if fields | length > name_column_index | int -%}
@@ -76,7 +76,6 @@
     - name: GPU Setup Tasks
       when: not skip_cuda | bool
       block:
-
         - name: Install CUDA toolkit
           ansible.builtin.apt:
             name: cuda-toolkit-{{ cuda_version }}

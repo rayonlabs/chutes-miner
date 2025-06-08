@@ -36,4 +36,3 @@
 - name: Display registered clusters
   ansible.builtin.debug:
     var: clusters_result.stdout_lines
-

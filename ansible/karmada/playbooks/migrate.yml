@@ -30,7 +30,7 @@
             namespace: chutes
           data:
             gepetto.py: "../tasks/migration/files/gepetto.py') }}"
-            
+
     - name: Mark node as configured
       ansible.builtin.file:
         path: /etc/ansible/.configured

@@ -3,6 +3,6 @@
   ansible.builtin.include_tasks: device-setup.yml
   tags: gpu-device-setup
 
-- name: k3s GPU Setup
+- name: K3s GPU Setup
   ansible.builtin.include_tasks: k3s-setup.yml
   tags: k3s-gpu-setup
