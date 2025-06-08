@@ -41,7 +41,7 @@ def mock_k8s_core_client():
 
 @pytest.fixture(autouse=True)
 def mock_k8s_app_client():
-    import_paths = ["api.k8s.operator.k8s_app_client", "api.server.util.k8s_app_client"]
+    import_paths = ["api.k8s.operator.k8s_app_client"]
 
     # Create a single mock object
     mock_client = MagicMock()
@@ -64,7 +64,7 @@ def mock_k8s_app_client():
 
 @pytest.fixture(autouse=True)
 def mock_k8s_api_client():
-    import_paths = ["api.k8s.operator.k8s_api_client", "api.server.util.k8s_api_client"]
+    import_paths = ["api.k8s.operator.k8s_api_client"]
 
     # Create a single mock object
     client = ApiClient()

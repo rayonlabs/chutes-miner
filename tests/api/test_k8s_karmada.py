@@ -275,15 +275,10 @@ async def test_get_deployment(
     mock_k8s_api_client, create_api_test_deployments, create_api_test_pods
 ):
     """Test getting a single deployment by ID."""
-    deployments = create_api_test_deployments(1)
+    deployments = create_api_test_deployments(1, name=f"{CHUTE_DEPLOY_PREFIX}-test")
     pods = create_api_test_pods(1, base_name=deployments[0]["metadata"]["name"])
     responses = get_api_responses(deployments, pods)
-    deployment_name = deployments[0]["metadata"]["name"]
-    responses[f"{SEARCH_DEPLOYMENTS_PATH}/{CHUTE_DEPLOY_PREFIX}-{deployment_name}"] = {
-        "kind": "DeploymentList",
-        "apiVersion": "v1",
-        "items": deployments,
-    }
+    deployment_name = deployments[0]["metadata"]["name"].replace(f"{CHUTE_DEPLOY_PREFIX}-", "")
 
     mock_k8s_api_client.call_api.side_effect = get_mock_call_api_side_effect(responses)
 
@@ -293,7 +288,7 @@ async def test_get_deployment(
     # Assertions
     api_calls = [
         call(
-            f"{SEARCH_DEPLOYMENTS_PATH}/{CHUTE_DEPLOY_PREFIX}-{deployment_name}",
+            f"{SEARCH_DEPLOYMENTS_PATH}",
             "GET",
             query_params={},
             response_type="object",
