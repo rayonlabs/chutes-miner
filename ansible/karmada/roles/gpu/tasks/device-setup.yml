@@ -1,0 +1,137 @@
+---
+- name: Check CUDA
+  tags:
+    - gpu-device-setup
+  block:
+    - name: Check CUDA installation
+      ansible.builtin.apt:
+        name: cuda-toolkit-{{ cuda_version }}
+        state: present
+      check_mode: true
+      register: cuda_check
+      ignore_errors: true
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_SUSPEND: "y"
+
+    - name: Get list of installed CUDA/NVIDIA packages
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          dpkg --list | egrep -i 'cuda|nvidia' | grep -v 'linux-nvidia' | awk '{print $2}' || true
+        executable: /bin/bash
+      register: nvidia_packages
+      changed_when: false
+
+    - name: Remove old CUDA/NVIDIA packages
+      ansible.builtin.apt:
+        name: "{{ nvidia_packages.stdout_lines }}"
+        state: absent
+        allow_change_held_packages: true
+      when:
+        - not skip_cuda | bool
+        - (cuda_check.failed or cuda_check.changed)
+        - nvidia_packages.stdout_lines | length > 0
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_SUSPEND: "y"
+
+    - name: Purge old CUDA/NVIDIA packages
+      ansible.builtin.command: dpkg --purge {{ item }}
+      loop: "{{ nvidia_packages.stdout_lines }}"
+      when:
+        - not skip_cuda | bool
+        - (cuda_check.failed or cuda_check.changed)
+        - nvidia_packages.stdout_lines | length > 0
+      failed_when: false
+      changed_when: true
+
+    - name: Download and install CUDA keyring
+      block:
+        - name: Download keyring
+          ansible.builtin.get_url:
+            url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu{{ ubuntu_major }}{{ ubuntu_minor }}/x86_64/cuda-keyring_1.1-1_all.deb
+            dest: /tmp/cuda-keyring.deb
+            mode: "0644"
+            owner: root
+            group: root
+
+        - name: Install keyring
+          ansible.builtin.apt:
+            deb: /tmp/cuda-keyring.deb
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: GPU Setup Tasks
+      when: not skip_cuda | bool
+      block:
+        - name: Install CUDA toolkit
+          ansible.builtin.apt:
+            name: cuda-toolkit-{{ cuda_version }}
+            state: present
+
+        - name: Install NVIDIA driver packages
+          ansible.builtin.apt:
+            name:
+              - cuda-drivers-{{ nvidia_version }}
+              - nvidia-fabricmanager-{{ nvidia_version }}
+            state: present
+          register: driver_install
+          notify: system reboot
+          # Only reboot if driver packages actually changed
+          changed_when: driver_install.changed
+
+        - name: Configure NVIDIA Fabric Manager
+          ansible.builtin.systemd:
+            name: nvidia-fabricmanager
+            enabled: true
+            masked: false
+
+    - name: Set NVIDIA device permissions
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: "0666"
+      with_fileglob:
+        - /dev/nvidia*
+        - /dev/nvidiactl
+        - /dev/nvidia-uvm
+        - /dev/nvidia-uvm-tools
+      register: nvidia_permissions
+      changed_when: nvidia_permissions.changed | default(false)
+
+    - name: Create NVIDIA character device symlinks
+      when: inventory_hostname in groups['workers']
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ls /dev/nvidia? | egrep 'nvidia[0-9]' | while read i
+          do
+            N=$(echo $i | sed 's/\/dev\/nvidia//');
+            MAJ=$(ls -l $i | awk '{print $5}' | cut -d, -f1)
+            MIN=$(ls -l $i | awk '{print $6}')
+            mkdir -p /dev/char/$MAJ:$MIN
+            ln -sf $i /dev/char/$MAJ:$MIN
+          done
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Configure file limits
+      ansible.builtin.blockinfile:
+        path: /etc/security/limits.conf
+        block: |
+          * soft nofile 40000
+          * hard nofile 40001
+
+    - name: Configure PAM limits
+      ansible.builtin.lineinfile:
+        path: "{{ item }}"
+        line: "session required pam_limits.so"
+      with_items:
+        - /etc/pam.d/common-session
+        - /etc/pam.d/common-session-noninteractive

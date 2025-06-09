@@ -1,0 +1,12 @@
+SEARCH_NODES_PATH = "/apis/search.karmada.io/v1alpha1/search/cache/api/v1/nodes"
+SEARCH_PODS_PATH = "/apis/search.karmada.io/v1alpha1/search/cache/api/v1/pods"
+SEARCH_SERVICES_PATH = "/apis/search.karmada.io/v1alpha1/search/cache/api/v1/services"
+SEARCH_DEPLOYMENTS_PATH = "/apis/search.karmada.io/v1alpha1/search/cache/apis/apps/v1/deployments"
+
+CHUTE_CODE_CM_PREFIX = "chute-code"
+CHUTE_SVC_PREFIX = "chute-svc"
+CHUTE_DEPLOY_PREFIX = "chute"
+CHUTE_PP_PREFIX = "chute-pp"
+GRAVAL_PP_PREFIX = "graval-pp"
+GRAVAL_DEPLOY_PREFIX = "graval"
+GRAVAL_SVC_PREFIX = "graval-svc"

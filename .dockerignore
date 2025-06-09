@@ -1,0 +1,9 @@
+.git
+.pytest_cache
+.ruff_cache
+.venv
+.vscode
+ansible
+charts
+docker
+tests
