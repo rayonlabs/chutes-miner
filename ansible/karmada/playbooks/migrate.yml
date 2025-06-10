@@ -31,6 +31,13 @@
           data:
             gepetto.py: "../tasks/migration/files/gepetto.py') }}"
 
+    - name: Ensure ansible directory exists
+      ansible.builtin.file:
+        path: /etc/ansible
+        state: directory
+        mode: "0755"
+      when: "not skip_configuration | default(false)"
+
     - name: Mark node as configured
       ansible.builtin.file:
         path: /etc/ansible/.configured

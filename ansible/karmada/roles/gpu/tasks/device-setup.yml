@@ -79,13 +79,19 @@
         - name: Install NVIDIA driver packages
           ansible.builtin.apt:
             name:
-              - cuda-drivers-{{ nvidia_version }}
+              - nvidia-open
               - nvidia-fabricmanager-{{ nvidia_version }}
             state: present
           register: driver_install
           notify: system reboot
           # Only reboot if driver packages actually changed
           changed_when: driver_install.changed
+
+        - name: Install NVIDIA Container Toolkit
+          ansible.builtin.apt:
+            name: nvidia-container-toolkit
+            state: present
+            update_cache: true
 
         - name: Configure NVIDIA Fabric Manager
           ansible.builtin.systemd:

@@ -39,11 +39,6 @@
   tags:
     - gpu-container-setup
   block:
-    - name: Install NVIDIA Container Toolkit
-      ansible.builtin.apt:
-        name: nvidia-container-toolkit==1.17.8-1
-        state: present
-        update_cache: true
 
     - name: Configure NVIDIA Container Toolkit
       ansible.builtin.shell: |
