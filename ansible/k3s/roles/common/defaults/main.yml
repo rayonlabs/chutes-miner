@@ -1,0 +1,6 @@
+---
+# Default WireGuard configuration
+wireguard_primary_cidr: "10.10.0.0/16"
+wireguard_ip_strategy: "hash"  # "hash" = stable, "sequential" = ordered
+wireguard_mtu: 1380
+cross_network: true

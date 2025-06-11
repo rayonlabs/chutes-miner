@@ -1,0 +1,44 @@
+---
+- name: Reset node
+  hosts: all
+  become: true
+  tasks:
+    - name: Run K3s Uninstall script [server]
+      when: inventory_hostname in groups['control']
+      ansible.builtin.command:
+        cmd: k3s-uninstall.sh
+        removes: /var/lib/rancher/k3s/*
+
+    - name: Run K3s Uninstall script [agent]
+      when: inventory_hostname in groups['workers']
+      ansible.builtin.command:
+        cmd: k3s-agent-uninstall.sh
+        removes: /var/lib/rancher/k3s/*
+
+    - name: Remove user kubeconfig
+      ansible.builtin.file:
+        path: ~{{ ansible_user }}/.kube/config
+        state: absent
+
+    - name: Remove k3s install script
+      ansible.builtin.file:
+        path: /usr/local/bin/k3s-install.sh
+        state: absent
+
+    - name: Remove contents of K3s server location
+      when: k3s_server_location is defined
+      ansible.builtin.shell:
+        cmd: rm -rf {{ k3s_server_location }}/*
+        removes: "{{ k3s_server_location }}/*"
+
+    - name: Remove K3s config
+      when: k3s_server_config_yaml is defined
+      ansible.builtin.file:
+        path: /etc/rancher/k3s/config.yaml
+        state: absent
+
+    - name: Remove K3s commands from ~/.bashrc
+      ansible.builtin.lineinfile:
+        path: ~{{ ansible_user }}/.bashrc
+        search_string: Added by k3s-ansible
+        state: absent

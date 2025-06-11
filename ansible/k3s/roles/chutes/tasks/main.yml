@@ -1,0 +1,15 @@
+---
+- name: Setup Chutes prereqs
+  ansible.builtin.include_tasks: install_prereqs.yml
+  when: inventory_hostname in groups['control']
+  tags: chutes-prereqs
+
+- name: Setup GPU operator deployments
+  ansible.builtin.include_tasks: setup_gpu_operator.yml
+  when: inventory_hostname in groups['control']
+  tags: chutes-gpu-operator
+
+- name: Chutes monitoring setup
+  ansible.builtin.include_tasks: setup_monitoring.yml
+  when: inventory_hostname in groups['control']
+  tags: chutes-monitoring

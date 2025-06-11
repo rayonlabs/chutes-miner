@@ -1,0 +1,120 @@
+---
+- name: Check for configured nodes
+  hosts: all
+  become: true
+  tags: always
+  tasks:
+    - name: Check if node has been configured
+      ansible.builtin.stat:
+        path: /etc/ansible/.configured
+      register: config_marker
+
+    - name: Set skip flag for configured nodes when add-nodes is specified
+      ansible.builtin.set_fact:
+        skip_configuration: "{{ config_marker.stat.exists and 'add-nodes' in ansible_run_tags }}"
+
+- name: Common Setup
+  hosts: all
+  become: true
+  tags:
+    - add-nodes
+    - common
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
+  tasks:
+    - name: Include common role
+      ansible.builtin.include_role:
+        name: common
+      when: "not skip_configuration | default(false)"
+
+    - name: Record common role completion
+      ansible.builtin.set_fact:
+        common_setup: true
+      when: "not skip_configuration | default(false)"
+
+- name: Setup K3S clusters
+  hosts: all
+  become: true
+  tags:
+    - add-nodes
+    - k3s
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
+  tasks:
+    - name: Include k3s role
+      ansible.builtin.include_role:
+        name: k3s
+      when: "not skip_configuration | default(false)"
+
+    - name: Record k3s role completion
+      ansible.builtin.set_fact:
+        k3s_setup: true
+      when: "not skip_configuration | default(false)"
+
+- name: GPU Setup
+  hosts: workers
+  become: true
+  tags:
+    - add-nodes
+    - gpu
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
+  tasks:
+    - name: Include gpu role
+      ansible.builtin.include_role:
+        name: gpu
+      when: "not skip_configuration | default(false)"
+
+    - name: Record gpu role completion
+      ansible.builtin.set_fact:
+        gpu_setup: true
+      when: "not skip_configuration | default(false)"
+
+- name: Setup Chutes
+  hosts: control
+  become: true
+  tags:
+    - chutes
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: ../handlers/main.yml
+  tasks:
+    - name: Include chutes role
+      ansible.builtin.include_role:
+        name: chutes
+        apply:
+          tags: chutes
+      when: "not skip_configuration | default(false)"
+
+    - name: Record chutes role completion
+      ansible.builtin.set_fact:
+        chutes_setup: true
+      when: "not skip_configuration | default(false)"
+
+- name: Mark configuration as complete
+  hosts: all
+  tags: always
+  become: true
+  tasks:
+    - name: Ensure ansible directory exists
+      ansible.builtin.file:
+        path: /etc/ansible
+        state: directory
+        mode: "0755"
+      when: "not skip_configuration | default(false)"
+
+    - name: Mark node as configured
+      ansible.builtin.file:
+        path: /etc/ansible/.configured
+        state: touch
+        mode: "0644"
+      register: marker_result
+      when:
+        - common_setup | default(false)
+        - k3s_setup | default(false)
+        - gpu_setup | default(false)
+        - chutes_setup | default(false)
+        - not skip_configuration | default(false)

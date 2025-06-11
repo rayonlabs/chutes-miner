@@ -1,0 +1,26 @@
+---
+# inventory.yml
+all:
+  children:
+    # This is the main node, which runs postgres, redis, gepetto, etc.
+    control:
+      hosts:
+        chutes-miner-cpu-0:
+          ansible_host: 1.0.0.0
+          wireguard_ip: 10.10.10.1
+    # These are the GPU nodes, which actually run the chutes.
+    workers:
+      hosts:
+        chutes-miner-gpu-0:
+          ansible_host: 1.0.0.1
+          wireguard_ip: 10.10.10.2 # Uses default CIDR of 10.10.0.0/16
+        chutes-miner-gpu-1:
+          ansible_host: 1.0.0.2
+          wireguard_ip: 192.168.0.1  # Use different CIDR
+          wireguard_override_cidr: 192.168.0.0/16 # Set override CIDR, must match WG IP
+  vars:
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: ~/.ssh/your_key.pem
+    ssh_keys:
+      - "ssh-rsa AAA... user@hostname"
+    user: billybob

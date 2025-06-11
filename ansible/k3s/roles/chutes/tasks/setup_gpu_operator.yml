@@ -1,0 +1,23 @@
+---
+- name: Setup GPU Operator
+  when: inventory_hostname in groups['control']
+  block:
+    - name: Add NVIDIA Helm repository
+      kubernetes.core.helm_repository:
+        name: nvidia
+        repo_url: https://helm.ngc.nvidia.com/nvidia
+
+    - name: Update helm
+      ansible.builtin.command: helm repo update
+      register: helm_repo_update_result
+      changed_when: "'Update Complete' in helm_repo_update_result.stdout"
+      failed_when: helm_repo_update_result.rc != 0
+
+    - name: Install GPU Operator
+      shell: |
+        helm upgrade --install gpu-operator nvidia/gpu-operator \
+          --namespace gpu-operator \
+          --create-namespace \
+          --set nodeSelector.kubernetes.io/gpu="true" \
+          --set driver.enabled=false \
+          --set toolkit.enabled=false

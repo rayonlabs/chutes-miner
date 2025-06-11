@@ -1,0 +1,93 @@
+---
+- name: Get k3s installed version
+  ansible.builtin.command: k3s --version
+  register: k3s_version_output
+  changed_when: false
+  ignore_errors: true
+
+- name: Set k3s installed version
+  when: k3s_version_output.rc == 0
+  ansible.builtin.set_fact:
+    installed_k3s_version: "{{ k3s_version_output.stdout_lines[0].split(' ')[2] }}"
+
+# Download and install only if needed
+- name: Download artifact only if needed
+  when: k3s_version_output.rc != 0 or installed_k3s_version is version(k3s_version, '<')
+  block:
+    - name: Download K3s install script
+      ansible.builtin.get_url:
+        url: https://get.k3s.io/
+        timeout: 120
+        dest: /usr/local/bin/k3s-install.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Download K3s binary for single node
+      when: inventory_hostname in groups['control']
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s-install.sh
+          - --write-kubeconfig-mode 644
+          - --disable servicelb
+          - --disable traefik
+          - --node-ip {{ ansible_host }}
+          - --advertise-address {{ ansible_host }}
+      environment:
+        INSTALL_K3S_SKIP_START: "true"
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      changed_when: true
+
+    - name: Download K3s binary for agent
+      when: inventory_hostname in groups['workers']
+      ansible.builtin.command:
+        cmd: /usr/local/bin/k3s-install.sh
+      environment:
+        INSTALL_K3S_SKIP_START: 'true'
+        INSTALL_K3S_VERSION: '{{ k3s_version }}'
+        INSTALL_K3S_EXEC: agent
+      changed_when: true
+
+- name: Add K3s autocomplete to user bashrc
+  when: ansible_user is defined
+  ansible.builtin.lineinfile:
+    path: ~{{ ansible_user }}/.bashrc
+    regexp: \.\s+<\(k3s completion bash\)
+    line: ". <(k3s completion bash)  # Added by k3s-ansible"
+
+- name: Setup optional config file
+  when: 
+    - inventory_hostname in groups['control']
+    - k3s_server_config_yaml is defined
+  block:
+    - name: Make config directory
+      ansible.builtin.file:
+        path: /etc/rancher/k3s
+        mode: "0755"
+        state: directory
+
+    - name: Copy config values
+      ansible.builtin.copy:
+        content: "{{ k3s_server_config_yaml }}"
+        dest: /etc/rancher/k3s/config.yaml
+        mode: "0644"
+      register: _server_config_result
+
+- name: Setup optional config file
+  when: 
+    - inventory_hostname in groups['workers']
+    - k3s_agent_config_yaml is defined
+  block:
+
+    - name: Make config directory
+      ansible.builtin.file:
+        path: /etc/rancher/k3s
+        mode: '0755'
+        state: directory
+
+    - name: Copy config values
+      ansible.builtin.copy:
+        content: '{{ k3s_agent_config_yaml }}'
+        dest: /etc/rancher/k3s/config.yaml
+        mode: '0644'
+      register: _agent_config_result

@@ -1,0 +1,196 @@
+---
+- name: Setup Wireguard
+  vars:
+    primary_node: "{{ groups['control'][0] }}"
+    primary_wg_ip: "{{ hostvars[groups['control'][0]].wireguard_ip }}"
+  block:
+  - name: Create temporary test file
+    ansible.builtin.file:
+      path: /tmp/connectivity-test
+      state: touch
+      mode: '0644'
+    changed_when: false
+
+  - name: Get public/external IP address # noqa command-instead-of-module
+    ansible.builtin.shell: |
+      curl -s https://ifconfig.me
+    register: public_ip
+    changed_when: false
+    ignore_errors: true
+
+  - name: Set detected public IP
+    ansible.builtin.set_fact:
+      detected_public_ip: '{{ public_ip.stdout }}'
+    when: public_ip.rc == 0
+
+  - name: Verify detected IP matches inventory IP
+    ansible.builtin.debug:
+      msg: "Warning: Detected public IP ({{ detected_public_ip }}) doesn't match inventory ansible_host \
+        ({{ ansible_host }}). This might cause connectivity issues."
+    when:
+      - public_ip.rc == 0
+      - detected_public_ip != ansible_host
+      - cross_network | bool
+
+  - name: Validate wireguard_ip is defined for all hosts
+    ansible.builtin.assert:
+      that:
+        - wireguard_ip is defined
+        - wireguard_ip | length > 0
+      msg: "wireguard_ip must be explicitly defined for host {{ inventory_hostname }}"
+
+  - name: Determine effective CIDR for this host
+    ansible.builtin.set_fact:
+      effective_wireguard_cidr: "{{ wireguard_override_cidr | default(wireguard_primary_cidr) }}"
+
+  - name: Validate IP is within CIDR using Python
+    ansible.builtin.shell: |
+      python3 -c "
+      import ipaddress
+      ip = ipaddress.ip_address('{{ wireguard_ip }}')
+      network = ipaddress.ip_network('{{ effective_wireguard_cidr }}', strict=False)
+      assert ip in network, f'IP {ip} not in network {network}'
+      print(f'✓ {ip} is valid within {network}')
+      "
+    register: ip_validation
+    when: validate_ip_in_subnet | default(true)
+    changed_when: false
+
+  - name: Validate no IP conflicts across all hosts
+    ansible.builtin.assert:
+      that:
+        - groups['workers'] | map('extract', hostvars, 'wireguard_ip') | list | unique | length == groups['workers'] | length
+      msg: |
+        IP conflict detected in WireGuard assignments!
+        All assigned IPs: {{ groups['workers'] | map('extract', hostvars, 'wireguard_ip') | list }}
+        Duplicates: {{ groups['workers'] | map('extract', hostvars, 'wireguard_ip') | list | difference(groups['workers'] | map('extract', hostvars, 'wireguard_ip') | list | unique) }}
+    run_once: true
+
+  - name: Set WireGuard configuration facts
+    ansible.builtin.set_fact:
+      wireguard_cidr: "{{ effective_wireguard_cidr }}"
+
+  - name: Ensure ping is installed
+    ansible.builtin.apt:
+      name:
+        - iputils-ping
+      state: present
+
+  - name: Update apt cache
+    ansible.builtin.apt:
+      update_cache: true
+
+  - name: Install Wireguard
+    ansible.builtin.apt:
+      name: wireguard
+      state: present
+
+  - name: Generate WireGuard private key
+    ansible.builtin.command: wg genkey
+    register: wg_private_key
+    changed_when: false
+    when: cross_network | bool
+
+  - name: Store WireGuard private key
+    ansible.builtin.set_fact:
+      wg_private: '{{ wg_private_key.stdout }}'
+    when: cross_network | bool
+
+  # - name: Debug WG private
+  #   ansible.builtin.debug:
+  #     msg: '{{ wg_private is defined }}'
+  #   when: wg_private is defined
+
+  - name: Generate WireGuard public key
+    ansible.builtin.shell:
+      cmd: |
+        set -o pipefail
+        echo "{{ wg_private }}" | wg pubkey
+      executable: /bin/bash
+    register: wg_public_key
+    changed_when: false
+    when: cross_network | bool
+
+  - name: Store WireGuard public key
+    ansible.builtin.set_fact:
+      wg_public: '{{ wg_public_key.stdout }}'
+    when: cross_network | bool
+
+  # - name: Debug WG public
+  #   ansible.builtin.debug:
+  #     msg: '{{ wg_public is defined }}'
+  #   when: wg_public is defined
+
+  - name: Share public keys with other hosts
+    ansible.builtin.set_fact:
+      public_keys: '{{ public_keys | default({}) | combine({inventory_hostname: wg_public}) }}'
+    when: cross_network | bool
+    delegate_to: localhost
+    delegate_facts: true
+
+  - name: Create WireGuard configuration directory
+    ansible.builtin.file:
+      path: /etc/wireguardprimary_node
+      state: directory
+      mode: '0700'
+    when: cross_network | bool
+
+  - name: Show WG config
+    ansible.builtin.debug:
+      msg: "{{ lookup('ansible.builtin.template', 'wg0.conf.j2') }}"
+
+  - name: Create WireGuard configuration
+    ansible.builtin.template:
+      src: wg0.conf.j2
+      dest: /etc/wireguard/wg0.conf
+      owner: root
+      group: root
+      mode: '0600'
+    when: cross_network | bool
+
+  - name: Start WireGuard
+    ansible.builtin.systemd:
+      name: wg-quick@wg0
+      enabled: true
+      state: started
+    when: cross_network | bool
+
+  - name: Set MTU for Wireguard interface
+    ansible.builtin.command: ip link set mtu {{ wireguard_mtu | default(1380) }} dev wg0
+    become: true
+    changed_when: false
+
+  - name: Set DNS for wg0
+    ansible.builtin.shell: |
+      resolvectl dns wg0 8.8.8.8 8.8.4.4
+      resolvectl domain wg0 ~.
+    become: true
+    register: resolvectl_result
+    changed_when: resolvectl_result.rc == 0
+    failed_when: resolvectl_result.rc != 0
+
+  - name: Restart WG
+    ansible.builtin.shell: wg-quick down wg0 && wg-quick up wg0
+    changed_when: false
+
+  - name: Wait for WireGuard interface to be up
+    ansible.builtin.wait_for:
+      path: /sys/class/net/wg0/operstate
+    when: cross_network | bool
+
+  - name: Ping primary node from non-primary nodes
+    ansible.builtin.command: ping -c 1 {{ primary_wg_ip }}
+    register: ping_result
+    until: ping_result.rc == 0
+    retries: 3
+    delay: 5
+    when: not inventory_hostname == primary_node
+    failed_when: ping_result.rc != 0
+    changed_when: false
+
+  - name: Fail if primary node is not pingable
+    ansible.builtin.fail:
+      msg: Cannot ping primary node at {{ primary_wg_ip }} from {{ inventory_hostname }}
+    when:
+      - not inventory_hostname == primary_node
+      - ping_result.failed

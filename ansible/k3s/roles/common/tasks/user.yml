@@ -1,0 +1,37 @@
+- name: Create user
+  user:
+    name: "{{ user }}"
+    shell: /bin/bash
+    create_home: yes
+    state: present
+
+- name: Create SSH directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0700'
+  with_items:
+    - "/home/{{ user }}/.ssh"
+    - "/root/.ssh"
+
+- name: Add authorized SSH keys
+  no_log: true  # avoid logging the ssh key
+  authorized_key:
+    user: "{{ user }}"
+    state: present
+    key: "{{ item }}"
+  with_items: "{{ ssh_keys }}"
+  become: yes
+
+- name: Set correct ownership for user home
+  file:
+    path: "/home/{{ user }}"
+    owner: "{{ user }}"
+    group: "{{ user }}"
+    recurse: yes
+
+- name: Add user to sudoers
+  lineinfile:
+    path: /etc/sudoers
+    line: '{{ user }} ALL=(ALL) NOPASSWD:ALL'
+    validate: 'visudo -cf %s'
