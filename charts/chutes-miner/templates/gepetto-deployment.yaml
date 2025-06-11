@@ -75,29 +75,17 @@ spec:
               value: {{ include "redis.url" . }}
             - name: VALIDATORS
               value: {{ .Values.validators | toJson | quote }}
+            - name: SQUID_URL
+              value: http://squid.chutes.svc.cluster.local:{{ .Values.squid.service.port }}
             - name: REGISTRY_PROXY_PORT
               value: "{{ .Values.registry.service.nodePort }}"
-            {{ if not .Values.multiCluster }}
-            - name: NVIDIA_RUNTIME
-              value: nvidia-container-runtime
-            {{- end }}
           resources:
             {{- toYaml .Values.gepetto.resources | nindent 12 }}
           volumeMounts:
             - name: gepetto-code
               mountPath: /app/gepetto.py
               subPath: gepetto.py
-            {{ if .Values.multiCluster }}
-            - name: karmada-kubeconfig
-              mountPath: /etc/karmada
-              readOnly: true
-            {{- end }}
       volumes:
         - name: gepetto-code
           configMap:
             name: gepetto-code
-        {{ if .Values.multiCluster }}
-        - name: karmada-kubeconfig
-          secret:
-            secretName: karmada-kubeconfig
-        {{- end }}

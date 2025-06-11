@@ -27,9 +27,6 @@ spec:
             postgres-access: "true"
             redis-access: "true"
         spec:
-          {{ if .Values.multiCluster }}
-          serviceAccountName: chutes
-          {{- end }}
           {{- with .Values.auditExporter.nodeSelector }}
           nodeSelector:
             {{- toYaml . | nindent 12 }}
@@ -66,8 +63,4 @@ spec:
                 value: {{ include "redis.url" . }}
               - name: VALIDATORS
                 value: {{ .Values.validators | toJson | quote }}
-              {{ if .Values.multiCluster }}
-              - name: MONITORING_NAMESPACE
-                value: "monitoring"
-              {{- end }}
           restartPolicy: OnFailure

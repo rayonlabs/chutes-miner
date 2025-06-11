@@ -6,7 +6,6 @@ redis://:$(REDIS_PASSWORD)@redis:6379
 postgresql+asyncpg://{{ .Values.postgres.database.user }}:$(POSTGRES_PASSWORD)@postgres:5432/{{ .Values.postgres.database.name }}
 {{- end }}
 
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,7 +22,6 @@ spec:
       labels:
         {{- include "minerApi.labels" . | nindent 8 }}
     spec:
-      serviceAccountName: chutes
       {{- with .Values.minerApi.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -66,29 +64,15 @@ spec:
               value: {{ include "postgresql.url" . }}
             - name: REDIS_URL
               value: {{ include "redis.url" . }}
+            - name: SQUID_PORT
+              value: "{{ .Values.squid.service.port }}"
             - name: VALIDATORS
               value: {{ .Values.validators | toJson | quote }}
             - name: REGISTRY_PROXY_PORT
               value: "{{ .Values.registry.service.nodePort }}"
-            {{ if not .Values.multiCluster }}
-            - name: NVIDIA_RUNTIME
-              value: nvidia-container-runtime
-            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.minerApi.service.targetPort }}
               protocol: TCP
           resources:
             {{- toYaml .Values.minerApi.resources | nindent 12 }}
-          volumeMounts:
-          {{ if .Values.multiCluster }}
-          - name: karmada-kubeconfig
-            mountPath: /etc/karmada
-            readOnly: true
-          {{- end }}
-      volumes:
-      {{ if .Values.multiCluster }}
-      - name: karmada-kubeconfig
-        secret:
-          secretName: karmada-kubeconfig
-      {{- end }}

@@ -2,6 +2,10 @@
 app.kubernetes.io/name: chutes-postgres
 {{- end }}
 
+{{- define "squid.labels" -}}
+app.kubernetes.io/name: chutes-squid
+{{- end }}
+
 {{- define "redis.labels" -}}
 app.kubernetes.io/name: chutes-redis
 {{- end }}
