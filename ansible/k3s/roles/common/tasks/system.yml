@@ -108,7 +108,6 @@
           - snapd
           - iputils-ping
           - systemd-timesyncd
-        update_cache: true
 
     - name: Set vim as default editor
       community.general.alternatives:

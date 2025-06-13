@@ -1,6 +1,6 @@
 {%- set my_cidr = wireguard_override_cidr | default(wireguard_primary_cidr) -%}
 {%- set all_cidrs = [] -%}
-{%- for host in groups['all'] -%}
+{%- for host in groups['control'] -%}
   {%- set host_cidr = hostvars[host].wireguard_override_cidr | default(wireguard_primary_cidr) -%}
   {%- if host_cidr not in all_cidrs -%}
     {%- set _ = all_cidrs.append(host_cidr) -%}
@@ -11,8 +11,9 @@
 PrivateKey = {{ wg_private }}
 Address = {{ wireguard_ip }}/{{ my_cidr.split('/')[1] }}
 ListenPort = 51820
+MTU = {{ wireguard_mtu | default(1380) }}
 
-{% for host in groups['all'] -%}
+{% for host in groups['control'] -%}
 {% if host != inventory_hostname and hostvars[host].wg_public is defined -%}
 {% set peer_cidr = hostvars[host].wireguard_override_cidr | default(wireguard_primary_cidr) -%}
 
@@ -21,13 +22,13 @@ PublicKey = {{ hostvars[host].wg_public }}
 {% if all_cidrs | length > 1 -%}
 # Multi-CIDR setup: allow peer IP and cross-CIDR access
 {% if peer_cidr != my_cidr -%}
-AllowedIPs = {{ hostvars[host].wireguard_ip }}/32, {{ peer_cidr }}
+AllowedIPs = {{ hostvars[host].wireguard_ip }}/32, {{ peer_cidr }}, {{ cluster_cidr }}, {{ service_cidr }}
 {% else -%}
-AllowedIPs = {{ hostvars[host].wireguard_ip }}/32
+AllowedIPs = {{ hostvars[host].wireguard_ip }}/32, {{ cluster_cidr }}, {{ service_cidr }}
 {% endif -%}
 {% else -%}
 # Single CIDR setup
-AllowedIPs = {{ hostvars[host].wireguard_ip }}/32
+AllowedIPs = {{ hostvars[host].wireguard_ip }}/32, {{ cluster_cidr }}, {{ service_cidr }}
 {% endif -%}
 Endpoint = {{ hostvars[host].ansible_host }}:51820
 PersistentKeepalive = 25

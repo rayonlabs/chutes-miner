@@ -13,3 +13,8 @@
   ansible.builtin.include_tasks: setup_monitoring.yml
   when: inventory_hostname in groups['control']
   tags: chutes-monitoring
+
+- name: Chutes namespace setup
+  ansible.builtin.include_tasks: setup_namespaces.yml
+  when: inventory_hostname in groups['control']
+  tags: chutes-namespaces

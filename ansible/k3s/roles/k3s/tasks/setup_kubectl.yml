@@ -1,56 +1,13 @@
 ---
-- name: Copy cluster configuration to ansible controller
+- name: Setup kubectl on ansible controller
   vars:
     cluster_context: "{{ inventory_hostname }}"
     cluster_kubeconfig: "{{ controller_kubectl_staging_dir }}/{{ inventory_hostname }}"
-    merged_kubeconfig: "{{ controller_kubectl_staging_dir }}/config"
+  when: 
+    - inventory_hostname == groups['control'][0]
+    - setup_controller_kubeconfig
   block:
-    - name: Verify kubeconfig staging dir exists
-      delegate_to: 127.0.0.1
-      become: false
-      ansible.builtin.file:
-        path: "{{ controller_kubectl_staging_dir }}"
-        state: directory
-        mode: "0750"
-      run_once: true
 
-    - name: "Fetch k3s.yaml from {{ inventory_hostname }}"
-      ansible.builtin.fetch:
-        src: /etc/rancher/k3s/k3s.yaml
-        dest: "{{ cluster_kubeconfig }}"
-        flat: true
-
-    - name: Change server address in kubeconfig
-      ansible.builtin.shell: |
-        KUBECONFIG={{ cluster_kubeconfig }} kubectl config set-cluster default --server=https://{{ ansible_host }}:{{ k3s_api_port | default('6443') }}
-      delegate_to: localhost
-      become: false
-      register: csa_result
-      changed_when:
-        - csa_result.rc == 0
-
-    - name: Change context name in kubeconfig on control node
-      ansible.builtin.replace:
-        path: "{{ cluster_kubeconfig }}"
-        regexp: ": default"
-        replace: ": {{ cluster_context }}"
-      delegate_to: localhost
-      become: false
-
-    - name: Merge k3s member configs
-      ansible.builtin.shell: |
-        TFILE=$(mktemp)
-        KUBECONFIG={{ cluster_kubeconfig }}:{{ merged_kubeconfig }} kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} {{ merged_kubeconfig }}
-      delegate_to: localhost
-      become: false
-      register: mv_result
-      changed_when:
-        - mv_result.rc == 0
-
-- name: Setup kubectl on ansible controller
-  when: setup_controller_kubeconfig
-  block:
     - name: Check whether kubectl is installed on control node
       delegate_to: 127.0.0.1
       become: false
@@ -59,20 +16,53 @@
       ignore_errors: true
       changed_when: false
 
-    - name: Merge cluster kubeconfig on ansible controller
+    - name: Setup kubectl
       when: kubectl_installed.rc == 0
-      ansible.builtin.shell: |
-        TFILE=$(mktemp)
-        touch {{ controller_kubeconfig }}
-        KUBECONFIG={{ controller_kubectl_staging_dir }}/config:{{ controller_kubeconfig }} kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} {{ controller_kubeconfig }}
-      delegate_to: 127.0.0.1
-      become: false
-      register: mv_result
-      changed_when:
-        - mv_result.rc == 0
+      block:
+        - name: Verify kubeconfig staging dir exists
+          delegate_to: 127.0.0.1
+          become: false
+          ansible.builtin.file:
+            path: "{{ controller_kubectl_staging_dir }}"
+            state: directory
+            mode: "0750"
+          run_once: true
 
-- name: Setup kubectl for user
+        - name: "Fetch k3s.yaml from {{ inventory_hostname }}"
+          ansible.builtin.fetch:
+            src: /etc/rancher/k3s/k3s.yaml
+            dest: "{{ cluster_kubeconfig }}"
+            flat: true
+
+        - name: Change server address in kubeconfig
+          ansible.builtin.shell: |
+            KUBECONFIG={{ cluster_kubeconfig }} kubectl config set-cluster default --server=https://{{ ansible_host }}:{{ k3s_api_port | default('6443') }}
+          delegate_to: localhost
+          become: false
+          register: csa_result
+          changed_when:
+            - csa_result.rc == 0
+
+        - name: Change context name in kubeconfig on control node
+          ansible.builtin.replace:
+            path: "{{ cluster_kubeconfig }}"
+            regexp: ": default"
+            replace: ": {{ cluster_context }}"
+          delegate_to: localhost
+          become: false
+
+        - name: Merge k3s configs
+          ansible.builtin.shell: |
+            TFILE=$(mktemp)
+            KUBECONFIG={{ cluster_kubeconfig }}:{{ controller_kubeconfig }} kubectl config view --flatten > ${TFILE}
+            mv ${TFILE} {{ controller_kubeconfig }}
+          delegate_to: 127.0.0.1
+          become: false
+          register: mv_result
+          changed_when:
+            - mv_result.rc == 0
+
+- name: Setup kubectl for ansible user
   when:
     - user_kubectl | default(true)
   vars:
@@ -99,22 +89,6 @@
         regexp: ": default"
         replace: ": {{ inventory_hostname }}"
 
-    - name: Copy member config for user
-      ansible.builtin.copy:
-        src: "{{ controller_kubectl_staging_dir }}/config"
-        dest: /home/{{ ansible_user }}/.kube/member.config
-        mode: "0600"
-
-    - name: Merge k3s member configs for user
-      ansible.builtin.shell: |
-        TFILE=$(mktemp)
-        KUBECONFIG=/home/{{ ansible_user }}/.kube/member.config:/home/{{ ansible_user }}/.kube/config kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} /home/{{ ansible_user }}/.kube/config
-        chown -R {{ ansible_user }}:{{ ansible_user }} /home/{{ ansible_user }}/.kube
-      register: mv_result
-      changed_when:
-        - mv_result.rc == 0
-
     - name: Configure default KUBECONFIG for user
       ansible.builtin.lineinfile:
         path: /home/{{ ansible_user }}/.bashrc
@@ -125,6 +99,46 @@
     - name: Configure kubectl autocomplete
       ansible.builtin.lineinfile:
         path: /home/{{ ansible_user }}/.bashrc
+        regexp: \.\s+<\(kubectl completion bash\)
+        line: ". <(kubectl completion bash)  # Added by k3s-ansible"
+
+- name: Setup kubectl for user
+  when:
+    - user_kubectl | default(true)
+  vars:
+    control_host: "{{ groups['control'][0] }}"
+  block:
+    - name: Create directory .kube
+      ansible.builtin.file:
+        path: /home/{{ user }}/.kube
+        state: directory
+        owner: "{{ user }}"
+        mode: u=rwx,g=rx,o=
+
+    - name: Copy config file to user home directory
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: /home/{{ user }}/.kube/config
+        remote_src: true
+        owner: "{{ user }}"
+        mode: u=rw,g=,o=
+
+    - name: Change context name in kubeconfig for user
+      ansible.builtin.replace:
+        path: "/home/{{ user }}/.kube/config"
+        regexp: ": default"
+        replace: ": {{ inventory_hostname }}"
+
+    - name: Configure default KUBECONFIG for user
+      ansible.builtin.lineinfile:
+        path: /home/{{ user }}/.bashrc
+        regexp: export KUBECONFIG=~/.kube/config
+        line: "export KUBECONFIG=~/.kube/config # Added by k3s-ansible"
+        state: present
+
+    - name: Configure kubectl autocomplete
+      ansible.builtin.lineinfile:
+        path: /home/{{ user }}/.bashrc
         regexp: \.\s+<\(kubectl completion bash\)
         line: ". <(kubectl completion bash)  # Added by k3s-ansible"
 
@@ -150,21 +164,6 @@
         regexp: ": default"
         replace: ": {{ inventory_hostname }}"
 
-    - name: Copy member config for root
-      ansible.builtin.copy:
-        src: "{{ controller_kubectl_staging_dir }}/config"
-        dest: ~/.kube/member.config
-        mode: "0600"
-
-    - name: Merge k3s member configs for root
-      ansible.builtin.shell: |
-        TFILE=$(mktemp)
-        KUBECONFIG=~/.kube/member.config:~/.kube/config kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} ~/.kube/config
-      register: mv_result
-      changed_when:
-        - mv_result.rc == 0
-
     - name: Configure default KUBECONFIG for root
       ansible.builtin.lineinfile:
         path: ~/.bashrc
@@ -177,49 +176,6 @@
         path: ~/.bashrc
         regexp: \.\s+<\(kubectl completion bash\)
         line: ". <(kubectl completion bash)  # Added by k3s-ansible"
-
-- name: Setup kubectl for cluster on control node
-  when: inventory_hostname in groups['workers']
-  vars:
-    control_node: "{{ groups['control'][0] }}"
-    member_kubeconfig: /tmp/karmada/member.config
-  block:
-    - name: Ensure karmada dir exists
-      ansible.builtin.file:
-        path: /tmp/karmada
-        state: directory
-        mode: "0755"
-      delegate_to: "{{ control_node }}"
-
-    - name: Copy member config
-      ansible.builtin.copy:
-        src: "{{ controller_kubectl_staging_dir }}/config"
-        dest: "{{ member_kubeconfig }}"
-        mode: "0644"
-      delegate_to: "{{ control_node }}"
-
-    - name: Merge k3s member configs for user
-      ansible.builtin.shell: |
-        TFILE=$(mktemp)
-        KUBECONFIG={{ member_kubeconfig }}:~{{ user }}/.kube/config kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} ~{{ user }}/.kube/config
-        chown -R {{ user }}:{{ user }} ~{{ user }}/.kube
-      delegate_to: "{{ control_node }}"
-      register: mv_result
-      vars:
-        user: "{{ hostvars[control_node]['ansible_user'] }}"
-      changed_when:
-        - mv_result.rc == 0
-
-    - name: Merge k3s member configs for root
-      ansible.builtin.shell: |
-        TFILE=$(mktemp)
-        KUBECONFIG={{ member_kubeconfig }}:~/.kube/config kubectl config view --flatten > ${TFILE}
-        mv ${TFILE} ~/.kube/config
-      delegate_to: "{{ control_node }}"
-      register: mv_result
-      changed_when:
-        - mv_result.rc == 0
 
 - name: "Clean up staging directory on Ansible controller"
   ansible.builtin.file:

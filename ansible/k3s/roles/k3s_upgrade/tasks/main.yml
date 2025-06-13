@@ -53,18 +53,12 @@
       ansible.builtin.file:
         path: "{{ item.path }}.bak"
         state: absent
+      notify: restart k3s
+      changed_when: true
       loop: "{{ k3s_service_files.files }}"
 
-    - name: Restart K3s service [server]
-      when: inventory_hostname in groups['control']
-      ansible.builtin.systemd:
-        daemon_reload: true
-        name: k3s
+    - name: Restart K3s service
+      ansible.builtin.debug:
+        msg: "Restart k3s"
+      changed_when: true
       notify: restart k3s
-
-    - name: Restart K3s service [agent]
-      when: inventory_hostname in groups['workers']
-      ansible.builtin.systemd:
-        daemon_reload: true
-        name: k3s-agent
-      notify: restart k3s agent

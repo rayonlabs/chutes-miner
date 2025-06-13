@@ -103,20 +103,3 @@
       ansible.builtin.command:
         cmd: k3s kubectl get nodes
       changed_when: false
-
-    - name: Get the token if randomly generated
-      when: token is not defined
-      block:
-
-        - name: Wait for token
-          ansible.builtin.wait_for:
-            path: /var/lib/rancher/k3s/server/token
-
-        - name: Read node-token from master
-          ansible.builtin.slurp:
-            src: /var/lib/rancher/k3s/server/token
-          register: node_token
-
-        - name: Store Master node-token
-          ansible.builtin.set_fact:
-            token: "{{ node_token.content | b64decode | regex_replace('\n', '') }}"

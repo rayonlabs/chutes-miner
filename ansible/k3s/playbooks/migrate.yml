@@ -14,14 +14,13 @@
       ansible.builtin.include_role:
         name: k3s
 
-    - name: Karmada Setup
+    - name: Chutes Setup
       ansible.builtin.include_role:
-        name: karmada
+        name: chutes
 
     - name: Create gepetto-cm on control cluster
       kubernetes.core.k8s:
         state: present # Ensures it exists and matches this definition. Updates if different.
-        context: "{{ inventory_hostname }}"
         definition:
           apiVersion: v1
           kind: ConfigMap
@@ -29,7 +28,7 @@
             name: gepetto-code
             namespace: chutes
           data:
-            gepetto.py: "../tasks/migration/files/gepetto.py') }}"
+            gepetto.py: "{{ lookup('file', '../tasks/migration/files/gepetto.py') }}"
 
     - name: Ensure ansible directory exists
       ansible.builtin.file:
@@ -207,25 +206,6 @@
             mode: "0644"
           when: not gpu_marker.stat.exists
 
-    - name: Join node to karmada
-      block:
-        - name: Check if karmada has been setup
-          ansible.builtin.stat:
-            path: /etc/ansible/.karmada
-          register: karmada_marker
-
-        - name: Join Control Plane
-          ansible.builtin.include_role:
-            name: karmada
-          when: not karmada_marker.stat.exists
-
-        - name: Mark karmada as setup
-          ansible.builtin.file:
-            path: /etc/ansible/.karmada
-            state: touch
-            mode: "0644"
-          when: not karmada_marker.stat.exists
-
     - name: Add node to chutes
       block:
         - name: Check if node has been added
@@ -255,7 +235,6 @@
         - setup_marker.stat.exists
         - k3s_marker.stat.exists
         - gpu_marker.stat.exists
-        - karmada_marker.stat.exists
         - added_marker.stat.exists
 
     - name: Mark node as configured
@@ -270,5 +249,4 @@
         - setup_marker.stat.exists
         - k3s_marker.stat.exists
         - gpu_marker.stat.exists
-        - karmada_marker.stat.exists
         - added_marker.stat.exists

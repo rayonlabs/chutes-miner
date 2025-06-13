@@ -76,77 +76,91 @@
         - iputils-ping
       state: present
 
-  - name: Update apt cache
-    ansible.builtin.apt:
-      update_cache: true
-
   - name: Install Wireguard
     ansible.builtin.apt:
       name: wireguard
       state: present
 
-  - name: Generate WireGuard private key
-    ansible.builtin.command: wg genkey
-    register: wg_private_key
-    changed_when: false
-    when: cross_network | bool
+  # Ensure all node keys are always available in hostvars
+  - name: Populate node WG keys
+    block:
 
-  - name: Store WireGuard private key
-    ansible.builtin.set_fact:
-      wg_private: '{{ wg_private_key.stdout }}'
-    when: cross_network | bool
+      - name: Check if Wireguard private key exists
+        stat:
+          path: /etc/wireguard/private.key
+        register: wg_private_exists
+        delegate_to: "{{ item }}"
+        loop: "{{ groups['all'] }}"
 
-  # - name: Debug WG private
-  #   ansible.builtin.debug:
-  #     msg: '{{ wg_private is defined }}'
-  #   when: wg_private is defined
+      - name: Generate WireGuard keys
+        ansible.builtin.shell:
+          cmd: |
+            set -o pipefail
+            wg genkey > /etc/wireguard/private.key
+            cat /etc/wireguard/private.key | wg pubkey > /etc/wireguard/public.key
+            chmod 600 /etc/wireguard/private.key /etc/wireguard/public.key
+          executable: /bin/bash
+        delegate_to: "{{ item }}"
+        when: not (wg_private_exists.results | selectattr('item', 'equalto', item) | first).stat.exists
+        loop: "{{ groups['all'] }}"
 
-  - name: Generate WireGuard public key
-    ansible.builtin.shell:
-      cmd: |
-        set -o pipefail
-        echo "{{ wg_private }}" | wg pubkey
-      executable: /bin/bash
-    register: wg_public_key
-    changed_when: false
-    when: cross_network | bool
+      - name: Get public keys
+        slurp:
+          src: /etc/wireguard/public.key
+        register: public_keys
+        delegate_to: "{{ item }}"
+        loop: "{{ groups['all'] }}"
 
-  - name: Store WireGuard public key
-    ansible.builtin.set_fact:
-      wg_public: '{{ wg_public_key.stdout }}'
-    when: cross_network | bool
+      - name: Get private keys
+        slurp:
+          src: /etc/wireguard/private.key
+        register: private_keys
+        delegate_to: "{{ item }}"
+        loop: "{{ groups['all'] }}"
 
-  # - name: Debug WG public
-  #   ansible.builtin.debug:
-  #     msg: '{{ wg_public is defined }}'
-  #   when: wg_public is defined
+      - name: Add node keys to hostvars
+        ansible.builtin.add_host:
+          name: "{{ item }}"
+          wg_public: "{{ (public_keys.results | selectattr('item', 'equalto', item) | first).content | b64decode | trim }}"
+          wg_private: "{{ (private_keys.results | selectattr('item', 'equalto', item) | first).content | b64decode | trim }}"
+        loop: "{{ groups['all'] }}"
 
-  - name: Share public keys with other hosts
-    ansible.builtin.set_fact:
-      public_keys: '{{ public_keys | default({}) | combine({inventory_hostname: wg_public}) }}'
-    when: cross_network | bool
-    delegate_to: localhost
-    delegate_facts: true
+      - name: Debug keys
+        ansible.builtin.debug:
+          msg: "{{ item }} -> {{ hostvars[item].wg_private }} | {{ hostvars[item].wg_public }}"
+        loop: "{{ groups['all'] }}"
+
+    run_once: true
 
   - name: Create WireGuard configuration directory
     ansible.builtin.file:
-      path: /etc/wireguardprimary_node
+      path: /etc/wireguard
       state: directory
       mode: '0700'
     when: cross_network | bool
 
-  - name: Show WG config
-    ansible.builtin.debug:
-      msg: "{{ lookup('ansible.builtin.template', 'wg0.conf.j2') }}"
-
-  - name: Create WireGuard configuration
+  - name: Create WireGuard configuration [All Control Nodes]
     ansible.builtin.template:
-      src: wg0.conf.j2
+      src: wg0-primary.conf.j2
       dest: /etc/wireguard/wg0.conf
       owner: root
       group: root
       mode: '0600'
-    when: cross_network | bool
+    vars:
+      target_host: "{{ item }}"
+    delegate_to: "{{ item }}"
+    loop: "{{ groups['control'] }}"
+    when: 
+      - groups['control'] | length > 0
+
+  - name: Create WireGuard configuration [Worker]
+    when: inventory_hostname in groups['workers']
+    ansible.builtin.template:
+      src: wg0-worker.conf.j2
+      dest: /etc/wireguard/wg0.conf
+      owner: root
+      group: root
+      mode: '0600'
 
   - name: Start WireGuard
     ansible.builtin.systemd:
@@ -157,21 +171,32 @@
 
   - name: Set MTU for Wireguard interface
     ansible.builtin.command: ip link set mtu {{ wireguard_mtu | default(1380) }} dev wg0
-    become: true
     changed_when: false
 
   - name: Set DNS for wg0
     ansible.builtin.shell: |
       resolvectl dns wg0 8.8.8.8 8.8.4.4
       resolvectl domain wg0 ~.
-    become: true
     register: resolvectl_result
     changed_when: resolvectl_result.rc == 0
     failed_when: resolvectl_result.rc != 0
 
+  - name: Restart WG [Control]
+    block:
+
+      - name: Restart WG [Control]
+        ansible.builtin.shell: wg-quick down wg0 && wg-quick up wg0
+        delegate_to: "{{ item }}"
+        loop: "{{ groups['control'] }}"
+
+    run_once: true
+    when: 
+      - groups['control'] | length > 0
+
   - name: Restart WG
     ansible.builtin.shell: wg-quick down wg0 && wg-quick up wg0
     changed_when: false
+    when: inventory_hostname not in groups['control']
 
   - name: Wait for WireGuard interface to be up
     ansible.builtin.wait_for:

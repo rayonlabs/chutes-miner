@@ -75,8 +75,6 @@ spec:
               value: {{ include "redis.url" . }}
             - name: VALIDATORS
               value: {{ .Values.validators | toJson | quote }}
-            - name: SQUID_URL
-              value: http://squid.chutes.svc.cluster.local:{{ .Values.squid.service.port }}
             - name: REGISTRY_PROXY_PORT
               value: "{{ .Values.registry.service.nodePort }}"
           resources:

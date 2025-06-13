@@ -3,8 +3,6 @@
 
 # System configuration
 ansible_port: 22
-ansible_user: ubuntu
-# ansible_ssh_private_key_file: ~/path/to/your/key.pem
 ansible_ssh_common_args: -o StrictHostKeyChecking=no
 timezone: UTC
 swap_disable: true
@@ -31,7 +29,7 @@ system_packages:
 
 # Networking configuration (used by all)
 k3s_api_port: "6443"
-wireguard_cidr: 10.10.0.0/26
+wireguard_cidr: 10.10.0.0/16
 cluster_cidr: 10.42.0.0/16
 service_cidr: 10.43.0.0/16
 

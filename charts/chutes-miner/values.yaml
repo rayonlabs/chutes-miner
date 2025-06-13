@@ -91,7 +91,7 @@ postgres:
           - key: kubernetes.io/hostname
             operator: In
             values:
-            - chutes-miner-control-0
+            - chutes-miner-cpu-0
   tolerations: []
 
 redis:
@@ -154,9 +154,9 @@ registry:
 auditExporter:
   image: parachutes/miner:latest
   nodeSelector:
-    kubernetes.io/hostname: chutes-miner-control-0
+    kubernetes.io/hostname: chutes-miner-cpu-0
 
 failedChuteCleanup:
   image: bitnami/kubectl:latest
   nodeSelector:
-    kubernetes.io/hostname: chutes-miner-control-0
+    kubernetes.io/hostname: chutes-miner-cpu-0

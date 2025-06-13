@@ -17,4 +17,4 @@ k3s_server_config_yaml: |-
   flannel-iface: wg0
   flannel-external-ip: true
 
-extra_agent_args: ""
+extra_agent_args: "--flannel-iface wg0"
