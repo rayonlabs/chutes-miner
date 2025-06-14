@@ -185,13 +185,14 @@
     block:
 
       - name: Restart WG [Control]
-        ansible.builtin.shell: wg-quick down wg0 && wg-quick up wg0
+        ansible.builtin.systemd:
+          name: wg-quick@wg0
+          state: restarted
+          daemon_reload: yes
         delegate_to: "{{ item }}"
         loop: "{{ groups['control'] }}"
 
     run_once: true
-    when: 
-      - groups['control'] | length > 0
 
   - name: Restart WG
     ansible.builtin.shell: wg-quick down wg0 && wg-quick up wg0

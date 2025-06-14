@@ -148,7 +148,7 @@
       ansible.builtin.file:
         path: ~/.kube
         state: directory
-        owner: "{{ ansible_user }}"
+        owner: root
         mode: u=rwx,g=rx,o=
 
     - name: Copy config file to user home directory

@@ -6,6 +6,15 @@
     daemon_reload: yes
   listen: restart k3s
 
+- name: Restart k3s servers
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+    daemon_reload: yes
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['control'] }}"
+  listen: restart k3s servers
+
 - name: Restart containerd
   ansible.builtin.service:
     name: containerd

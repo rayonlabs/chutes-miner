@@ -56,3 +56,8 @@
     daemon_reload: '{{ true if k3s_agent_service.changed else false }}'
     state: "{{ 'restarted' if (k3s_agent_service.changed or _agent_config_result.changed) else 'started' }}"
     enabled: true
+
+- name: Restart k3s servers
+  ansible.builtin.debug:
+    msg: Restart k3s servers after adding agent {{ inventory_hostname }}
+  notify: restart k3s servers
