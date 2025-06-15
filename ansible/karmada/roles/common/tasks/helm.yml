@@ -1,7 +1,7 @@
 ---
 - name: Check if Helm is already installed
   ansible.builtin.command: helm version --short
-  register: karmada_helm_version_result
+  register: helm_version_result
   ignore_errors: true
   changed_when: false
 
@@ -11,7 +11,7 @@
   changed_when: false
 
 - name: Install Helm if not already installed
-  when: karmada_helm_version_result.rc != 0
+  when: helm_version_result.rc != 0
   block:
     - name: Set architecture variable
       ansible.builtin.set_fact:
@@ -19,7 +19,7 @@
 
     - name: Download Helm for detected architecture
       ansible.builtin.get_url:
-        url: https://get.helm.sh/helm-{{ karmada_helm_version }}-linux-{{ helm_arch }}.tar.gz
+        url: https://get.helm.sh/helm-{{ helm_version }}-linux-{{ helm_arch }}.tar.gz
         dest: /tmp/helm.tar.gz
         mode: "0644"
 

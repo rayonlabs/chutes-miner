@@ -23,6 +23,11 @@
   tags:
     - system
 
+- name: Setup user
+  ansible.builtin.include_tasks: user.yml
+  tags:
+    - user
+
 - name: Setup network
   ansible.builtin.include_tasks: network.yml
   tags:
