@@ -55,16 +55,8 @@
         state: absent
       loop: "{{ k3s_service_files.files }}"
 
-    - name: Restart K3s service [server]
-      when: control in group_names
+    - name: Restart K3s service
       ansible.builtin.systemd:
         daemon_reload: true
         name: k3s
       notify: restart k3s
-
-    - name: Restart K3s service [agent]
-      when: workers in group_names
-      ansible.builtin.systemd:
-        daemon_reload: true
-        name: k3s-agent
-      notify: restart k3s agent

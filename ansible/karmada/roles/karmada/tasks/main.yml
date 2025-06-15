@@ -16,7 +16,7 @@
 
 - name: Setup GPU operator deployments
   ansible.builtin.include_tasks: setup_gpu_operator.yml
-  when: inventory_hostname in groups['control']
+  when: inventory_hostname in groups['workers']
   tags: karmada-gpu-operator
 
 - name: Join member clusters

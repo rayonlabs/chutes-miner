@@ -37,3 +37,8 @@
   ansible.builtin.include_tasks: k8s.yml
   tags:
     - k8s-tools
+
+- name: Install helm
+  ansible.builtin.include_tasks: helm.yml
+  tags:
+    - helm

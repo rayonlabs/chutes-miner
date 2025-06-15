@@ -72,7 +72,7 @@
       changed_when:
         - mv_result.rc == 0
 
-- name: Setup kubectl for user
+- name: Setup kubectl for ansible user
   when:
     - user_kubectl | default(true)
   vars:
@@ -134,7 +134,7 @@
       ansible.builtin.file:
         path: ~/.kube
         state: directory
-        owner: "{{ ansible_user }}"
+        owner: root
         mode: u=rwx,g=rx,o=
 
     - name: Copy config file to user home directory
@@ -198,7 +198,7 @@
         mode: "0644"
       delegate_to: "{{ control_node }}"
 
-    - name: Merge k3s member configs for user
+    - name: Merge k3s member configs for ansible user
       ansible.builtin.shell: |
         TFILE=$(mktemp)
         KUBECONFIG={{ member_kubeconfig }}:~{{ user }}/.kube/config kubectl config view --flatten > ${TFILE}
@@ -208,6 +208,17 @@
       register: mv_result
       vars:
         user: "{{ hostvars[control_node]['ansible_user'] }}"
+      changed_when:
+        - mv_result.rc == 0
+
+    - name: Merge k3s member configs for user
+      ansible.builtin.shell: |
+        TFILE=$(mktemp)
+        KUBECONFIG={{ member_kubeconfig }}:~{{ user }}/.kube/config kubectl config view --flatten > ${TFILE}
+        mv ${TFILE} ~{{ user }}/.kube/config
+        chown -R {{ user }}:{{ user }} ~{{ user }}/.kube
+      delegate_to: "{{ control_node }}"
+      register: mv_result
       changed_when:
         - mv_result.rc == 0
 

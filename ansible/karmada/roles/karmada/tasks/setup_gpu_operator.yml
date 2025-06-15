@@ -12,8 +12,6 @@
     create_namespace: true
     state: present
     force: true
-    kubeconfig: "{{ karmada_kubeconfig_path | default(omit) }}"
-    context: karmada-apiserver
     values:
       driver:
         enabled: false
@@ -21,16 +19,3 @@
         enabled: false
       operator:
         upgradeCRD: false
-
-- name: Copy propagation policy
-  ansible.builtin.copy:
-    src: gpu-operator.pp.yaml
-    dest: /tmp/gpu-operator.pp.yaml
-    mode: "0644"
-
-- name: Create GPU operator propagation policies
-  kubernetes.core.k8s:
-    src: /tmp/gpu-operator.pp.yaml
-    state: present
-    namespace: gpu-operator
-    context: karmada-apiserver

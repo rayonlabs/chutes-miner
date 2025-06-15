@@ -119,6 +119,28 @@
       become: true
       become_user: "{{ ansible_user }}"
 
+    - name: Setup aliases for user (bash)
+      ansible.builtin.lineinfile:
+        path: "/home/{{ user }}/.bashrc"
+        line: "alias k='k3s kubectl'"
+        state: present
+      register: bash_aliases
+      become: true
+      become_user: "{{ user }}"
+
+    - name: Setup aliases for user (zsh)
+      ansible.builtin.lineinfile:
+        path: "/home/{{ user }}/.zshrc"
+        line: "alias k='k3s kubectl'"
+        state: present
+      register: zsh_user_result
+      failed_when:
+        - zsh_user_result.failed is defined and zsh_user_result.failed
+        - not "No such file or directory" in zsh_user_result.msg
+      when: ansible_env.SHELL is search('zsh')
+      become: true
+      become_user: "{{ user }}"
+
     - name: Setup aliases for root user (bash)
       ansible.builtin.lineinfile:
         path: /root/.bashrc

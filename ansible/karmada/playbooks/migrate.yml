@@ -29,7 +29,7 @@
             name: gepetto-code
             namespace: chutes
           data:
-            gepetto.py: "../tasks/migration/files/gepetto.py') }}"
+            gepetto.py: "{{ lookup('file', '../tasks/migration/files/gepetto.py') }}"
 
     - name: Ensure ansible directory exists
       ansible.builtin.file:

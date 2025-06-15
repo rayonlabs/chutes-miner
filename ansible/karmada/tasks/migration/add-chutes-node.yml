@@ -10,6 +10,25 @@
           otherwise add manually.
         success_msg: Found information for {{ inventory_hostname }}
 
+    - name: Wait for nvidia.com/gpu capacity to be available on node
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+        name: "{{ inventory_hostname }}"
+      register: node_info
+      until: >
+        "status" in node_info.resources[0] and
+        node_info.resources[0]['status'] | length > 0 and
+        "capacity" in node_info.resources[0]['status'] and
+        "nvidia.com/gpu" in node_info.resources[0]['status']['capacity']
+      delay: "{{ check_delay | default(10) }}"
+      retries: "{{ max_retries | default(30) }}"
+      vars:
+        # Configure these variables as needed
+        check_delay: 30                     # Seconds between checks
+        max_retries: 9                     # Maximum number of retry attempts
+        initial_delay: 30                    # Initial delay before first check
+
     - name: Run add node command remotely
       ansible.builtin.command: >
         chutes-miner add-node --name {{ inventory_hostname }}  --hotkey {{ remote_hotkey_path }}

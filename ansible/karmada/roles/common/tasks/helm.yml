@@ -1,0 +1,52 @@
+---
+- name: Check if Helm is already installed
+  ansible.builtin.command: helm version --short
+  register: karmada_helm_version_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Get system architecture
+  ansible.builtin.command: uname -m
+  register: arch_result
+  changed_when: false
+
+- name: Install Helm if not already installed
+  when: karmada_helm_version_result.rc != 0
+  block:
+    - name: Set architecture variable
+      ansible.builtin.set_fact:
+        helm_arch: "{{ 'arm64' if 'arm64' in arch_result.stdout or 'aarch64' in arch_result.stdout else 'amd64' }}"
+
+    - name: Download Helm for detected architecture
+      ansible.builtin.get_url:
+        url: https://get.helm.sh/helm-{{ karmada_helm_version }}-linux-{{ helm_arch }}.tar.gz
+        dest: /tmp/helm.tar.gz
+        mode: "0644"
+
+    - name: Create Helm temp directory
+      ansible.builtin.file:
+        path: /tmp/helm
+        state: directory
+        mode: "0755"
+
+    - name: Extract Helm
+      ansible.builtin.unarchive:
+        src: /tmp/helm.tar.gz
+        dest: /tmp/helm
+        remote_src: true
+
+    - name: Install Helm binary
+      ansible.builtin.copy:
+        src: /tmp/helm/linux-{{ helm_arch }}/helm
+        dest: /usr/local/bin/helm
+        mode: "0755"
+        remote_src: true
+      become: true
+
+    - name: Clean up Helm installation files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /tmp/helm
+        - /tmp/helm.tar.gz
