@@ -24,6 +24,12 @@ spec:
       kind: ConfigMap
       namespace: chutes
       name: chutes-cache-cleaner
+    - apiVersion: v1
+      kind: ConfigMap
+      namespace: chutes
+      labelSelector:
+        matchLabels:
+          chutes/code: "true"
     - apiVersion: batch/v1
       kind: CronJob
       namespace: chutes

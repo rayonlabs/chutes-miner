@@ -361,6 +361,14 @@ class K8sOperator(abc.ABC):
 
     async def create_code_config_map(self, chute: Chute) -> None:
         """Create a ConfigMap to store the chute code."""
+        try:
+            config_map = self._create_code_config_map(chute)
+            self.create_config_map(config_map)
+        except ApiException as e:
+            if e.status != 409:
+                raise
+
+    def _create_code_config_map(self, chute: Chute) ->  V1ConfigMap:
         code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
         config_map = V1ConfigMap(
             metadata=V1ObjectMeta(
@@ -368,15 +376,12 @@ class K8sOperator(abc.ABC):
                 labels={
                     "chutes/chute-id": chute.chute_id,
                     "chutes/version": chute.version,
+                    "chutes/code": "true"
                 },
             ),
             data={chute.filename: chute.code},
         )
-        try:
-            self.create_config_map(config_map)
-        except ApiException as e:
-            if e.status != 409:
-                raise
+        return config_map
 
     @abc.abstractmethod
     def create_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
@@ -845,8 +850,7 @@ class KarmadaK8sOperator(K8sOperator):
 
     def create_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         # This is the one exception where we do not create the propagation policy for
-        # the CM since we don't know what Server to propagate to.  CM will be propagated
-        # when chute is deployed.
+        # the CM since we use a predefined PP to propagate all chute code CMs to all clusters
         self.karmada_core_client.create_namespaced_config_map(namespace=namespace, body=config_map)
 
     async def undeploy(self, deployment_id: str) -> None:
@@ -870,7 +874,7 @@ class KarmadaK8sOperator(K8sOperator):
             created_deployment = self.karmada_app_client.create_namespaced_deployment(
                 namespace=settings.namespace, body=deployment
             )
-            self._create_chute_propagation_policy(deployment_id, chute, service, deployment, server)
+            self._create_chute_propagation_policy(deployment_id, service, deployment, server)
 
             deployment_port = created_service.spec.ports[0].node_port
             async with get_session() as session:
@@ -916,12 +920,10 @@ class KarmadaK8sOperator(K8sOperator):
     def _create_chute_propagation_policy(
         self,
         deployment_id: str,
-        chute: Chute,
         service: V1Service,
         deployment: V1Deployment,
         server: Server,
     ):
-        code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
         pp = PropagationPolicy(
             name=f"{CHUTE_PP_PREFIX}-{deployment_id}",
             namespace=settings.namespace,
@@ -929,10 +931,7 @@ class KarmadaK8sOperator(K8sOperator):
                 ResourceSelector(
                     api_version="apps/v1", kind="Deployment", name=deployment.metadata.name
                 ),
-                ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name),
-                ResourceSelector(
-                    api_version="v1", kind="ConfigMap", name=f"{CHUTE_CODE_CM_PREFIX}-{code_uuid}"
-                ),
+                ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name)
             ],
             placement=Placement(
                 cluster_affinity=ClusterAffinity(cluster_names=[server.name]),
