@@ -14,6 +14,8 @@ all:
     is_primary: false
     # We assume GPU is enabled on all nodes, but of course you need to disable this for the CPU nodes below.
     gpu_enabled: true
+    # If GPU is enabled we assume it's NVIDIA one, it can be changed to "amd"
+    gpu_type: "nvidia"
     # The port you'll be using for the registry proxy, MUST MATCH chart/values.yaml registry.service.nodePort!
     registry_port: 30500
     # SSH sometimes just hangs without this...
@@ -56,3 +58,8 @@ all:
       ansible_host: 1.0.0.3
       external_ip: 1.0.0.3
       wireguard_ip: 192.168.0.5
+    #chutes-miner-amd-gpu-1:
+    #  ansible_host: 1.0.0.4
+    #  external_ip: 1.0.0.4
+    #  wireguard_ip: 192.168.0.6
+    #  gpu_type: "amd"

@@ -41,6 +41,8 @@ minerApi:
           - key: nvidia.com/gpu.present
             operator: NotIn
             values: ["true"]
+          - key: amd.com/gpu.product-name
+            operator: DoesNotExist
   tolerations: []
 
 gepetto:
@@ -62,6 +64,8 @@ gepetto:
           - key: nvidia.com/gpu.present
             operator: NotIn
             values: ["true"]
+          - key: amd.com/gpu.product-name
+            operator: DoesNotExist
   tolerations: []
 
 postgres:
@@ -109,6 +113,8 @@ redis:
           - key: nvidia.com/gpu.present
             operator: NotIn
             values: ["true"]
+          - key: amd.com/gpu.product-name
+            operator: DoesNotExist
   tolerations: []
   resources:
     requests:
