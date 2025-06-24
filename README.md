@@ -10,7 +10,6 @@ We've tried to automate the bulk of the process via ansible, helm/kubernetes, so
 - [Component Overview](#-component-overview)
    - [Provisioning/Management Tools](#%EF%B8%8F-provisioningmanagement-tools)
      - [Ansible](#-ansible)
-     - [Wireguard](#-wireguard)
      - [Kubernetes](#%EF%B8%8F-kubernetes)
    - [Miner Components](#-miner-components)
      - [Postgres](#-postgres)
@@ -361,10 +360,10 @@ chutes-miner add-node \
 - `--hotkey` is the path to the hotkey file you registered with, used to sign requests to be able to manage inventory on your system via the miner API
 - `--miner-api` is the base URL to your miner API service, which will be http://[non-GPU node IP]:[minerAPI port, default 32000], i.e. find the public/external IP address of your CPU-only node, and whatever port you configured for the API service (which is 32000 if you didn't change the default).
 
-You can add additional GPU nodes at any time by simply updating inventory.yaml and running the `site.yaml` playbook with the tag `add-nodes`: [ansible readme](/ansible/README.md#to-add-a-new-node-after-the-fact)
+You can add additional GPU nodes at any time by simply updating inventory.yaml and running the `site.yaml` playbook with the tag `add-nodes`: [ansible readme](/ansible/karmada/README.md#to-add-a-new-node-after-the-fact)
 
 ## ➕ Adding servers
 
-To expand your miner's inventory, you should bootstrap them with the ansible scripts, using the `site.yaml` playbook with the `add-nodes` tag.  This will ensure only the new node is configured, and the necessary monitoring/kubectl configuration is updated for the control plane.  Info for the ansible portions [here](/ansible/README.md#to-add-a-new-node-after-the-fact)
+To expand your miner's inventory, you should bootstrap them with the ansible scripts, using the `site.yaml` playbook with the `add-nodes` tag.  This will ensure only the new node is configured, and the necessary monitoring/kubectl configuration is updated for the control plane.  Info for the ansible portions [here](/ansible/karmada/README.md#to-add-a-new-node-after-the-fact)
 
 Then, run the `chutes-miner add-node ...` command above.

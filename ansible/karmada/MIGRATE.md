@@ -8,7 +8,7 @@ The migration process transforms your infrastructure from MicroK8s to Karmada/K3
 
 ### Process Overview
 
-1. **Sets up the Karmada control plane** on designated control nodes
+1. **Sets up the Karmada control plane** on designated control node
 2. **Migrates worker nodes** from MicroK8s to K3s/Karmada in a controlled manner
 3. **Preserves node metadata** (GPU types, costs) during migration
 4. **Handles failure scenarios** with migration markers to prevent re-processing
@@ -52,9 +52,9 @@ all:
           ansible_host: 10.0.0.2
         chutes-miner-gpu1:
           ansible_host: 10.0.0.3
-    microk8s:  # Existing MicroK8s control plane
+    microk8s:  # Existing MicroK8s control plane (chutes-miner-cpu-0) from your microk8s inventory
       hosts:
-        chutes-miner-control-0: # Note the naming convention.
+        chutes-miner-control-0: # Note the naming convention (cpu-0 -> control-0).
           ansible_host: 10.0.0.2
 ```
 **IMPORTANT: Note the naming convention for the microk8s group.  This ensures the name does not conflict with the new control host**
@@ -70,7 +70,7 @@ run_cli_locally: false  # Set to true to run chutes-miner commands from Ansible 
 # Hotkey configuration
 hotkey_path: ~/.bittensor/wallets/chutes-test/hotkeys/chutes-test # Path to hotkey on controller
 remote_hotkey_path: /etc/chutes-miner/hotkey.json # Path on host if running CLI remotely
-copy_hotkey_to_ansible_host: false # If running CLI from ansible hosts, set to true
+copy_hotkey_to_ansible_host: false # If running CLI from ansible hosts, set to true to copy hotkey automatically
 
 # API configuration
 miner_api_port: 32000  # Node port to use for miner API if running from ansible controller
@@ -78,13 +78,14 @@ miner_api_port: 32000  # Node port to use for miner API if running from ansible 
 
 ### Auto-Generated Variables
 
-The playbook automatically generates `vars/chutes_nodes.yml` containing:
+The playbook automatically generates `vars/chutes_nodes.yml` containing node information needed to add nodes to the new control plane.
 
 ```yaml
 chutes_nodes:
   node-name:
     hourly_cost: "0.50"
     gpu_type: "a6000"
+  ...
 ```
 
 ## Migration Process
@@ -98,7 +99,7 @@ ansible-playbook playbooks/migrate.yml --tags setup-control-plane
 **What happens:**
 - Installs and configures K3s on control node
 - Deploys Karmada control plane
-- Sets up monitoring and GPU operator
+- Sets up monitoring
 - Configures networking and certificates
 
 ### Phase 2: Migration Preparation
@@ -112,6 +113,7 @@ ansible-playbook playbooks/migrate.yml --tags migrate-prep
 - Checks Chutes components readiness
     * Disables the audit exporter cronjob
     * Overwrites the gepetto configmap to avoid reconciliation loops overriding each other
+    * Ensure miner credentials exist in the karmada control plane and api server contexts
 - Gathers node information (costs, GPU types)
 - Creates `vars/chutes_nodes.yml`
 
@@ -124,7 +126,7 @@ ansible-playbook playbooks/migrate.yml --tags migrate-nodes
 The node migration is a serial process, meaning only one node at a time is migrated from microk8s to the k3s cluster.  If a node fails the entire migration process will stop.  Subsequent runs will not attempt to migrate nodes which have already been migrated.
 
 **What happens for each worker node:**
-1. **Removal**: Removes node from Chutes inventory
+1. **Removal**: Removes node from Chutes inventory, and from microk8s cluster
 2. **Reset**: Stops MicroK8s, cleans system, reboots the GPU node
 3. **Setup**: Installs system packages, configures environment
 4. **K3s Setup**: Installs and configures K3s agent
@@ -206,7 +208,7 @@ Set `run_cli_locally: true` to:
 
 ```bash
 # Check Karmada components
-kubectl --context karmada-apiserver get pods -n karmada-system
+kubectl --context chutes-miner-cpu-0 get pods -n karmada-system
 
 # Verify registered clusters
 kubectl --context karmada-apiserver get clusters
@@ -220,13 +222,6 @@ ansible -i inventory.yml workers -b -m command -a "systemctl status k3s-agent"
 
 # Verify node labels
 kubectl get nodes --show-labels
-```
-
-### Verify Chutes Integration
-
-```bash
-# Test chutes-miner commands
-ansible -i inventory.yml workers -m command -a "chutes-miner local-inventory --hotkey /etc/chutes-miner/hotkey.json"
 ```
 
 ## Monitoring and Observability
@@ -262,15 +257,9 @@ If migration fails and rollback to MicroK8s is needed:
    ansible-playbook playbooks/reset.yml
    ```
 
-3. **Reinstall MicroK8s** (manual process required)
+3. **Reinstall MicroK8s** (manual process required, use microk8s ansible)
 
 ## Support and Maintenance
-
-### Log Locations
-
-- **K3s logs**: `journalctl -u k3s-agent`
-- **Karmada logs**: `kubectl logs -n karmada-system`
-- **Migration markers**: `/etc/ansible/.*`
 
 ### Configuration Files
 
@@ -293,10 +282,8 @@ The migration playbook automatically configures kubectl access and cluster manag
 - Karmada API server config: `~/.kube/chutes/karmada-apiserver`
 
 **On Target Hosts:**
-- K3s kubeconfig: `/etc/rancher/k3s/k3s.yaml`
-- User kubeconfig: `~/.kube/config` (for both ansible_user and root)
+- User kubeconfig: `~/.kube/config` (for ansible_user, user and root)
 - Auto-completion enabled for kubectl and k3s commands
-- Aliases configured: `k='k3s kubectl'`
 
 ### Cluster Management Utilities
 
@@ -323,6 +310,6 @@ kubectl config get-contexts
 
 # Typical contexts available:
 # - chutes-miner-cpu-0 (control plane K3s cluster)
-# - karmada-apiserver (Karmada control plane)
+# - karmada-apiserver (Karmada API server)
 # - chutes-miner-gpu-X (Chutes GPU cluster contexts)
 ```
