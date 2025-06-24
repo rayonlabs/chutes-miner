@@ -1,37 +1,38 @@
+---
 - name: Create user
-  user:
+  ansible.builtin.user:
     name: "{{ user }}"
     shell: /bin/bash
-    create_home: yes
+    create_home: true
     state: present
 
 - name: Create SSH directories
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    mode: '0700'
+    mode: "0700"
   with_items:
     - "/home/{{ user }}/.ssh"
     - "/root/.ssh"
 
 - name: Add authorized SSH keys
-  no_log: true  # avoid logging the ssh key
-  authorized_key:
+  no_log: true # avoid logging the ssh key
+  ansible.posix.authorized_key:
     user: "{{ user }}"
     state: present
     key: "{{ item }}"
   with_items: "{{ ssh_keys }}"
-  become: yes
+  become: true
 
 - name: Set correct ownership for user home
-  file:
+  ansible.builtin.file:
     path: "/home/{{ user }}"
     owner: "{{ user }}"
     group: "{{ user }}"
-    recurse: yes
+    recurse: true
 
 - name: Add user to sudoers
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/sudoers
-    line: '{{ user }} ALL=(ALL) NOPASSWD:ALL'
-    validate: 'visudo -cf %s'
+    line: "{{ user }} ALL=(ALL) NOPASSWD:ALL"
+    validate: "visudo -cf %s"

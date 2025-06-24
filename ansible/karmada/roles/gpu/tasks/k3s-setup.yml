@@ -39,7 +39,6 @@
   tags:
     - gpu-container-setup
   block:
-
     - name: Configure NVIDIA Container Toolkit
       ansible.builtin.shell: |
         nvidia-ctk runtime configure --runtime=docker --set-as-default

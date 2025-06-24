@@ -136,13 +136,13 @@
         regexp: \.\s+<\(kubectl completion bash\)
         line: ". <(kubectl completion bash)  # Added by k3s-ansible"
       loop: "{{ users }}"
-    
+
     - name: Set ownership on .kube directory and files
       ansible.builtin.file:
         path: ~{{ item }}/.kube
         owner: "{{ item }}"
         group: "{{ item }}"
-        recurse: yes
+        recurse: true
         state: directory
       loop: "{{ users }}"
 
