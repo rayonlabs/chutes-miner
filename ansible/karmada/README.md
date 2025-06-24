@@ -105,6 +105,7 @@ all:
 
 ## 4. Bootstrap the nodes
 
+Execute the playbook from the `ansible/karmada` directory.
 ```bash
 ansible-playbook playbooks/site.yml
 ```
