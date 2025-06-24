@@ -28,7 +28,7 @@ jobs:
           poetry install --no-root
           
       - name: Run ruff check
-        run: ruff check
+        run: poetry run ruff check
         
       - name: Run ruff format check
-        run: ruff format --check --line-length 100
+        run: poetry run ruff format --check --line-length 100
