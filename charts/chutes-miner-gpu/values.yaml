@@ -1,4 +1,4 @@
-multiCluster: false
+multiCluster: true
 
 validators:
   defaultRegistry: registry.chutes.ai
@@ -8,10 +8,6 @@ validators:
       registry: registry.chutes.ai
       api: https://api.chutes.ai
       socket: wss://ws.chutes.ai
-
-minerApi:
-  service:
-    port: 8000
 
 registry:
   image: nginx:1.27

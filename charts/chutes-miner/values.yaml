@@ -1,3 +1,6 @@
+# Set this value to true if oeprating a mutli cluster karmada environment
+multiCluster: true
+
 cache:
   max_age_days: 30
   max_size_gb: 500
@@ -6,8 +9,6 @@ cache:
 #    chutes-miner-gpu-0: 1000
 #    chutes-miner-gpu-1: 1500
 
-# Set this value to true if oeprating a mutli cluster karmada environment
-multiCluster: false
 kubeconfig:
   hostPath: '/home/ubuntu/.kube/config'
   localPath: /tmp/kube/config
@@ -137,10 +138,5 @@ registry:
 
 auditExporter:
   image: parachutes/miner:karmada
-  nodeSelector:
-    kubernetes.io/hostname: chutes-miner-cpu-0
-
-failedChuteCleanup:
-  image: bitnami/kubectl:latest
   nodeSelector:
     kubernetes.io/hostname: chutes-miner-cpu-0

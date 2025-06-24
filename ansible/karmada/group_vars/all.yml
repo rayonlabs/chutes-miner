@@ -7,11 +7,6 @@ ansible_ssh_common_args: -o StrictHostKeyChecking=no
 timezone: UTC
 swap_disable: true
 
-# Local kubectl setup
-setup_controller_kubeconfig: true
-controller_kubeconfig: ~/.kube/config
-controller_kubectl_staging_dir: "{{ '~/.kube' | expanduser }}/chutes" # noqa var-naming[no-role-prefix]
-
 # System packages to install
 system_packages:
   - curl

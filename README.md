@@ -32,7 +32,7 @@ We've tried to automate the bulk of the process via ansible, helm/kubernetes, so
 
 The goal of mining on chutes is to provide as much compute as possible, optimizing for cold start times (running new applications or applications that have been preempted). Everything is automated with kubernetes, and coordinated by the `gepetto.py` script to optimize for cost efficiency and maximize your share of compute.
 
-Incentives are based on total compute time (including bounties give from being first to provide inference on code app).
+Incentives are based on total compute time (including bounties given from being first to provide inference on code app).
 
 You should probably run a wide variety of GPUs, from very cheap (a10, a5000, t4, etc.) to very powerful (8x h100 nodes).
 
@@ -51,20 +51,10 @@ There are many nuances and requirements that are quite difficult to setup manual
 
 *More information on using the ansible scripts in subsequent sections.*
 
-#### 🔒 Wireguard
-
-Wireguard is a fast, secure VPN service that is created by ansible provisioning, which allows your nodes to communicate when they are not all on the same internal network.
-
-It is often the case that you'll want CPU instances on one provider (AWS, Google, etc.), and GPU instances on another (Latitude, Massed Compute, etc.), and you may have several providers for each due to inventory.
-
-By installing Wireguard, your kubernetes cluster can span any number of providers without issue.
-
-*__this is installed and configured automatically by ansible scripts__*
-
 #### ☸️ Kubernetes
 
-The entirety of the chutes miner must run within a [kubernetes](https://kubernetes.io/)  While not strictly necessary, we recommend using microk8s (which is all handled automatically from the ansible scripts).
-If you choose to not use microk8s, you must also modify or not use the provided ansible scripts.
+The entirety of the chutes miner must run within a [kubernetes](https://kubernetes.io/). While not strictly necessary, we recommend using k3s (which is all handled automatically from the ansible scripts).
+If you choose to not use k3s, you must also modify or not use the provided ansible scripts.
 
 *__this is installed and configured automatically by ansible scripts__*
 
@@ -74,7 +64,7 @@ If you choose to not use microk8s, you must also modify or not use the provided 
 
 #### 🐘 Postgres
 
-We make heavy use of SQLAlchemy/postgres throughout chutes.  All servers, GPUs, deployments, etc., are tracked in postgresql which is deployed as a statefulset with a persistent volume claim within your kubernetes cluster.
+We make heavy use of SQLAlchemy/postgres throughout chutes.  All servers, GPUs, deployments, etc., are tracked in postgresql which is deployed with a host volume within your kubernetes cluster.
 
 *__this is installed and configured automatically when deploying via helm charts__*
 
@@ -157,9 +147,7 @@ Before starting, you must either disable all layers of firewalls (if you like to
 - allow the kubernetes ephemeral port range on all of your GPU nodes, since the ports for chute deployments will be random, in that range, and need public accessibility - the default port range is 30000-32767
 - allow access to the various nodePort values in your API from whatever machine you are managing/running chutes-miner add-node/etc., or just make it public (particularly import is the API node port, which defaults to 32000)
 
-The primary CPU node, which the other nodes connect to as the wireguard primary, needs to have IP forwarding enabled -- if your node is in GCP, for example, there's a checkbox you need to enable for IP forwarding.
-
-You'll need one non-GPU server (8 cores, 64gb ram minimum) responsible for running postgres, redis, gepetto, and API components (not chutes), and __*ALL*__ of the GPU servers 😄 (just kidding of course, you can use as many or as few as you wish)
+You'll need one non-GPU server (4 cores, 32gb ram minimum) responsible for running karmada, postgres, redis, gepetto, and API components (not chutes), and __*ALL*__ of the GPU servers 😄 (just kidding of course, you can use as many or as few as you wish)
 
 [The list of supported GPUs can be found here](https://github.com/rayonlabs/chutes-api/blob/main/api/gpu.py)
 
@@ -169,15 +157,8 @@ Head over to the [ansible](ansible/README.md) documentation for steps on setting
 
 The easiest way to interact with kubernetes would be from within the primary node, but you can alternatively set it up on your local machine or other server.  To do so:
 - install [kubectl](https://kubernetes.io/docs/reference/kubectl/)
-- copy the the kubernetes configuration from the CPU primary via `microk8s config` and put it on your workstation at `~/.kube/config`
-- replace the IP address of the cluster with the public IP address of the primary node
-- since the IP will not match the cert, you will need to specify `--insecure-skip-tls-verify` when running any kubectl commands from this server (not necessary when done on primary node)
+- Set the `setup_controller_kubeconfig` flag in `ansible/karmada/inventory.yml` to `true`
 
-If you plan to use the primary node, you should alias `kubectl` and `helm`:
-```bash
-echo 'alias kubectl="microk8s kubectl"' >> .bashrc
-echo 'alias helm="microk8s helm"' >> .bashrc
-```
 
 You'll need to setup a few things manually:
 - Create a docker hub login to avoid getting rate-limited on pulling public images (you may not need this at all, but it can't hurt):
@@ -223,9 +204,19 @@ kubectl create secret generic miner-credentials \
 
 ### 3. Configure your environment
 
-Be sure to thoroughly examine [values](charts/values.yaml) and update according to your particular environment.
+The chutes components are split into two separate sets of charts to support use with Karmada.
+
+The [chutes-miner](charts/chutes-miner/) charts contain the templates for the chutes miner API and associated components.
+
+The [chutes-miner-gpu](charts/chutes-miner-gpu/) charts contain the templates for the chutes miner components specifically used for GPU nodes.
+
+The [chutes-monitoring](charts/chutes-monitoring/) charts contain templates for the monitoring components, including metric federation from member clusters to the central karmada prometheus instance.  The monitoring charts and values are automatically generated and deployed by ansible.
+
+Be sure to thoroughly examine the values for each set of charts and update according to your particular environment.
 
 Primary sections to update:
+
+### Chutes Miner
 
 #### a. validators
 
@@ -283,6 +274,18 @@ minerApi:
 
 Feel free to adjust redis/postgres/etc. as you wish, but probably not necessary.
 
+#### e. multiCluster
+
+This flag exists just to allow backwards compatability with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
+
+### Chutes Miner GPU
+
+The default values should be fine here.
+
+#### a. multiCluster
+
+This flag exists just to allow backwards compatability with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
+
 ### 4. Update gepetto with your optimized strategy
 
 Gepetto is the most important component as a miner.  It is responsible for selecting chutes to deploy, scale up, scale down, delete, etc.
@@ -305,23 +308,19 @@ kubectl rollout restart deployment/gepetto -n chutes
 
 ### 5. Deploy the miner within your kubernetes cluster
 
-First, and __*exactly one time*__, you'll want to generate passwords for postgres and redis - __*never run this more than once or things will break!*__
-Execute this from the `charts` directory:
+Deploy the chutes miner API and associated components to the karmada control plane and karmada API server respectively.  If you set up using the ansible scripts and used the standard naming convention for the control node, this should be the kubectl context labeled `chutes-miner-cpu-0` for the control plane and 
+
+1. Run the following commands from the root of the repository
+2. Deploy chutes-miner API components
 ```bash
-helm template . --set createPasswords=true -s templates/one-time-passwords.yaml | kubectl apply -n chutes -f -
+helm upgrade --install chutes charts/chutes-miner -n chutes --create-namespace --kube-context chutes-miner-cpu-0 [-f path/to/your/values.yaml]
+```
+3. Deploy chutes-miner GPU components
+```bash
+helm upgrade --install chutes charts/chutes-miner-gpu -n chutes --create-namespace --kube-context karmada-apiserver [-f path/to/your/values.yaml]
 ```
 
-Once the secrets are created, you can run this any time to generate your deployment charts, from within the `charts` directory:
-```bash
-helm template . -f values.yaml > miner-charts.yaml
-```
-
-Any time you change `values.yaml`, you will want to re-run the template command to get the updated charts!
-
-Then, you will deploy the chutes components with:
-```bash
-kubectl apply -f miner-charts.yaml -n chutes
-```
+If you update the values in `values.yaml` or your custom values file, you will want to re-run helm upgrade command.
 
 ### 6. Register
 
@@ -342,6 +341,8 @@ Make sure you install `chutes-miner-cli` package (you can do this on the CPU nod
 pip install chutes-miner-cli
 ```
 
+**__This is installed automatically on the control node__**
+
 Run this for each GPU node in your inventory:
 ```bash
 chutes-miner add-node \
@@ -360,10 +361,10 @@ chutes-miner add-node \
 - `--hotkey` is the path to the hotkey file you registered with, used to sign requests to be able to manage inventory on your system via the miner API
 - `--miner-api` is the base URL to your miner API service, which will be http://[non-GPU node IP]:[minerAPI port, default 32000], i.e. find the public/external IP address of your CPU-only node, and whatever port you configured for the API service (which is 32000 if you didn't change the default).
 
-You can add additional GPU nodes at any time by simply updating inventory.yaml and rerunning the `site.yaml` and `join-cluster.yaml` playbooks: [ansible readme](/ansible/README.md#to-add-a-new-node-after-the-fact)
+You can add additional GPU nodes at any time by simply updating inventory.yaml and running the `site.yaml` playbook with the tag `add-nodes`: [ansible readme](/ansible/README.md#to-add-a-new-node-after-the-fact)
 
 ## ➕ Adding servers
 
-To expand your miner's inventory, you should bootstrap them with the ansible scripts, specifically the site and join-cluster bits.  Info for the ansible portions [here](/ansible/README.md#to-add-a-new-node-after-the-fact)
+To expand your miner's inventory, you should bootstrap them with the ansible scripts, using the `site.yaml` playbook with the `add-nodes` tag.  This will ensure only the new node is configured, and the necessary monitoring/kubectl configuration is updated for the control plane.  Info for the ansible portions [here](/ansible/README.md#to-add-a-new-node-after-the-fact)
 
 Then, run the `chutes-miner add-node ...` command above.
