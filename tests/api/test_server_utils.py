@@ -303,11 +303,9 @@ async def test_no_node_port_in_service(mock_node, mock_deployment):
     mock_watch_event = Mock()
     mock_watch_event.object = mock_ready_deployment
 
-    with patch(
-        "api.server.util.K8sOperator"
-    ) as mock_operator, patch("api.server.util._fetch_devices", side_effect=Exception("Connection failed")), patch(
-        "api.server.util.settings"
-    ) as mock_settings:
+    with patch("api.server.util.K8sOperator") as mock_operator, patch(
+        "api.server.util._fetch_devices", side_effect=Exception("Connection failed")
+    ), patch("api.server.util.settings") as mock_settings:
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.watch_deployments.return_value = iter([mock_watch_event])
 
@@ -467,11 +465,9 @@ async def test_missing_external_ip_label(mock_deployment, mock_service):
     mock_watch_event = Mock()
     mock_watch_event.object = mock_ready_deployment
 
-    with patch(
-        "api.server.util.K8sOperator"
-    ) as mock_operator, patch("api.server.util._fetch_devices", side_effect=Exception("Connection failed")), patch(
-        "api.server.util.settings"
-    ) as mock_settings:
+    with patch("api.server.util.K8sOperator") as mock_operator, patch(
+        "api.server.util._fetch_devices", side_effect=Exception("Connection failed")
+    ), patch("api.server.util.settings") as mock_settings:
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.watch_deployments.return_value = iter([mock_watch_event])
 
@@ -528,11 +524,9 @@ async def test_deployment_never_becomes_ready(mock_node, mock_deployment, mock_s
 
     mock_watch_event = {"object": mock_not_ready_deployment}
 
-    with patch(
-        "api.server.util.K8sOperator"
-    ) as mock_operator, patch("api.server.util.settings") as mock_settings, patch(
-        "time.time", return_value=0
-    ):  # No timeout, just stream ends
+    with patch("api.server.util.K8sOperator") as mock_operator, patch(
+        "api.server.util.settings"
+    ) as mock_settings, patch("time.time", return_value=0):  # No timeout, just stream ends
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.watch_deployments.return_value = iter([mock_watch_event])
 

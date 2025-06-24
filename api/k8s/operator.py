@@ -368,7 +368,7 @@ class K8sOperator(abc.ABC):
             if e.status != 409:
                 raise
 
-    def _create_code_config_map(self, chute: Chute) ->  V1ConfigMap:
+    def _create_code_config_map(self, chute: Chute) -> V1ConfigMap:
         code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
         config_map = V1ConfigMap(
             metadata=V1ObjectMeta(
@@ -376,7 +376,7 @@ class K8sOperator(abc.ABC):
                 labels={
                     "chutes/chute-id": chute.chute_id,
                     "chutes/version": chute.version,
-                    "chutes/code": "true"
+                    "chutes/code": "true",
                 },
             ),
             data={chute.filename: chute.code},
@@ -931,7 +931,7 @@ class KarmadaK8sOperator(K8sOperator):
                 ResourceSelector(
                     api_version="apps/v1", kind="Deployment", name=deployment.metadata.name
                 ),
-                ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name)
+                ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name),
             ],
             placement=Placement(
                 cluster_affinity=ClusterAffinity(cluster_names=[server.name]),
