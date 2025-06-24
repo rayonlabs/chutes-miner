@@ -150,7 +150,7 @@ You'll need one non-GPU server (4 cores, 32gb ram minimum) responsible for runni
 
 [The list of supported GPUs can be found here](https://github.com/rayonlabs/chutes-api/blob/main/api/gpu.py)
 
-Head over to the [ansible](ansible/README.md) documentation for steps on setting up your bare metal instances.  Be sure to update inventory.yml
+Head over to the [ansible](ansible/karmada/README.md) documentation for steps on setting up your infrastructure.  Be sure to update inventory.yml
 
 ### 2. Configure prerequisites
 
@@ -162,13 +162,27 @@ The easiest way to interact with kubernetes would be from within the primary nod
 You'll need to setup a few things manually:
 - Create a docker hub login to avoid getting rate-limited on pulling public images (you may not need this at all, but it can't hurt):
   - Head over to https://hub.docker.com/ and sign up, generate a new personal access token for public read-only access, then create the secret:
-```
-kubectl create secret docker-registry regcred --docker-server=docker.io --docker-username=[repalce with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
+
+```bash
+# Create secret for the control plane context
+kubectl create secret docker-registry regcred --kube-context chutes-miner-gpu-0 --docker-server=docker.io --docker-username=[repalce with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
+
+# Create secret for the API server context
+kubectl create secret docker-registry regcred --kube-context karmada-apiserver --docker-server=docker.io --docker-username=[repalce with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
 ```
 - Create the miner credentials
   - You'll need to find the ss58Address and secretSeed from the hotkey file you'll be using for mining, e.g. `cat ~/.bittensor/wallets/default/hotkeys/hotkey`
-```
+```bash
+# Create for the control plane context
 kubectl create secret generic miner-credentials \
+  --context=chutes-miner-cpu-0 \
+  --from-literal=ss58=[replace with ss58Address value] \
+  --from-literal=seed=[replace with secretSeed value, removing '0x' prefix] \
+  -n chutes
+
+# Create for the control API server context
+kubectl create secret generic miner-credentials \
+  --context=karmada-apiserver \
   --from-literal=ss58=[replace with ss58Address value] \
   --from-literal=seed=[replace with secretSeed value, removing '0x' prefix] \
   -n chutes
@@ -196,6 +210,13 @@ $ cat ~/.bittensor/wallets/offline/hotkeys/test | jq .
 To create the secret from this key, the command would be:
 ```bash
 kubectl create secret generic miner-credentials \
+  --context=chutes-miner-gpu-0 \
+  --from-literal=ss58=5E6xfU3oNU7y1a7pQwoc31fmUjwBZ2gKcNCw8EXsdtCQieUQ \
+  --from-literal=seed=e031170f32b4cda05df2f3cf6bc8d76827b683bbce23d9fa960c0b3fc21641b8 \
+  -n chutes
+
+kubectl create secret generic miner-credentials \
+  --context=karmada-apiserver \
   --from-literal=ss58=5E6xfU3oNU7y1a7pQwoc31fmUjwBZ2gKcNCw8EXsdtCQieUQ \
   --from-literal=seed=e031170f32b4cda05df2f3cf6bc8d76827b683bbce23d9fa960c0b3fc21641b8 \
   -n chutes
@@ -275,7 +296,7 @@ Feel free to adjust redis/postgres/etc. as you wish, but probably not necessary.
 
 #### e. multiCluster
 
-This flag exists just to allow backwards compatability with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
+This flag exists to allow backwards compatability with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
 
 ### Chutes Miner GPU
 
@@ -283,7 +304,7 @@ The default values should be fine here.
 
 #### a. multiCluster
 
-This flag exists just to allow backwards compatability with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
+This flag exists to allow backwards compatability with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
 
 ### 4. Update gepetto with your optimized strategy
 
@@ -292,12 +313,12 @@ You'll want to thoroughly examine this code and make any changes that you think 
 
 Once you are satisfied with the state of the `gepetto.py` file, you'll need to create a configmap object in kubernetes that stores your file (from inside the `chutes-miner` directory, from cloning repo):
 ```bash
-kubectl create configmap gepetto-code --from-file=gepetto.py -n chutes
+kubectl create configmap gepetto-code --context chutes-miner-cpu-0 --from-file=gepetto.py -n chutes
 ```
 
 Any time you wish to make further changes to gepetto, you need to re-create the configmap:
 ```bash
-kubectl create configmap gepetto-code --from-file=gepetto.py -o yaml --dry-run=client | kubectl apply -n chutes -f -
+kubectl create configmap gepetto-code --from-file=gepetto.py -o yaml --dry-run=client | kubectl apply --context chutes-miner-cpu-0 -n chutes -f -
 ```
 
 You must also restart the gepetto deployment after you make changes, but this will only work AFTER you have completed the rest of the setup guide (no need to run when you initially setup your miner):
