@@ -49,7 +49,7 @@
         - mv_result.rc == 0
 
 - name: Setup kubectl on ansible controller
-  when: setup_controller_kubeconfig
+  when: setup_local_kubeconfig
   block:
     - name: Check whether kubectl is installed on control node
       delegate_to: 127.0.0.1

@@ -21,6 +21,6 @@ all:
     user: billybob
 
     # Local kubectl setup
-    setup_controller_kubeconfig: false
+    setup_local_kubeconfig: false
     controller_kubeconfig: ~/.kube/config
     controller_kubectl_staging_dir: "{{ '~/.kube' | expanduser }}/chutes" # noqa var-naming[no-role-prefix]

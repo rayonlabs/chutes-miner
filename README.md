@@ -157,7 +157,7 @@ Head over to the [ansible](ansible/README.md) documentation for steps on setting
 
 The easiest way to interact with kubernetes would be from within the primary node, but you can alternatively set it up on your local machine or other server.  To do so:
 - install [kubectl](https://kubernetes.io/docs/reference/kubectl/)
-- Set the `setup_controller_kubeconfig` flag in `ansible/karmada/inventory.yml` to `true`
+- Set the `setup_local_kubeconfig` flag in `ansible/karmada/inventory.yml` to `true`
 
 
 You'll need to setup a few things manually:

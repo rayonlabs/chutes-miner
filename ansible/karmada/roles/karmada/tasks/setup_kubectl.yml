@@ -53,7 +53,7 @@
 
 - name: Setup kubectl on ansible controller
   when:
-    - setup_controller_kubeconfig
+    - setup_local_kubeconfig
     - inventory_hostname == groups['control'][0]
   block:
     - name: "Ensure staging directory exists on Ansible controller"
@@ -69,7 +69,6 @@
       delegate_to: 127.0.0.1
       become: false
       ansible.builtin.command: kubectl
-      when: setup_controller_kubeconfig
       register: kubectl_installed
       ignore_errors: true
       changed_when: false
