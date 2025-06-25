@@ -165,10 +165,10 @@ You'll need to setup a few things manually:
 
 ```bash
 # Create secret for the control plane context
-kubectl create secret docker-registry regcred --kube-context chutes-miner-gpu-0 --docker-server=docker.io --docker-username=[repalce with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
+kubectl create secret docker-registry regcred --context chutes-miner-cpu-0 --docker-server=docker.io --docker-username=[repalce with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
 
 # Create secret for the API server context
-kubectl create secret docker-registry regcred --kube-context karmada-apiserver --docker-server=docker.io --docker-username=[repalce with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
+kubectl create secret docker-registry regcred --context karmada-apiserver --docker-server=docker.io --docker-username=[repalce with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
 ```
 - Create the miner credentials
   - You'll need to find the ss58Address and secretSeed from the hotkey file you'll be using for mining, e.g. `cat ~/.bittensor/wallets/default/hotkeys/hotkey`

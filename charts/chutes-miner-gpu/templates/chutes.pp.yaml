@@ -39,6 +39,10 @@ spec:
       namespace: chutes
       name: miner-credentials
     - apiVersion: v1
+      kind: Secret
+      namespace: chutes
+      name: regcred
+    - apiVersion: v1
       kind: ServiceAccount
       namespace: chutes
       name: chutes
