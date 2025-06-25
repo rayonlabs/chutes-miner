@@ -104,6 +104,14 @@ ansible-playbook playbooks/migrate.yml --tags setup-control-plane
 
 ### Phase 2: Migration Preparation
 
+#### Deploy the Chutes components
+
+Follow steps 2, 3 and 5 from the [deployment docs](../../README.md#2-configure-prerequisites) to deploy the Chutes API and GPU charts.
+
+**__Do NOT perform step 4, it will fail anyway, ansible deploys a gepetto code file for you to ensure it does not delete chutes in the old cluster__**
+
+Then run the migration prep phase of the ansible playbooks.
+
 ```bash
 ansible-playbook playbooks/migrate.yml --tags migrate-prep
 ```
