@@ -105,7 +105,20 @@ all:
 
 ## 4. Bootstrap the nodes
 
+### Setup config and inventory
+
+If you want to keep your inventory and ansible config separated from the repo be sure to update the following:
+1. In your ansible config update the roles path to the absolute path to the karmada roles directory
+```
+[defaults]
+roles_path = /path/to/chutes-miner/ansible/karmada/roles
+```
+2. Provide the path to your ansible inventory using `-i /path/to/inventory.yml` from the CLI
+
+### Bootstrap
+
 Execute the playbook from the `ansible/karmada` directory.
+
 ```bash
 ansible-playbook playbooks/site.yml
 ```
