@@ -42,11 +42,11 @@ Your `inventory.yml` should define these groups:
 ```yaml
 all:
   children:
-    control:
+    control: # New control node for Karmada.  This MUST be a new node, can not reuse existing microk8s node
       hosts:
         chutes-miner-cpu-0:
           ansible_host: 192.0.2.1 # Public IP of the new control node for Karmada
-    workers:
+    workers: # Existing GPU nodes from microk8s inventory go in this group
       hosts:
         chutes-miner-gpu-0:
           ansible_host: 192.0.2.2 # Public IP of miner node GPU 0
