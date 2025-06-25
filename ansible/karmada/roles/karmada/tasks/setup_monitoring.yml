@@ -10,7 +10,7 @@
 
     - name: Copy monitoring charts from local directory
       ansible.builtin.copy:
-        src: ../../../charts/chutes-monitoring/
+        src: "{{ role_path }}/../../../charts/chutes-monitoring/"
         dest: /tmp/chutes-monitoring/
         mode: preserve
       register: copy_charts_result

@@ -21,7 +21,7 @@
     - common
   handlers:
     - name: Global handlers
-      ansible.builtin.import_tasks: ../handlers/main.yml
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../handlers/main.yml"
   tasks:
     - name: Include common role
       ansible.builtin.include_role:
@@ -41,7 +41,7 @@
     - k3s
   handlers:
     - name: Global handlers
-      ansible.builtin.import_tasks: ../handlers/main.yml
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../handlers/main.yml"
   tasks:
     - name: Include k3s role
       ansible.builtin.include_role:
@@ -61,7 +61,7 @@
     - gpu
   handlers:
     - name: Global handlers
-      ansible.builtin.import_tasks: ../handlers/main.yml
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../handlers/main.yml"
   tasks:
     - name: Include gpu role
       ansible.builtin.include_role:
@@ -81,7 +81,7 @@
     - karmada
   handlers:
     - name: Global handlers
-      ansible.builtin.import_tasks: ../handlers/main.yml
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../handlers/main.yml"
   tasks:
     - name: Include karmada role
       ansible.builtin.include_role:

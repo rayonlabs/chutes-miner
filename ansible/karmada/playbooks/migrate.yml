@@ -29,7 +29,7 @@
             name: gepetto-code
             namespace: chutes
           data:
-            gepetto.py: "{{ lookup('file', '../tasks/migration/files/gepetto.py') }}"
+            gepetto.py: "{{ lookup('file', '{{ playbook_dir }}/../tasks/migration/files/gepetto.py') }}"
 
     - name: Ensure ansible directory exists
       ansible.builtin.file:
@@ -53,25 +53,25 @@
   tags:
     - migrate-prep
   vars_files:
-    - ../vars/migrate.yml
+    - "{{ playbook_dir }}/../vars/migrate.yml"
   tasks:
     - name: Verify chutes CLI
       ansible.builtin.include_tasks:
-        file: ../tasks/migration/verify-chutes-cli.yml
+        file: "{{ playbook_dir }}/../tasks/migration/verify-chutes-cli.yml"
         apply:
           tags: verify-cli
       tags: verify-cli
 
     - name: Verify chutes components are ready
       ansible.builtin.include_tasks:
-        file: ../tasks/migration/verify-chutes.yml
+        file: "{{ playbook_dir }}/../tasks/migration/verify-chutes.yml"
         apply:
           tags: verify-chutes
       tags: verify-chutes
 
     - name: Get node info for migration
       ansible.builtin.include_tasks:
-        file: ../tasks/migration/get-node-info.yml
+        file: "{{ playbook_dir }}/../tasks/migration/get-node-info.yml"
         apply:
           tags: get-node-info
       tags: get-node-info
@@ -98,11 +98,11 @@
   tags:
     - migrate-nodes
   vars_files:
-    - ../vars/migrate.yml
-    - ../vars/chutes_nodes.yml
+    - "{{ playbook_dir }}/../vars/migrate.yml"
+    - "{{ playbook_dir }}/../vars/chutes_nodes.yml"
   handlers:
     - name: Global handlers
-      ansible.builtin.import_tasks: ../handlers/main.yml
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../handlers/main.yml"
   tasks:
     - name: Ensure ansible directory exists
       ansible.builtin.file:
@@ -118,7 +118,7 @@
           register: removed_marker
 
         - name: Remove node from chutes
-          ansible.builtin.include_tasks: ../tasks/migration/remove-chutes-node.yml
+          ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/migration/remove-chutes-node.yml"
           when: not removed_marker.stat.exists
           tags: remove-node
 
@@ -137,7 +137,7 @@
           register: reset_marker
 
         - name: Reset System
-          ansible.builtin.include_tasks: ../tasks/migration/reset-system.yml
+          ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/migration/reset-system.yml"
           when: not reset_marker.stat.exists
           tags: reset-system
 
@@ -195,7 +195,7 @@
 
         - name: GPU Setup
           ansible.builtin.include_tasks:
-            file: ../roles/gpu/tasks/k3s-setup.yml
+            file: "{{ playbook_dir }}/../roles/gpu/tasks/k3s-setup.yml"
             apply:
               tags: gpu-setup
           when: not gpu_marker.stat.exists
@@ -234,7 +234,7 @@
           register: added_marker
 
         - name: Add node to chutes
-          ansible.builtin.include_tasks: ../tasks/migration/add-chutes-node.yml
+          ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/migration/add-chutes-node.yml"
           when: not added_marker.stat.exists
 
         - name: Mark node as added

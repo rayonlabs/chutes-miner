@@ -5,7 +5,7 @@
   tags: get-node-info
   block:
     - name: Verify CLI for node info
-      ansible.builtin.include_tasks: ./verify-chutes-cli.yml
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/migration/verify-chutes-cli.yml
 
 - name: Get node cost details
   when: inventory_hostname in groups['microk8s']
