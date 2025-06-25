@@ -44,4 +44,3 @@ ipv6_enabled: true
 
 # Chutes config
 validator: 5Dt7HZ7Zpw4DppPxFM7Ke3Cm7sDAWhsZXmM5ZAmE7dSVJbcQ
-miner_api_port: 32000
