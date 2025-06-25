@@ -388,3 +388,32 @@ You can add additional GPU nodes at any time by simply updating inventory.yaml a
 To expand your miner's inventory, you should bootstrap them with the ansible scripts, using the `site.yaml` playbook with the `add-nodes` tag.  This will ensure only the new node is configured, and the necessary monitoring/kubectl configuration is updated for the control plane.  Info for the ansible portions [here](/ansible/karmada/README.md#to-add-a-new-node-after-the-fact)
 
 Then, run the `chutes-miner add-node ...` command above.
+
+## 🔧 Cluster Management Utilities
+
+The playbook installs additional utilities to simplify multi-cluster operations:
+
+**ktx (Kube Context Switcher):**
+![Terminal Demo](./assets/gifs/ktx.gif)
+- Installed on control nodes from: `https://raw.githubusercontent.com/blendle/kns/master/bin/ktx`
+- Quickly switch between kubernetes contexts
+- Usage: `ktx` to list and select contexts interactively
+
+**kns (Kube Namespace Switcher):**
+![Terminal Demo](./assets/gifs/kns.gif)
+- Installed on all nodes from: `https://raw.githubusercontent.com/blendle/kns/master/bin/kns`
+- Quickly switch between kubernetes namespaces
+- Usage: `kns` to list and select namespaces interactively
+- Requires `fzf` (automatically installed)
+
+### Available Contexts After Migration
+
+```bash
+# List available contexts
+kubectl config get-contexts
+
+# Typical contexts available:
+# - chutes-miner-cpu-0 (control plane K3s cluster)
+# - karmada-apiserver (Karmada API server)
+# - chutes-miner-gpu-X (Chutes GPU cluster contexts)
+```
