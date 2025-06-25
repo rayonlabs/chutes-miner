@@ -45,17 +45,17 @@ all:
     control:
       hosts:
         chutes-miner-cpu-0:
-          ansible_host: 10.0.0.1
+          ansible_host: 192.0.2.1 # Public IP of the new control node for Karmada
     workers:
       hosts:
         chutes-miner-gpu-0:
-          ansible_host: 10.0.0.2
-        chutes-miner-gpu1:
-          ansible_host: 10.0.0.3
+          ansible_host: 192.0.2.2 # Public IP of miner node GPU 0
+        chutes-miner-gpu1: 
+          ansible_host: 192.0.2.3 # Public IP of miner node GPU 1
     microk8s:  # Existing MicroK8s control plane (chutes-miner-cpu-0) from your microk8s inventory
       hosts:
         chutes-miner-control-0: # Note the naming convention (cpu-0 -> control-0).
-          ansible_host: 10.0.0.2
+          ansible_host: 198.51.100.1
 ```
 **IMPORTANT: Note the naming convention for the microk8s group.  This ensures the name does not conflict with the new control host**
 
