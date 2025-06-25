@@ -141,6 +141,12 @@ The node migration is a serial process, meaning only one node at a time is migra
 5. **Karmada Join**: Registers node with Karmada control plane
 6. **Re-registration**: Adds node back to Chutes inventory
 
+### Phase 4: Cleanup
+
+1. Remove the microk8s group from the ansible inventory
+2. Clean up the old microk8s control node.
+3. Deploy the standard or your customized gepetto code to the new cluster once all nodes have been migrated over.  See the [docs](../../README.md#4-update-gepetto-with-your-optimized-strategy) for how to update the gepetto code config map.
+
 ### Complete Migration
 
 To ensure each phase is executed properly it is not recommended to run the entire migration playbook at once.  Run each section above to ensure the new control plane is properly set up.  Once the new control plan is verified run the preparation plays to ensure all GPU information is captured, gepetto is updated to avoid the reconciliation loop deleting all deployed chutes, and the CLI is accessible and functioning prior to node migration.  Finally you can run the node migration to move nodes from the old cluster to the new cluster.
