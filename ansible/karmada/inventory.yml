@@ -22,5 +22,5 @@ all:
 
     # Local kubectl setup
     setup_local_kubeconfig: false
-    controller_kubeconfig: ~/.kube/config
-    controller_kubectl_staging_dir: "{{ '~/.kube' | expanduser }}/chutes" # noqa var-naming[no-role-prefix]
+    controller_kubeconfig: ~/.kube/chutes.config
+    controller_kubectl_staging_dir: "{{ '~/.kube' | expanduser }}/chutes-staging" # noqa var-naming[no-role-prefix]
