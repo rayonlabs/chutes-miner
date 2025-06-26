@@ -131,7 +131,7 @@ It is very important to have as much RAM (or very close to it) per GPU as VRAM. 
 
 #### Important storage note!
 
-Some providers mount the primary storage in inconvient ways, e.g. latitude.sh when using raid 1 mounts the volume on `/home`, hyperstack mounts under `/ephemeral`, etc.  Before running the ansible scripts, be sure to login to your servers and check how the storage is allocated.  If you want storage space for huggingface cache, images, etc., you'll want to be sure as much as possible is allocated under `/var/snap`.
+Some providers mount the primary storage in inconvenient ways, e.g. latitude.sh when using raid 1 mounts the volume on `/home`, hyperstack mounts under `/ephemeral`, etc.  Before running the ansible scripts, be sure to login to your servers and check how the storage is allocated.  If you want storage space for huggingface cache, images, etc., you'll want to be sure as much as possible is allocated under `/var/snap`.
 You can do this with a simple bind mount, e.g. if the main storage is under `/home`, run:
 ```bash
 rsync -azv /var/snap/ /home/snap/
@@ -165,10 +165,10 @@ You'll need to setup a few things manually:
 
 ```bash
 # Create secret for the control plane context
-kubectl create secret docker-registry regcred --context chutes-miner-cpu-0 --docker-server=docker.io --docker-username=[repalce with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
+kubectl create secret docker-registry regcred --context chutes-miner-cpu-0 --docker-server=docker.io --docker-username=[replace with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
 
 # Create secret for the API server context
-kubectl create secret docker-registry regcred --context karmada-apiserver --docker-server=docker.io --docker-username=[repalce with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
+kubectl create secret docker-registry regcred --context karmada-apiserver --docker-server=docker.io --docker-username=[replace with your username] --docker-password=[replace with your access token] --docker-email=[replace with your email]
 ```
 - Create the miner credentials
   - You'll need to find the ss58Address and secretSeed from the hotkey file you'll be using for mining, e.g. `cat ~/.bittensor/wallets/default/hotkeys/hotkey`
@@ -296,7 +296,7 @@ Feel free to adjust redis/postgres/etc. as you wish, but probably not necessary.
 
 #### e. multiCluster
 
-This flag exists to allow backwards compatability with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
+This flag exists to allow backwards compatibility with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
 
 ### Chutes Miner GPU
 
@@ -304,7 +304,7 @@ The default values should be fine here.
 
 #### a. multiCluster
 
-This flag exists to allow backwards compatability with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
+This flag exists to allow backwards compatibility with the old microk8s setup.  If you have not migrated and need to update using the new charts set this flag to false in both the `chutes-miner` and `chutes-miner-gpu` charts.
 
 ### 4. Update gepetto with your optimized strategy
 
