@@ -86,8 +86,8 @@ all:
 
     # Local kubectl setup
     setup_local_kubeconfig: false # Set to true to setup kubeconfig on the ansible controller
-    controller_kubeconfig: ~/.kube/config # Path to the ansible controller kubeconfig file you want to use
-    controller_kubectl_staging_dir: "{{ '~/.kube' | expanduser }}/chutes" # noqa var-naming[no-role-prefix]
+    controller_kubeconfig: ~/.kube/chutes.config # Path to the ansible controller kubeconfig file you want to use
+    controller_kubectl_staging_dir: "{{ '~/.kube' | expanduser }}/chutes-staging" # noqa var-naming[no-role-prefix]
 
   hosts:
     # This would be the main node, which runs postgres, redis, gepetto, etc.

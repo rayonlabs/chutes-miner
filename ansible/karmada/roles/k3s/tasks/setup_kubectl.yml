@@ -95,7 +95,7 @@
         mode: u=rw,g=,o=
       loop: "{{ users }}"
 
-    - name: Change context name in kubeconfig for root
+    - name: Change context name in kubeconfig for {{ item }}
       ansible.builtin.replace:
         path: "~{{ item }}/.kube/config"
         regexp: ": default"
@@ -124,9 +124,9 @@
 
     - name: Configure default KUBECONFIG for {{ item }}
       ansible.builtin.lineinfile:
-        path: ~/.bashrc
-        regexp: export KUBECONFIG=~/.kube/config
-        line: "export KUBECONFIG=~/.kube/config # Added by k3s-ansible"
+        path: ~{{ item }}/.bashrc
+        regexp: export KUBECONFIG=~{{ item }}/.kube/config
+        line: "export KUBECONFIG=~{{ item }}/.kube/config # Added by k3s-ansible"
         state: present
       loop: "{{ users }}"
 
