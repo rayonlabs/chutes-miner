@@ -26,6 +26,7 @@ We've tried to automate the bulk of the process via ansible, helm/kubernetes, so
    - [Deploy the Miner within Your Kubernetes Cluster](#5-deploy-the-miner-within-your-kubernetes-cluster)
    - [Register](#6-register)
 - [Adding to your miner inventory](#-adding-servers)
+- [Cluster Management Utilities](#-cluster-management-utilities)
 - [Troubleshooting](#troubleshooting)
 
 ## ⛏️ TL;DR
