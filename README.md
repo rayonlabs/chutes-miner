@@ -26,6 +26,7 @@ We've tried to automate the bulk of the process via ansible, helm/kubernetes, so
    - [Deploy the Miner within Your Kubernetes Cluster](#5-deploy-the-miner-within-your-kubernetes-cluster)
    - [Register](#6-register)
 - [Adding to your miner inventory](#-adding-servers)
+- [Troubleshooting](#troubleshooting)
 
 ## ⛏️ TL;DR
 
@@ -417,3 +418,12 @@ kubectl config get-contexts
 # - karmada-apiserver (Karmada API server)
 # - chutes-miner-gpu-X (Chutes GPU cluster contexts)
 ```
+
+## Troubleshooting
+
+### Postgres
+
+
+| Issue | Symptoms | Solution |
+|-------|----------|----------|
+| **Authentication/Password** | Pods reporting authnetication failure to postgres | 1. The charts automatically check for an existing secret for the PG password.  If it does not exist it is created.<br>2. If you postgres was previously deployed on this node, or the secret was manually deleted clear the postgres data volume from the host at `/var/snap/postgres-data` |
