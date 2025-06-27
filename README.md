@@ -426,4 +426,4 @@ kubectl config get-contexts
 
 | Issue | Symptoms | Solution |
 |-------|----------|----------|
-| **Authentication/Password** | Pods reporting authnetication failure to postgres | 1. The charts automatically check for an existing secret for the PG password.  If it does not exist it is created.<br>2. If you postgres was previously deployed on this node, or the secret was manually deleted clear the postgres data volume from the host at `/var/snap/postgres-data` |
+| **Authentication/Password** | Pods reporting authnetication failure to postgres | 1. The charts automatically check for an existing secret for the PG password.  If it does not exist it is created.<br>2. If postgres was previously deployed on this node, or the secret was manually deleted clear the postgres data volume from the host at `/var/snap/postgres-data` |
