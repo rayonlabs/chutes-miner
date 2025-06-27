@@ -28,28 +28,21 @@
           changed_when:
             - csa_result.rc == 0
 
-        - name: Merge API Server kubeconfig for user
+        - name: Merge API Server kubeconfig for {{ item }}
           ansible.builtin.shell: |
             TFILE=$(mktemp)
-            mkdir -p /home/{{ ansible_user }}/.kube
-            touch /home/{{ ansible_user }}/.kube/config
-            KUBECONFIG={{ kubeconfig }}:/home/{{ ansible_user }}/.kube/config kubectl config view --flatten > ${TFILE}
-            mv ${TFILE} /home/{{ ansible_user }}/.kube/config
-            chown -R {{ ansible_user }}:{{ ansible_user }} /home/{{ ansible_user }}/.kube
+            mkdir -p ~{{ item }}/.kube
+            touch ~{{ item }}/.kube/config
+            KUBECONFIG={{ kubeconfig }}:~{{ item }}/.kube/config kubectl config view --flatten > ${TFILE}
+            mv ${TFILE} ~{{ item }}/.kube/config
+            chown -R {{ item }}:{{ item }} ~{{ item }}/.kube
           register: mv_result
           changed_when:
             - mv_result.rc == 0
-
-        - name: Merge API Server kubeconfig for root
-          ansible.builtin.shell: |
-            TFILE=$(mktemp)
-            mkdir -p ~/.kube
-            touch ~/.kube/config
-            KUBECONFIG={{ kubeconfig }}:~/.kube/config kubectl config view --flatten > ${TFILE}
-            mv ${TFILE} ~/.kube/config
-          register: mv_result
-          changed_when:
-            - mv_result.rc == 0
+          loop:
+          - "root"
+          - "{{ ansible_user }}"
+          - "{{ user }}"
 
 - name: Setup kubectl on ansible controller
   when:
