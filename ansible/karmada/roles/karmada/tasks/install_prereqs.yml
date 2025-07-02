@@ -14,6 +14,12 @@
 - name: Install kubectl-karmada
   when: kubectl_karmada_result.rc != 0
   block:
+
+    - name: Get system architecture
+      ansible.builtin.command: uname -m
+      register: arch_result
+      changed_when: false
+
     - name: Set architecture variable
       ansible.builtin.set_fact:
         karmada_arch: "{{ 'arm64' if 'arm64' in arch_result.stdout or 'aarch64' in arch_result.stdout else 'amd64' }}"
