@@ -93,3 +93,31 @@
     name: fzf
     state: present
   become: true
+
+- name: Setup aliases
+  tags: k8s-tools
+  vars:
+    users:
+      - "root"
+      - "{{ ansible_user }}"
+      - "{{ user }}"
+  block:
+    - name: Setup aliases for ansible user (bash)
+      ansible.builtin.lineinfile:
+        path: ~{{ item }}/.bashrc
+        line: "alias k='kubectl'"
+        state: present
+      register: bash_aliases
+      loop: "{{ users }}"
+
+    - name: Setup aliases for ansible user (zsh)
+      ansible.builtin.lineinfile:
+        path: ~{{ item }}/.zshrc
+        line: "alias k='kubectl'"
+        state: present
+      register: zsh_user_result
+      failed_when:
+        - zsh_user_result.failed is defined and zsh_user_result.failed
+        - not "No such file or directory" in zsh_user_result.msg
+      when: ansible_env.SHELL is search('zsh')
+      loop: "{{ users }}"
