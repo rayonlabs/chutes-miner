@@ -73,26 +73,48 @@
         gpu_setup: true
       when: "not skip_configuration | default(false)"
 
-- name: Setup Karmada Control Plane and Member Clusters
-  hosts: all
+- name: Setup Chutes Control Plane
+  hosts: control
   become: true
   tags:
     - add-nodes
-    - karmada
+    - chutes-miner
   handlers:
     - name: Global handlers
       ansible.builtin.import_tasks: "{{ playbook_dir }}/../handlers/main.yml"
   tasks:
-    - name: Include karmada role
+    - name: Setup Control Plane
       ansible.builtin.include_role:
-        name: karmada
+        name: chutes-miner
         apply:
-          tags: karmada
+          tags: chutes-miner
       when: "not skip_configuration | default(false)"
 
-    - name: Record karmada role completion
+    - name: Record chutes role completion
       ansible.builtin.set_fact:
-        karmada_setup: true
+        chutes_setup: true
+      when: "not skip_configuration | default(false)"
+
+- name: Setup Chutes Control Plane
+  hosts: workers
+  become: true
+  tags:
+    - add-nodes
+    - chutes-gpu
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../handlers/main.yml"
+  tasks:
+    - name: Setup GPU Node
+      ansible.builtin.include_role:
+        name: chutes-gpu
+        apply:
+          tags: chutes-gpu
+      when: "not skip_configuration | default(false)"
+
+    - name: Record chutes role completion
+      ansible.builtin.set_fact:
+        chutes_setup: true
       when: "not skip_configuration | default(false)"
 
 - name: Mark configuration as complete
@@ -116,6 +138,5 @@
       when:
         - common_setup | default(false)
         - k3s_setup | default(false)
-        - karmada_setup | default(false)
-        - inventory_hostname not in groups['workers'] or gpu_setup | default(false)
+        - chutes_setup | default(false)
         - not skip_configuration | default(false)

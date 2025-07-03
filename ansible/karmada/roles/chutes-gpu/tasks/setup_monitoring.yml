@@ -23,11 +23,10 @@
         dest: /tmp/monitoring-values.yaml
         mode: "0644"
 
-    - name: Install or upgrade Monitoring on Karmada API Server context
+    - name: Install or upgrade Monitoring
       ansible.builtin.command: >
         helm upgrade --install monitoring /tmp/chutes-monitoring
-        --kubeconfig={{ karmada_kubeconfig_temp_dir }}/karmada-apiserver
-        --namespace {{ karmada_monitoring_namespace }}
+        --namespace {{ monitoring_namespace }}
         --create-namespace
         -f /tmp/monitoring-values.yaml
       register: monitoring_deployment

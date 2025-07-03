@@ -1,12 +1,16 @@
 ---
-- name: Generate miner certificates and create kubeconfig in cluster
-  vars:
-    cert_name: miner
-    cert_organization: chutes
-    namespace: default  # Change this to your desired namespace
-    store_as: secret   # Options: 'secret' or 'configmap'
-    
+- name: Check if kubeconfig secret/configmap already exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: "{{ 'Secret' if store_as == 'secret' else 'ConfigMap' }}"
+    name: "{{ cert_name }}-kubeconfig"
+    namespace: "{{ namespace }}"
+  register: existing_kubeconfig
+
+- name: Generate miner certificates and create kubeconfig in cluster    
+  when: existing_kubeconfig.resources | length == 0
   block:
+
     - name: Create temporary directory for certificates
       tempfile:
         state: directory
@@ -45,18 +49,11 @@
         state: present
 
     - name: Approve certificate signing request
-      kubernetes.core.k8s:
-        api_version: certificates.k8s.io/v1
-        kind: CertificateSigningRequest
-        name: "{{ cert_name }}-csr"
-        state: present
-        definition:
-          status:
-            conditions:
-              - type: Approved
-                status: "True"
-                reason: "ApprovedByAnsible"
-                message: "Certificate approved by Ansible playbook"
+      shell:
+        cmd: |
+          set -o pipefail
+          kubectl certificate approve {{ cert_name }}-csr
+        executable: /bin/bash
 
     - name: Wait for certificate to be issued
       kubernetes.core.k8s_info:
@@ -179,3 +176,15 @@
           {% else %}
           kubectl get configmap {{ cert_name }}-kubeconfig -n {{ namespace }} -o jsonpath='{.data.kubeconfig}' > {{ cert_name }}-kubeconfig.yaml
           {% endif %}
+
+- name: Display skip message
+  debug:
+    msg: |
+      Kubeconfig {{ store_as }} '{{ cert_name }}-kubeconfig' already exists in namespace '{{ namespace }}'.
+      Skipping certificate generation.
+  when: existing_kubeconfig.resources | length > 0
+
+- name: Apply Miner RBAC configuration
+  kubernetes.core.k8s:
+    definition: "{{ lookup('file', 'files/miner.rbac.yml') }}"
+    state: present
