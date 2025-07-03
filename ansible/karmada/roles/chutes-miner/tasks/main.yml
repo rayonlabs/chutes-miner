@@ -1,0 +1,4 @@
+---
+- name: Setup monitoring
+  ansible.builtin.include_tasks: setup_monitoring.yml
+  tags: monitoring

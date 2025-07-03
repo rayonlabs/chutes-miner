@@ -2,7 +2,7 @@
 grafana:
   # Admin credentials
   adminUser: chutes
-  adminPassword: "{{ karmada_grafana_password }}"
+  adminPassword: "{{ grafana_password }}"
 
   service:
     type: NodePort
@@ -57,11 +57,7 @@ prometheus:
 
   scrapeConfigFiles:
     - /etc/prometheus/custom_scrape_configs/federation.yaml
-    - /etc/prometheus/custom_scrape_configs/karmada.yaml
-    
-  karmadaToken: "{{ api_server_token }}"
-  scrape:
-    scrapeKarmada: true
+
   federation:
     enabled: true
     scrapeInterval: '15s'

@@ -11,6 +11,10 @@
   ansible.builtin.include_tasks: setup_kubectl.yml
   tags: k3s-kubectl
 
+- name: Setup namespaces
+  ansible.builtin.include_tasks: setup_namespaces.yml
+  tags: namespaces
+
 - name: Add chutes labels to nodes
   kubernetes.core.k8s:
     state: present

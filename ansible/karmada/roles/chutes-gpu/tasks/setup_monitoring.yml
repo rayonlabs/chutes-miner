@@ -1,0 +1,48 @@
+---
+- name: Monitoring setup
+  tags: monitoring
+  block:
+    - name: Create temporary directory for monitoring charts
+      ansible.builtin.file:
+        path: /tmp/chutes-monitoring
+        state: directory
+        mode: "0755"
+
+    - name: Copy monitoring charts from local directory
+      ansible.builtin.copy:
+        src: "{{ role_path }}/../../../../charts/chutes-monitoring/"
+        dest: /tmp/chutes-monitoring/
+        mode: preserve
+      register: copy_charts_result
+      changed_when: copy_charts_result.changed
+
+    # Install monitoring on Karmada API Server context
+    - name: Generate Monitoring Helm values
+      ansible.builtin.template:
+        src: monitoring-values.yaml.j2
+        dest: /tmp/monitoring-values.yaml
+        mode: "0644"
+
+    - name: Install or upgrade Monitoring on Karmada API Server context
+      ansible.builtin.command: >
+        helm upgrade --install monitoring /tmp/chutes-monitoring
+        --kubeconfig={{ karmada_kubeconfig_temp_dir }}/karmada-apiserver
+        --namespace {{ karmada_monitoring_namespace }}
+        --create-namespace
+        -f /tmp/monitoring-values.yaml
+      register: monitoring_deployment
+      changed_when: monitoring_deployment.rc == 0
+
+    - name: Wait for Monitoring components to be ready on host
+      ansible.builtin.command: >
+        kubectl -n {{ monitoring_namespace }} wait --for=condition=Ready pod
+        --selector="app.kubernetes.io/component=server,app.kubernetes.io/name=prometheus" --timeout=30s
+      register: monitoring_wait
+      changed_when: false
+      retries: 5
+      delay: 30
+      until: monitoring_wait.rc == 0
+      when:
+        - monitoring_host_deployment is defined
+        - monitoring_host_deployment.rc is defined
+        - monitoring_host_deployment.rc == 0

@@ -1,5 +1,5 @@
 grafana:
-  deploy: false
+  deploy: true
 
 prometheus:
   fullnameOverride: prometheus
@@ -11,12 +11,7 @@ prometheus:
       nodePort: 30090
 
   networkPolicy:
-    enabled: true
-    allowedCIDRs:
-      - "{{ ansible_host }}/32"
+    enabled: false
   
   createSecret: true
-
-  propagationPolicies:
-    create: true
   
