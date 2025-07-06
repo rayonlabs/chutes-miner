@@ -1,13 +1,21 @@
 .PHONY: lint-local
 lint-local: ##@local Run all lint tools locally on all packages or specific TARGET_PROJECT
 lint-local:
-	@echo "Running lint for: $(TARGET_NAMES)"
-	@for target in $(TARGETS); do \
+	@echo "Running lint for: $(TARGET_NAMES)"; \
+	root_dir=$$(pwd); \
+	exit_code=0; \
+	for target in $(TARGETS); do \
 		pkg_name=$$(basename $$target); \
+		echo "--------------------------------------------------------"; \
 		echo "Running lint for $$pkg_name ($$target)"; \
-		ruff check; \
-		ruff format --check --line-length 100; \
-	done
+		echo "--------------------------------------------------------"; \
+		cd $$target; \
+		ruff check || exit_code=1; \
+		ruff format --check --line-length 100 || exit_code=1; \
+		cd $$root_dir; \
+	done; \
+	exit $$exit_code
+
 
 .PHONY: clean-imports
 clean-imports: ##@local Remove unused imports from all packages or specific TARGET_PROJECT

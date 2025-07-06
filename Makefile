@@ -32,12 +32,11 @@ else
 	TARGET_NAMES := $(PACKAGE_NAMES)
 endif
 
-# Create dynamic package-specific targets
+# Create dynamic package-specific targets, filtering out packages from goals
 $(foreach pkg,$(PACKAGE_NAMES),$(eval $(pkg): ; @$(MAKE) --no-print-directory TARGET_PROJECT=$(pkg) $(filter-out $(pkg),$(MAKECMDGOALS))))
 
 # Prevent Make from trying to build package names as files
 .PHONY: $(PACKAGE_NAMES)
-
 
 .DEFAULT_GOAL := help
 
