@@ -209,7 +209,9 @@ async def test_get_deployment(mock_k8s_app_client):
     mock_k8s_app_client.read_namespaced_deployment.return_value = deployment
 
     # Setup extract_deployment_info mock
-    with patch("chutes_miner.api.k8s.operator.K8sOperator._extract_deployment_info") as mock_extract:
+    with patch(
+        "chutes_miner.api.k8s.operator.K8sOperator._extract_deployment_info"
+    ) as mock_extract:
         mock_extract.return_value = {"name": "test-deployment"}
 
         # Call the function
@@ -238,7 +240,9 @@ async def test_get_deployed_chutes(mock_k8s_app_client):
     mock_k8s_app_client.list_namespaced_deployment.return_value = deployment_list
 
     # Setup extract_deployment_info mock
-    with patch("chutes_miner.api.k8s.operator.K8sOperator._extract_deployment_info") as mock_extract:
+    with patch(
+        "chutes_miner.api.k8s.operator.K8sOperator._extract_deployment_info"
+    ) as mock_extract:
         mock_extract.side_effect = [
             {"name": "chute-1", "chute_id": "id1"},
             {"name": "chute-2", "chute_id": "id2"},
@@ -454,7 +458,9 @@ async def test_deploy_chute_success(
     # mock_session.execute.return_value.unique.return_value.scalar_one_or_none.return_value = mock_deployment_db
 
     # Call the function
-    with patch("chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
+    with patch(
+        "chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id
+    ):
         result, created_deployment, created_service = await k8s.deploy_chute(
             sample_chute, sample_server
         )

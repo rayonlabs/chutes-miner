@@ -1451,8 +1451,10 @@ async def main():
     gepetto = Gepetto()
     await gepetto.run()
 
+
 def run():
     asyncio.run(main())
+
 
 if __name__ == "__main__":
     run()

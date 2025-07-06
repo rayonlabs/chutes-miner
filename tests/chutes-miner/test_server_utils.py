@@ -84,11 +84,15 @@ async def test_successful_gpu_gathering(mock_node, mock_deployment, mock_service
     mock_session = AsyncMock()
     mock_gpu_instances = [Mock(spec=GPU) for _ in range(2)]
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util._fetch_devices", return_value=mock_devices
-    ) as mock_fetch, patch("chutes_miner.api.server.util.get_session") as mock_get_session, patch(
-        "chutes_miner.api.server.util.GPU"
-    ) as mock_gpu_class, patch("chutes_miner.api.server.util.settings") as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch(
+            "chutes_miner.api.server.util._fetch_devices", return_value=mock_devices
+        ) as mock_fetch,
+        patch("chutes_miner.api.server.util.get_session") as mock_get_session,
+        patch("chutes_miner.api.server.util.GPU") as mock_gpu_class,
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         # Setup mocks
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.return_value = iter([mock_watch_event])
@@ -150,9 +154,10 @@ async def test_deployment_failure_condition(mock_node, mock_deployment, mock_ser
     mock_watch_event = Mock()
     mock_watch_event.object = mock_failed_deployment
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util.settings"
-    ) as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.return_value = iter([mock_watch_event])
 
@@ -179,9 +184,11 @@ async def test_deployment_timeout(mock_node, mock_deployment, mock_service):
     mock_watch_event = Mock()
     mock_watch_event.object = mock_not_ready_deployment
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util.settings"
-    ) as mock_settings, patch("time.time", side_effect=[0, 65]):  # Simulate timeout
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+        patch("time.time", side_effect=[0, 65]),
+    ):  # Simulate timeout
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.return_value = iter([mock_watch_event])
 
@@ -200,9 +207,10 @@ async def test_deployment_timeout(mock_node, mock_deployment, mock_service):
 @pytest.mark.asyncio
 async def test_watch_stream_exception(mock_node, mock_deployment, mock_service):
     """Test handling of exceptions during deployment watching"""
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util.settings"
-    ) as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.side_effect = Exception("Connection error")
 
@@ -232,9 +240,14 @@ async def test_device_fetch_failure(mock_node, mock_deployment, mock_service):
     mock_watch_event = Mock()
     mock_watch_event.object = mock_ready_deployment
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util._fetch_devices", side_effect=Exception("Connection failed")
-    ), patch("chutes_miner.api.server.util.settings") as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch(
+            "chutes_miner.api.server.util._fetch_devices",
+            side_effect=Exception("Connection failed"),
+        ),
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.return_value = iter([mock_watch_event])
 
@@ -266,9 +279,11 @@ async def test_gpu_count_mismatch(mock_node, mock_deployment, mock_service):
     # Return only 1 device when 2 are expected
     mock_devices = [{"uuid": "GPU-12345", "name": "RTX 4090"}]
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util._fetch_devices", return_value=mock_devices
-    ), patch("chutes_miner.api.server.util.settings") as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch("chutes_miner.api.server.util._fetch_devices", return_value=mock_devices),
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.return_value = iter([mock_watch_event])
 
@@ -303,9 +318,14 @@ async def test_no_node_port_in_service(mock_node, mock_deployment):
     mock_watch_event = Mock()
     mock_watch_event.object = mock_ready_deployment
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util._fetch_devices", side_effect=Exception("Connection failed")
-    ), patch("chutes_miner.api.server.util.settings") as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch(
+            "chutes_miner.api.server.util._fetch_devices",
+            side_effect=Exception("Connection failed"),
+        ),
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.watch_deployments.return_value = iter([mock_watch_event])
 
@@ -342,11 +362,13 @@ async def test_default_namespace_fallback(
     mock_watch_event.object = mock_ready_deployment
     mock_session = AsyncMock()
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util._fetch_devices", return_value=mock_devices
-    ), patch("chutes_miner.api.server.util.get_session") as mock_get_session, patch(
-        "chutes_miner.api.server.util.GPU"
-    ) as mock_gpu_class, patch("chutes_miner.api.server.util.settings") as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch("chutes_miner.api.server.util._fetch_devices", return_value=mock_devices),
+        patch("chutes_miner.api.server.util.get_session") as mock_get_session,
+        patch("chutes_miner.api.server.util.GPU") as mock_gpu_class,
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.return_value = iter([mock_watch_event])
         mock_get_session.return_value.__aenter__.return_value = mock_session
@@ -388,11 +410,12 @@ async def test_zero_gpu_count(mock_deployment, mock_service):
     mock_watch_event.object = mock_ready_deployment
     mock_session = AsyncMock()
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util._fetch_devices", return_value=[]
-    ), patch("chutes_miner.api.server.util.get_session") as mock_get_session, patch(
-        "chutes_miner.api.server.util.settings"
-    ) as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch("chutes_miner.api.server.util._fetch_devices", return_value=[]),
+        patch("chutes_miner.api.server.util.get_session") as mock_get_session,
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.return_value = iter([mock_watch_event])
         mock_get_session.return_value.__aenter__.return_value = mock_session
@@ -424,11 +447,13 @@ async def test_database_commit_failure(mock_node, mock_deployment, mock_service,
     mock_session = AsyncMock()
     mock_session.commit.side_effect = Exception("Database error")
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util._fetch_devices", return_value=mock_devices
-    ), patch("chutes_miner.api.server.util.get_session") as mock_get_session, patch(
-        "chutes_miner.api.server.util.GPU"
-    ) as mock_gpu_class, patch("chutes_miner.api.server.util.settings") as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch("chutes_miner.api.server.util._fetch_devices", return_value=mock_devices),
+        patch("chutes_miner.api.server.util.get_session") as mock_get_session,
+        patch("chutes_miner.api.server.util.GPU") as mock_gpu_class,
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.return_value = iter([mock_watch_event])
         mock_get_session.return_value.__aenter__.return_value = mock_session
@@ -465,9 +490,14 @@ async def test_missing_external_ip_label(mock_deployment, mock_service):
     mock_watch_event = Mock()
     mock_watch_event.object = mock_ready_deployment
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util._fetch_devices", side_effect=Exception("Connection failed")
-    ), patch("chutes_miner.api.server.util.settings") as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch(
+            "chutes_miner.api.server.util._fetch_devices",
+            side_effect=Exception("Connection failed"),
+        ),
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.watch_deployments.return_value = iter([mock_watch_event])
 
@@ -494,9 +524,11 @@ async def test_empty_devices_response(mock_node, mock_deployment, mock_service):
     mock_watch_event = Mock()
     mock_watch_event.object = mock_ready_deployment
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util._fetch_devices", return_value=None
-    ), patch("chutes_miner.api.server.util.settings") as mock_settings:
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch("chutes_miner.api.server.util._fetch_devices", return_value=None),
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+    ):
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.return_value.watch_deployments.return_value = iter([mock_watch_event])
 
@@ -524,9 +556,11 @@ async def test_deployment_never_becomes_ready(mock_node, mock_deployment, mock_s
 
     mock_watch_event = {"object": mock_not_ready_deployment}
 
-    with patch("chutes_miner.api.server.util.K8sOperator") as mock_operator, patch(
-        "chutes_miner.api.server.util.settings"
-    ) as mock_settings, patch("time.time", return_value=0):  # No timeout, just stream ends
+    with (
+        patch("chutes_miner.api.server.util.K8sOperator") as mock_operator,
+        patch("chutes_miner.api.server.util.settings") as mock_settings,
+        patch("time.time", return_value=0),
+    ):  # No timeout, just stream ends
         mock_settings.graval_bootstrap_timeout = 60
         mock_operator.watch_deployments.return_value = iter([mock_watch_event])
 
