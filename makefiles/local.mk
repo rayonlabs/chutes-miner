@@ -26,7 +26,6 @@ reformat:
 		echo "--------------------------------------------------------"; \
 		echo "Running reformat for $$pkg_name ($$target)"; \
 		echo "--------------------------------------------------------"; \
-		echo "Reformatting $$pkg_name ($$target)"; \
 		cd $$target; \
 		ruff format --line-length 100; \
 		cd $$root_dir; \
