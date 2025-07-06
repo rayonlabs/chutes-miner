@@ -240,8 +240,10 @@ async def main():
     # Upload.
     await upload(report_data, block)
 
+
 def run():
     asyncio.run(main())
+
 
 if __name__ == "__main__":
     run()

@@ -16,23 +16,20 @@ lint-local:
 	done; \
 	exit $$exit_code
 
-
-.PHONY: clean-imports
-clean-imports: ##@local Remove unused imports from all packages or specific TARGET_PROJECT
-clean-imports:
-	@echo "Cleaning imports for: $(TARGET_NAMES)"
-	@for target in $(TARGETS); do \
-		echo "Cleaning imports for $$target"; \
-		autoflake --in-place --remove-all-unused-imports --recursive $$target tests; \
-	done
-
 .PHONY: reformat
 reformat: ##@local Reformat all packages or specific TARGET_PROJECT
-reformat: clean-imports
-	@echo "Reformatting: $(TARGET_NAMES)"
-	@for target in $(TARGETS); do \
+reformat:
+	@echo "Reformatting: $(TARGET_NAMES)"; \
+	root_dir=$$(pwd); \
+	for target in $(TARGETS); do \
+		pkg_name=$$(basename $$target); \
+		echo "--------------------------------------------------------"; \
+		echo "Running reformat for $$pkg_name ($$target)"; \
+		echo "--------------------------------------------------------"; \
 		echo "Reformatting $$pkg_name ($$target)"; \
-		ruff format --check --line-length 100; \
+		cd $$target; \
+		ruff format --line-length 100; \
+		cd $$root_dir; \
 	done
 
 .PHONY: test-local

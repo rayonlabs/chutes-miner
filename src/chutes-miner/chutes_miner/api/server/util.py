@@ -489,15 +489,15 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
                 f"failed to advertising node to {validator.hotkey} via {validator.api}: {exc}",
             )
             raise
-        assert (
-            len(set(node["seed"] for node in validator_nodes)) == 1
-        ), f"more than one seed produced from {validator.hotkey}!"
+        assert len(set(node["seed"] for node in validator_nodes)) == 1, (
+            f"more than one seed produced from {validator.hotkey}!"
+        )
         if not seed:
             seed = validator_nodes[0]["seed"]
         else:
-            assert (
-                seed == validator_nodes[0]["seed"]
-            ), f"validators produced differing seeds {seed} vs {validator_nodes[0]['seed']}"
+            assert seed == validator_nodes[0]["seed"], (
+                f"validators produced differing seeds {seed} vs {validator_nodes[0]['seed']}"
+            )
         yield sse_message(
             f"successfully advertised node {node_object.metadata.uid} to validator {validator.hotkey}, received seed: {seed}"
         )

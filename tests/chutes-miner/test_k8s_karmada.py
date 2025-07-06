@@ -643,7 +643,9 @@ async def test_deploy_chute_success(
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
     # Call the function
-    with patch("chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
+    with patch(
+        "chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id
+    ):
         result, created_deployment, created_service = await k8s.deploy_chute(
             sample_chute, sample_server
         )
@@ -785,7 +787,9 @@ async def test_deploy_graval_success(
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
     # Call the function
-    with patch("chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id):
+    with patch(
+        "chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id
+    ):
         created_deployment, created_service = await K8sOperator().deploy_graval(
             mock_node, mock_deployment, mock_service
         )
