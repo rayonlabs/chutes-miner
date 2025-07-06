@@ -7,11 +7,16 @@ tag:
 	echo "Tagging images for: $$image_names"; \
 	for image_dir in $$images; do \
 		pkg_name=$$(basename $$image_dir); \
-		pkg_version=$$(if [ -f "$$pkg_name/VERSION" ]; then head "$$pkg_name/VERSION" | grep -Eo "\d+.\d+.\d+"; else echo "0.0.0"; fi); \
+		if [ -f "src/$$pkg_name/VERSION" ]; then \
+			pkg_version=$$(head "src/$$pkg_name/VERSION"); \
+		elif [ -f "$$image_dir/VERSION" ]; then \
+			pkg_version=$$(head "$$image_dir/VERSION"); \
+		fi; \
 		if [ -f "docker/$$pkg_name/image.conf" ]; then \
 			echo "Tagging $$pkg_name (version: $$pkg_version)"; \
-			registry=$$(cat docker/$$pkg_name/image.conf); \
-			docker tag $$pkg_name:$$pkg_version $$registry:k3s; \
+			registry=$$(cat $$image_dir/image.conf); \
+			echo "docker tag $$pkg_name:$$pkg_version $$registry:$$pkg_version"; \
+			docker tag $$pkg_name:$$pkg_version $$registry:$$pkg_version; \
 		else \
 			echo "Skipping $$pkg_name: docker/$$pkg_name/image.conf not found"; \
 		fi; \
@@ -33,7 +38,7 @@ images:
 	echo "Building images for: $$image_names"; \
 	for image_dir in $$filtered_images; do \
 		pkg_name=$$(basename $$image_dir); \
-		pkg_version=$$(if [ -f "$$pkg_name/VERSION" ]; then head "$$pkg_name/VERSION" | grep -Eo "\d+.\d+.\d+"; else echo "0.0.0"; fi); \
+		pkg_version=$$(if [ -f "$$image_dir/VERSION" ]; then head "$$image_dir/VERSION"; else echo "dev"; fi); \
 		if [ -f "$$image_dir/Dockerfile" ]; then \
 			echo "Building images for $$pkg_name (version: $$pkg_version)"; \
 			DOCKER_BUILDKIT=1 docker build --progress=plain --target production \
