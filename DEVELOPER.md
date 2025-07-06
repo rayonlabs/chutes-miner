@@ -79,17 +79,34 @@ make build
 make build chutes-miner
 ```
 
-### Building Docker Images
+### Managing Docker Images
+
+#### Building Docker Images 
 
 Build development and production Docker images:
 
 ```bash
-# Build all packages
+# Build images for all packages
 make build
 
 # Build specific package
 make build chutes-miner
 ```
+
+Some images such as `cache-cleaner` do not contain source code. Standalone images are managed with a separate command.
+```bash
+# Build images for all packages
+make images
+```
+
+#### Tagging Docker Images
+
+Images are build locally using package names.  To tag images for docker hub:
+```bash
+make tag
+```
+
+This will tag images according to the registry in their respective `docker/<component>/image.conf` file and use the version from the package.
 
 ## Development Workflow
 

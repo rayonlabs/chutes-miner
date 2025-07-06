@@ -19,7 +19,7 @@ build:
 	@echo "Building images for: $(TARGET_NAMES)"
 	@for target in $(TARGETS); do \
 		pkg_name=$$(basename $$target); \
-		pkg_version=$$(if [ -f "$$target/VERSION" ]; then head "$$target/VERSION" | grep -Eo "\d+.\d+.\d+"; else echo "0.0.0"; fi); \
+		pkg_version=$$(if [ -f "$$target/VERSION" ]; then head $$target/VERSION; else echo "dev"; fi); \
 		if [ -d "docker/$$pkg_name" ]; then \
 			if [ -f "docker/$$pkg_name/Dockerfile" ]; then \
 				echo "Building images for $$pkg_name (version: $$pkg_version)"; \
