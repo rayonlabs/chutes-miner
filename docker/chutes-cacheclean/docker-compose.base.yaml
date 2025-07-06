@@ -1,0 +1,9 @@
+services:
+  base:
+    image: ${PROJECT}_development:${BRANCH_NAME}-${BUILD_NUMBER}
+    env_file:
+      - local.env
+
+networks:
+  base:
+    name: $${PROJECT}-$${BRANCH_NAME:local}-$${BUILD_NUMBER:0}

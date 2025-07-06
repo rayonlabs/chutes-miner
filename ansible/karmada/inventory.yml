@@ -4,23 +4,24 @@ all:
   children:
     control:
       hosts:
-        chutes-miner-control0:
-          ansible_host: 10.0.0.1
+        chutes-miner-cpu-0:
+          ansible_host: 54.236.213.177
     workers:
       hosts:
-        chutes-miner-gpu0:
-          ansible_host: 10.0.0.2
-        chutes-miner-gpu1:
-          ansible_host: 10.0.0.3
+        chutes-miner-gpu-0:
+          ansible_host: 13.222.129.29
   vars:
+    # ansible_user: shadeform
+    # ansible_ssh_private_key_file: ~/.ssh/shadeform.pem
     ansible_user: ubuntu
-    ansible_ssh_private_key_file: ~/.ssh/your_key.pem
+    ansible_ssh_private_key_file: ~/.ssh/ec2.pem
     ssh_keys:
-      - "ssh-rsa AAAAB3N... user@domain.com"
+      - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDQzuY35vbmwR97Ew3i6rnh4s1tGnNY8rg0V1Catis1gvfu+fSf5kZwCkb28AM39JeroUyVVekFq6MsSykvb2B8yz3OlUFaOer9NMm+62/5Rrd6ATNaZtBUtJ/Kf070YUWEAL9DNYQLNUF9zO5/BKFDrrWBJE8FoBltKKQ+4uw1itZ40+qrAm1uFsU8F20YN5o3GTfGwOud6ObHNEKpRy0MBrrqK1BBQVrWryBl+YLprtjSZ5TuiwVvZeYithX8jwlOlZy0uYueS8FesrbFMOZr05A08+9zRuKq0QVzLg+XF+IU804ntFjG+yCERczvK1geadKOrMxjTjg8wvtrSUx0ACimo4GkYGK9DGHop1pgVnylUe5F7fUiAlnhHLLHAPJBl44DX//e9FUeb6AkzbvzUPMnoXRQbgQThbetYg5wlImsPr9lmfKN2Ufg25EHFInTK0FNZzdp7f/KbJRJuDR6cfO6irBYbQEv+sC+yJG+2UQDIrIKdj+vMvE+erKVjVa80/eu7h8qyiCV+YXO+bgdpnV1DHCGCAvndaMnbvgnUwYIgMpRa8EQfcpY1VIhJmoo3RcjA1qzJFNLvwf2U8ht/ClafbeNn/SunFegqoSgHjt7CKTPJN8hv4feBjrD+jVC8v7Rs3UH7jsUUHnGBM4rY6nv5l33++RYXAO9AEXOiQ==
+        kyle@chutes.ai"
     # The username you want to use to login to those machines (and your public key will be added to).
-    user: billybob
+    user: kyle
 
     # Local kubectl setup
-    setup_local_kubeconfig: false
+    setup_local_kubeconfig: true
     controller_kubeconfig: ~/.kube/chutes.config
     controller_kubectl_staging_dir: "{{ '~/.kube' | expanduser }}/chutes-staging" # noqa var-naming[no-role-prefix]

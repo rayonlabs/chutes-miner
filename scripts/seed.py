@@ -26,11 +26,11 @@ validators_json = {
 }
 os.environ["VALIDATORS"] = json.dumps(validators_json)
 
-from api.database import Base  # noqa
-from api.chute.schemas import Chute  # noqa
-from api.deployment.schemas import Deployment  # noqa
-from api.gpu.schemas import GPU  # noqa
-from api.server.schemas import Server  # noqa
+from chutes_miner.api.database import Base  # noqa
+from chutes_miner.api.chute.schemas import Chute  # noqa
+from chutes_miner.api.deployment.schemas import Deployment  # noqa
+from chutes_miner.api.gpu.schemas import GPU  # noqa
+from chutes_miner.api.server.schemas import Server  # noqa
 
 
 def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_server=2):

@@ -1,0 +1,38 @@
+[tool.poetry]
+name = "chutes-miner-cli"
+version = "0.0.14"
+description = "Chutes miner CLI"
+readme = "README.md"
+license = "MIT"
+authors = [ "Jon Durbin <jon@jondurbin.com>" ]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.10",
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+loguru = "^0.7.3"
+pydantic = ">2.9,<3"
+setuptools = ">80.0"
+substrate-interface = "^1.7.11"
+py-bip39-bindings = "^0.1.11"
+rich = ">13.0.0"
+typer = "^0.14.0"
+aiohttp = {extras = ["speedups"], version = ">3.10,<4"}
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.12.2"
+wheel = "^0.45.1"
+
+[tool.poetry.urls]
+Homepage = "https://github.com/rayonlabs/chutes-miner/tree/main/cli"
+
+[tool.poetry.scripts]
+chutes-miner = "chutes_miner.cli:app"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

@@ -23,7 +23,7 @@ validators:
       socket: wss://ws.chutes.ai
 
 minerApi:
-  image: parachutes/miner:karmada
+  image: parachutes/miner:
   imagePullPolicy: Always
   resources:
     requests:
