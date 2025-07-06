@@ -1,0 +1,17 @@
+[project]
+name = "chutes-common"
+version = "0.1.0"
+description = "Common library for Chutes Miner"
+authors = [
+    {name = "Kyle Widmann",email = "kyle.widmann@gmail.com"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

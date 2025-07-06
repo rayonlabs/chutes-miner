@@ -5,7 +5,7 @@ import pytest
 @pytest.fixture
 def mock_db_session():
     # Create a list of paths where k8s_core_client is imported
-    import_paths = ["api.k8s.operator.get_session"]
+    import_paths = ["chutes_miner.api.k8s.operator.get_session"]
 
     # Create a specific __aexit__ function that returns False only when an exception is raised
     async def mock_aexit(self, exc_type, exc_val, exc_tb):

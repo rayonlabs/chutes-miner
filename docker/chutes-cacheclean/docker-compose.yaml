@@ -1,0 +1,23 @@
+services:
+
+  shell:
+    volumes:
+    - "../:/app"
+    stdin_open: true
+    tty: true
+    extends:
+      file: docker-compose.base.yaml
+      service: base
+    entrypoint: ["bash"]
+
+  test:
+    extends:
+      file: docker-compose.base.yaml
+      service: base
+    entrypoint: ["/app/scripts/test.sh"]
+
+  lint:
+    extends:
+      file: docker-compose.base.yaml
+      service: base
+    entrypoint: ["/app/scripts/lint.sh"]
