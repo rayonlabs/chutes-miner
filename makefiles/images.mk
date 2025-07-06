@@ -7,19 +7,22 @@ tag:
 	echo "Tagging images for: $$image_names"; \
 	for image_dir in $$images; do \
 		pkg_name=$$(basename $$image_dir); \
+		echo "--------------------------------------------------------"; \
+		echo "Tagging $$pkg_name (version: $$pkg_version)"; \
+		echo "--------------------------------------------------------"; \
 		if [ -f "src/$$pkg_name/VERSION" ]; then \
 			pkg_version=$$(head "src/$$pkg_name/VERSION"); \
 		elif [ -f "$$image_dir/VERSION" ]; then \
 			pkg_version=$$(head "$$image_dir/VERSION"); \
 		fi; \
 		if [ -f "docker/$$pkg_name/image.conf" ]; then \
-			echo "Tagging $$pkg_name (version: $$pkg_version)"; \
 			registry=$$(cat $$image_dir/image.conf); \
 			echo "docker tag $$pkg_name:$$pkg_version $$registry:$$pkg_version"; \
 			docker tag $$pkg_name:$$pkg_version $$registry:$$pkg_version; \
 		else \
 			echo "Skipping $$pkg_name: docker/$$pkg_name/image.conf not found"; \
 		fi; \
+		echo ; \
 	done
 
 .PHONY: images
