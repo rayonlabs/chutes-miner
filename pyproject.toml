@@ -1,0 +1,25 @@
+[project]
+name = "chutes-miner-repo"
+version = "0.1.0"
+description = "Chutes Miner monorepo"
+authors = [
+    {name = "Kyle Widmann",email = "kyle.widmann@gmail.com"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.12,<4.0"
+
+[tool.poetry.dependencies]
+chutes-miner = {path = "src/chutes-miner", develop = true}
+chutes-miner-cli = {path = "src/chutes-miner-cli", develop = true}
+chutes-miner-gpu = {path = "src/chutes-miner-gpu", develop = true}
+graval-bootstrap = {path = "src/graval-bootstrap", develop = true}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+pytest-asyncio = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
