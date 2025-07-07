@@ -782,13 +782,13 @@ name = "chutes-miner-gpu"
 version = "0.1.0"
 description = "Chutes components for GPU worker nodes"
 optional = false
-python-versions = ">=3.12"
+python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = []
 develop = true
 
 [package.dependencies]
-chutes-common = {path = "../chutes-common"}
+chutes-common = {path = "../chutes-common", develop = true}
 fastapi = "^0.115.4"
 pydantic-settings = "^2.10.1"
 

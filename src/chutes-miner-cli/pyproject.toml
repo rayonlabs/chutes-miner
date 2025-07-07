@@ -35,5 +35,5 @@ Homepage = "https://github.com/rayonlabs/chutes-miner/tree/main/cli"
 chutes-miner = "chutes_miner_cli.cli:app"
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
