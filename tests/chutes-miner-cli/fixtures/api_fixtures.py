@@ -4,7 +4,6 @@ import pytest
 
 from constants import CHUTE_ID, CHUTE_NAME, GPU_COUNT, SERVER_ID, SERVER_NAME
 
-
 @pytest.fixture
 def mock_purge_deployments_response():
     """Mock response from the API."""
@@ -45,13 +44,3 @@ def mock_purge_deployment_response():
         }
     )
     return mock_resp
-
-
-@pytest.fixture
-def mock_authorize():
-    """Mock authorize dependency."""
-
-    async def _authorize(*args, **kwargs):
-        return None
-
-    return _authorize

@@ -15,4 +15,4 @@ test:
 		else \
 			echo "Skipping $$pkg_name: docker/$$pkg_name directory not found"; \
 		fi; \
-	donemka
+	done
