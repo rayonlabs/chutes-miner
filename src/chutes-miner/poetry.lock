@@ -636,10 +636,17 @@ name = "chutes-common"
 version = "0.1.0"
 description = "Common library for Chutes Miner"
 optional = false
-python-versions = ">=3.12"
+python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = []
-develop = false
+develop = true
+
+[package.dependencies]
+fastapi = "^0.115.4"
+loguru = "^0.7.3"
+orjson = "^3.10.18"
+pydantic-settings = "^2.10.1"
+substrate-interface = "^1.7.11"
 
 [package.source]
 type = "directory"
@@ -4300,14 +4307,14 @@ typing-extensions = ">=3.7.4.3"
 
 [[package]]
 name = "typing-extensions"
-version = "4.14.0"
+version = "4.14.1"
 description = "Backported and Experimental Type Hints for Python 3.9+"
 optional = false
 python-versions = ">=3.9"
 groups = ["main", "dev"]
 files = [
-    {file = "typing_extensions-4.14.0-py3-none-any.whl", hash = "sha256:a1514509136dd0b477638fc68d6a91497af5076466ad0fa6c338e44e359944af"},
-    {file = "typing_extensions-4.14.0.tar.gz", hash = "sha256:8676b788e32f02ab42d9e7c61324048ae4c6d844a399eebace3d4979d75ceef4"},
+    {file = "typing_extensions-4.14.1-py3-none-any.whl", hash = "sha256:d1e1e3b58374dc93031d6eda2420a48ea44a36c2b4766a4fdeb3710755731d76"},
+    {file = "typing_extensions-4.14.1.tar.gz", hash = "sha256:38b39f4aeeab64884ce9f74c94263ef78f3c22467c8724005483154c26648d36"},
 ]
 markers = {dev = "python_version == \"3.12\""}
 
@@ -4750,4 +4757,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "5e08b2b15761f418cdca1d25c32665e7d9930b69194a659ea9b655da7f527999"
+content-hash = "61094d3616501ab9edcb13a1f3808ff88ca106a5d20d75b56463b9b09de4efc8"

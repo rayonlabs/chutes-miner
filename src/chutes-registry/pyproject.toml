@@ -6,10 +6,11 @@ authors = [
     {name = "Kyle Widmann",email = "kyle.widmann@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<4.0"
 
 [tool.poetry.dependencies]
-chutes-common = {path = "../chutes-common"}
+chutes-common = {path = "../chutes-common", develop = true}
+fastapi = "^0.115.4"
 
 
 [build-system]

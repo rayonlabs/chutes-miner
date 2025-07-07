@@ -7,12 +7,18 @@ authors = [
 ]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<4.0"
 
 [tool.poetry.dependencies]
-chutes-common = {path = "../chutes-common"}
 fastapi = "^0.115.4"
+pydantic-settings = "^2.10.1"
+chutes-common = {path = "../chutes-common", develop = true}
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+pytest-asyncio = "^1.0.0"
+pytest-cov = "^6.2.1"
+httpx = "^0.28.1"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
