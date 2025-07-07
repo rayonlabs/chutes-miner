@@ -190,8 +190,9 @@ Tests are organized by package:
 
 ```
 tests/
-├── chutes-cacheclean/
+├── chutes-common/
 ├── chutes-miner/
+├── chutes-miner-cli/
 ├── chutes-miner-gpu/
 ├── chutes-registry/
 └── graval-bootstrap/
