@@ -8,8 +8,10 @@ authors = [
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-]
+
+[tool.poetry.dependencies]
+chutes-common = {path = "../chutes-common"}
+fastapi = "^0.115.4"
 
 
 [build-system]
