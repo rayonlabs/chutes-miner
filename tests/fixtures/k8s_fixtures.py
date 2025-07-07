@@ -3,9 +3,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from api.chute.schemas import Chute
-from api.gpu.schemas import GPU
-from api.server.schemas import Server
+from chutes_miner.api.chute.schemas import Chute
+from chutes_miner.api.gpu.schemas import GPU
+from chutes_miner.api.server.schemas import Server
 
 from kubernetes.client import ApiClient
 import uuid
@@ -18,7 +18,7 @@ from dateutil.tz import tzutc
 @pytest.fixture(autouse=True)
 def mock_k8s_core_client():
     # Create a list of paths where k8s_core_client is imported
-    import_paths = ["api.k8s.operator.k8s_core_client"]
+    import_paths = ["chutes_miner.api.k8s.operator.k8s_core_client"]
 
     # Create a single mock object
     mock_client = MagicMock()
@@ -41,7 +41,7 @@ def mock_k8s_core_client():
 
 @pytest.fixture(autouse=True)
 def mock_k8s_app_client():
-    import_paths = ["api.k8s.operator.k8s_app_client"]
+    import_paths = ["chutes_miner.api.k8s.operator.k8s_app_client"]
 
     # Create a single mock object
     mock_client = MagicMock()
@@ -64,7 +64,7 @@ def mock_k8s_app_client():
 
 @pytest.fixture(autouse=True)
 def mock_k8s_api_client():
-    import_paths = ["api.k8s.operator.k8s_api_client"]
+    import_paths = ["chutes_miner.api.k8s.operator.k8s_api_client"]
 
     # Create a single mock object
     client = ApiClient()
@@ -88,7 +88,7 @@ def mock_k8s_api_client():
 
 @pytest.fixture(autouse=True)
 def mock_k8s_custom_objects_client():
-    import_paths = ["api.k8s.operator.k8s_custom_objects_client"]
+    import_paths = ["chutes_miner.api.k8s.operator.k8s_custom_objects_client"]
 
     # Create a single mock object
     client = MagicMock()
@@ -145,7 +145,7 @@ def sample_chute():
 
 @pytest.fixture
 def mock_watch():
-    with patch("api.k8s.operator.watch.Watch") as mock_watch:
+    with patch("chutes_miner.api.k8s.operator.watch.Watch") as mock_watch:
         watch_instance = MagicMock()
         mock_watch.return_value = watch_instance
         yield watch_instance

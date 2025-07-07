@@ -268,7 +268,7 @@ class Gepetto:
                         await self.activate(deployment)
                 await asyncio.sleep(5)
             except Exception as exc:
-                logger.error(f"Error performing announcement loop: {exc}\n{traceback.format_exc()}")
+                logger.error(f"Error performing announcement loop: {exc}")
                 await asyncio.sleep(5)
 
     async def _autoscale(self):
@@ -422,7 +422,6 @@ class Gepetto:
         """
         Delete a deployment.
         """
-
         logger.info(f"Removing all traces of deployment: {deployment_id}")
 
         # Clean up the database.
@@ -1175,7 +1174,6 @@ class Gepetto:
         """
         Put our local system back in harmony with the validators.
         """
-
         try:
             await self.remote_refresh_all()
         except Exception as exc:
@@ -1200,7 +1198,7 @@ class Gepetto:
         k8s_chutes = await k8s.get_deployed_chutes()
         k8s_chute_ids = {c["deployment_id"] for c in k8s_chutes}
         async with get_session() as session:
-            # # Clean up based on deployments/instances.
+            # Clean up based on deployments/instances.
             async for row in (await session.stream(select(Deployment))).unique():
                 deployment = row[0]
                 if deployment.instance_id and deployment.instance_id not in (
@@ -1215,36 +1213,36 @@ class Gepetto:
                         )
                     )
 
-                #     remote = (self.remote_chutes.get(deployment.validator) or {}).get(
-                #         deployment.chute_id
-                #     )
-                #     if not remote or remote["version"] != deployment.version:
-                #         update = updating.get(deployment.validator, {}).get(deployment.chute_id)
-                #         if update:
-                #             logger.warning(f"Skipping reconciliation for chute with rolling {update=}")
-                #             all_deployments.add(deployment.deployment_id)
-                #             if deployment.instance_id:
-                #                 all_instances.add(deployment.instance_id)
-                #             continue
-                #         logger.warning(
-                #             f"Chute: {deployment.chute_id} version={deployment.version} on validator {deployment.validator} not found"
-                #         )
-                #         identifier = (
-                #             f"{deployment.validator}:{deployment.chute_id}:{deployment.version}"
-                #         )
-                #         if identifier not in chutes_to_remove:
-                #             chutes_to_remove.add(identifier)
-                #             tasks.append(
-                #                 asyncio.create_task(
-                #                     self.chute_deleted(
-                #                         {
-                #                             "chute_id": deployment.chute_id,
-                #                             "version": deployment.version,
-                #                             "validator": deployment.validator,
-                #                         }
-                #                     )
-                #                 )
-                #             )
+                remote = (self.remote_chutes.get(deployment.validator) or {}).get(
+                    deployment.chute_id
+                )
+                if not remote or remote["version"] != deployment.version:
+                    update = updating.get(deployment.validator, {}).get(deployment.chute_id)
+                    if update:
+                        logger.warning(f"Skipping reconciliation for chute with rolling {update=}")
+                        all_deployments.add(deployment.deployment_id)
+                        if deployment.instance_id:
+                            all_instances.add(deployment.instance_id)
+                        continue
+                    logger.warning(
+                        f"Chute: {deployment.chute_id} version={deployment.version} on validator {deployment.validator} not found"
+                    )
+                    identifier = (
+                        f"{deployment.validator}:{deployment.chute_id}:{deployment.version}"
+                    )
+                    if identifier not in chutes_to_remove:
+                        chutes_to_remove.add(identifier)
+                        tasks.append(
+                            asyncio.create_task(
+                                self.chute_deleted(
+                                    {
+                                        "chute_id": deployment.chute_id,
+                                        "version": deployment.version,
+                                        "validator": deployment.validator,
+                                    }
+                                )
+                            )
+                        )
 
                 # Delete any deployments from the DB that either never made it past the stub stage or that aren't in k8s anymore.
                 if not deployment.stub and deployment.deployment_id not in k8s_chute_ids:
@@ -1312,17 +1310,17 @@ class Gepetto:
                     all_instances.add(deployment.instance_id)
             await session.commit()
 
-            # # Purge validator instances not deployed locally.
-            # for validator, instances in self.remote_instances.items():
-            #     if (vali := validator_by_hotkey(validator)) is None:
-            #         continue
-            #     for instance_id, data in instances.items():
-            #         if instance_id not in all_instances:
-            #             chute_id = data["chute_id"]
-            #             logger.warning(
-            #                 f"Found validator {chute_id=} {instance_id=} not deployed locally!"
-            #             )
-            #             await self.purge_validator_instance(vali, chute_id, instance_id)
+            # Purge validator instances not deployed locally.
+            for validator, instances in self.remote_instances.items():
+                if (vali := validator_by_hotkey(validator)) is None:
+                    continue
+                for instance_id, data in instances.items():
+                    if instance_id not in all_instances:
+                        chute_id = data["chute_id"]
+                        logger.warning(
+                            f"Found validator {chute_id=} {instance_id=} not deployed locally!"
+                        )
+                        await self.purge_validator_instance(vali, chute_id, instance_id)
 
             # Purge k8s deployments that aren't tracked anymore.
             for deployment_id in k8s_chute_ids - all_deployments:
@@ -1454,5 +1452,9 @@ async def main():
     await gepetto.run()
 
 
-if __name__ == "__main__":
+def run():
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    run()

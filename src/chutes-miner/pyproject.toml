@@ -1,0 +1,43 @@
+[tool.poetry]
+name = "chutes-miner"
+version = "0.0.1"
+description = "chutes.ai miner API"
+authors = ["Jon Durbin <jon@jondurbin.com>", "namoray <namoray@rayonlabs.ai>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+aiohttp = "^3.10.10"
+backoff = "^2.2.1"
+requests = "^2.32.3"
+loguru = "^0.7.3"
+fastapi = "^0.115.4"
+uvicorn = "^0.32.0"
+SQLAlchemy = "^2.0.36"
+pydantic-settings = "^2.6.0"
+asyncpg = "^0.30.0"
+setuptools = ">80.0"
+substrate-interface = "^1.7.11"
+py-bip39-bindings = "^0.1.11"
+python-socketio = {extras = ["asyncio-client"], version = "^5.11.4"}
+orjson = "^3.10.11"
+redis = "^5.2.0"
+kubernetes = "^31.0.0"
+prometheus-api-client = "^0.5.5"
+typer = "^0.14.0"
+click = ">8.1.0,<8.2.0"
+chutes-common = {path = "../chutes-common"}
+httpx = "^0.28.1"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.12.2"
+pytest = "^8.3.3"
+pytest-cov = "^6.0.0"
+ansible-lint = "^25.4.0"
+yamllint = "^1.37.1"
+pytest-asyncio = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -26,11 +26,11 @@ validators_json = {
 }
 os.environ["VALIDATORS"] = json.dumps(validators_json)
 
-from api.database import Base  # noqa
-from api.chute.schemas import Chute  # noqa
-from api.deployment.schemas import Deployment  # noqa
-from api.gpu.schemas import GPU  # noqa
-from api.server.schemas import Server  # noqa
+from chutes_miner.api.database import Base  # noqa
+from chutes_miner.api.chute.schemas import Chute  # noqa
+from chutes_miner.api.deployment.schemas import Deployment  # noqa
+from chutes_miner.api.gpu.schemas import GPU  # noqa
+from chutes_miner.api.server.schemas import Server  # noqa
 
 
 def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_server=2):
@@ -48,11 +48,11 @@ def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_serve
 
         chute = Chute(
             chute_id=chute_id,
-            validator=f"validator-{i+1}",
-            name=f"test-chute-{i+1}",
-            image=f"docker-registry.example.com/chutes/chute-{i+1}:latest",
-            code=f"github.com/example/chute-{i+1}",
-            filename=f"main_{i+1}.py",
+            validator=f"validator-{i + 1}",
+            name=f"test-chute-{i + 1}",
+            image=f"docker-registry.example.com/chutes/chute-{i + 1}:latest",
+            code=f"github.com/example/chute-{i + 1}",
+            filename=f"main_{i + 1}.py",
             ref_str=f"ref-{uuid.uuid4().hex[:8]}",
             version=f"1.{random.randint(0, 9)}.{random.randint(0, 99)}",
             supported_gpus=supported_gpus,
@@ -69,16 +69,16 @@ def create_test_data(session, num_servers=3, num_chutes=2, deployments_per_serve
     for i in range(num_servers):
         gpu_count = random.randint(2, 8)
         server_id = f"server-{uuid.uuid4()}"
-        validator_name = f"validator-{i+1}"
+        validator_name = f"validator-{i + 1}"
 
         server = Server(
             server_id=server_id,
             validator=validator_name,
-            name=f"test-server-{i+1}",
-            ip_address=f"192.168.1.{10+i}",
+            name=f"test-server-{i + 1}",
+            ip_address=f"192.168.1.{10 + i}",
             verification_port=random.randint(8000, 9000),
             status=random.choice(["active", "maintenance", "offline"]),
-            labels={"environment": "test", "region": "us-west", "tier": f"tier-{i+1}"},
+            labels={"environment": "test", "region": "us-west", "tier": f"tier-{i + 1}"},
             seed=random.randint(1000, 9999),
             gpu_count=gpu_count,
             cpu_per_gpu=random.randint(4, 16),

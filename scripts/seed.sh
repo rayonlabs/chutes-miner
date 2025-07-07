@@ -5,4 +5,4 @@ until psql -c 'SELECT 1' > /dev/null 2>&1; do
   sleep 2;
 done
 echo 'Database is ready, running seed script...'
-poetry run python /app/scripts/seed.py
+python /app/scripts/seed.py
