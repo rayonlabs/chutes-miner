@@ -26,6 +26,7 @@ redis = "^5.2.0"
 kubernetes = "^31.0.0"
 prometheus-api-client = "^0.5.5"
 typer = "^0.14.0"
+click = ">8.1.0,<8.2.0"
 chutes-common = {path = "../chutes-common"}
 httpx = "^0.28.1"
 
