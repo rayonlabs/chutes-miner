@@ -5,11 +5,13 @@ from pydantic import BaseModel
 from substrateinterface import Keypair
 from pydantic_settings import BaseSettings
 
+
 class Validator(BaseModel):
     hotkey: str
     registry: str
     api: str
     socket: str
+
 
 class Settings(BaseSettings):
     _validators: List[Validator] = []
