@@ -102,7 +102,7 @@ make images
 
 #### Tagging Docker Images
 
-Images are build locally using package names.  To tag images for docker hub:
+Images are built locally using package names.  To tag images for docker hub:
 ```bash
 make tag
 ```
