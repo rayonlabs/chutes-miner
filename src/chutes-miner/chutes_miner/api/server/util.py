@@ -30,7 +30,8 @@ from sqlalchemy import update, select
 from sqlalchemy.exc import IntegrityError
 from typing import Tuple, Dict, List
 from chutes_common.auth import sign_request
-from chutes_miner.api.config import settings, Validator, validator_by_hotkey
+from chutes_common.settings import Validator
+from chutes_miner.api.config import settings, validator_by_hotkey
 from chutes_miner.api.k8s.constants import GRAVAL_DEPLOY_PREFIX, GRAVAL_SVC_PREFIX
 from chutes_miner.api.k8s.operator import K8sOperator
 from chutes_miner.api.util import sse_message

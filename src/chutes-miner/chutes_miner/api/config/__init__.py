@@ -7,19 +7,10 @@ import json
 from loguru import logger
 import redis.asyncio as redis
 from functools import lru_cache
-from typing import Any, List
-from pydantic import BaseModel
-from substrateinterface import Keypair
-from pydantic_settings import BaseSettings
+from typing import Any
 from kubernetes import client
 from kubernetes.config import load_kube_config, load_incluster_config
-
-
-class Validator(BaseModel):
-    hotkey: str
-    registry: str
-    api: str
-    socket: str
+from chutes_common.settings import Settings as CommonSettings
 
 
 def create_kubernetes_client(cls: Any = client.CoreV1Api, karmada_api: bool = False):
@@ -75,8 +66,7 @@ def validator_by_hotkey(hotkey: str):
     return None
 
 
-class Settings(BaseSettings):
-    _validators: List[Validator] = []
+class Settings(CommonSettings):
     sqlalchemy: str = os.getenv(
         "POSTGRESQL", "postgresql+asyncpg://user:password@127.0.0.1:5432/chutes"
     )
@@ -93,9 +83,6 @@ class Settings(BaseSettings):
     )
     nvidia_runtime: str = os.getenv("NVIDIA_RUNTIME", "nvidia")
     graval_bootstrap_timeout: int = int(os.getenv("GRAVAL_BOOTSTRAP_TIMEOUT", "900"))
-    miner_ss58: str = os.environ["MINER_SS58"]
-    miner_keypair: Keypair = Keypair.create_from_seed(os.environ["MINER_SEED"])
-    validators_json: str = os.environ["VALIDATORS"]
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
     registry_proxy_port: int = int(os.getenv("REGISTRY_PROXY_PORT", "30500"))
     monitoring_namespace: str = os.getenv("MONITORING_NAMESPACE", "chutes")
@@ -106,14 +93,6 @@ class Settings(BaseSettings):
     cache_overrides: dict = json.loads(os.getenv("CACHE_OVERRIDES", "{}")) or {}
 
     migrations_dir: str = os.getenv("MIGRATIONS_DIR", "api/migrations")
-
-    @property
-    def validators(self) -> List[Validator]:
-        if self._validators:
-            return self._validators
-        data = json.loads(self.validators_json)
-        self._validators = [Validator(**item) for item in data["supported"]]
-        return self._validators
 
 
 settings = Settings()
