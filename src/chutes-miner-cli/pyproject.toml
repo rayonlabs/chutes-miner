@@ -21,6 +21,7 @@ substrate-interface = "^1.7.11"
 py-bip39-bindings = "^0.1.11"
 rich = ">13.0.0"
 typer = "^0.14.0"
+click = ">8.1.0,<8.2.0"
 aiohttp = {extras = ["speedups"], version = ">3.10,<4"}
 
 [tool.poetry.group.dev.dependencies]
@@ -31,7 +32,7 @@ wheel = "^0.45.1"
 Homepage = "https://github.com/rayonlabs/chutes-miner/tree/main/cli"
 
 [tool.poetry.scripts]
-chutes-miner = "chutes_miner.cli:app"
+chutes-miner = "chutes_miner_cli.cli:app"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

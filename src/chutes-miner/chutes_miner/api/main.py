@@ -31,7 +31,7 @@ async def lifespan(_: FastAPI):
         "--url",
         settings.sqlalchemy.replace("+asyncpg", "") + "?sslmode=disable",
         "--migrations-dir",
-        "api/migrations",
+        settings.migrations_dir,
         "migrate",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
