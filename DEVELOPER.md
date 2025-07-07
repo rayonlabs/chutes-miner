@@ -8,8 +8,9 @@ This is a monorepo containing multiple all the packages for mining on Chutes.
 
 ```
 src/
-├── chutes-cacheclean/
+├── chutes-common/
 ├── chutes-miner/
+├── chutes-miner-cli/
 ├── chutes-miner-gpu/
 ├── chutes-registry/
 └── graval-bootstrap/
