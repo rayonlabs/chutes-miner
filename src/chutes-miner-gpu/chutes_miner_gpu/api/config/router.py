@@ -10,17 +10,20 @@ router = APIRouter()
 
 settings = Settings()
 
-async def get_kubeconfig_from_secret(secret_name: str = "miner-credentials", namespace: str = "default") -> str:
+
+async def get_kubeconfig_from_secret(
+    secret_name: str = "miner-credentials", namespace: str = "default"
+) -> str:
     """
     Retrieve kubeconfig from a Kubernetes secret.
-    
+
     Args:
         secret_name (str): Name of the secret containing kubeconfig
         namespace (str): Namespace where the secret is located
-        
+
     Returns:
         str: Decoded kubeconfig content
-        
+
     Raises:
         HTTPException: Various HTTP exceptions based on the error type
     """
@@ -33,51 +36,39 @@ async def get_kubeconfig_from_secret(secret_name: str = "miner-credentials", nam
                 config.load_kube_config()
             except config.ConfigException:
                 raise HTTPException(
-                    status_code=500,
-                    detail="Unable to load Kubernetes configuration"
+                    status_code=500, detail="Unable to load Kubernetes configuration"
                 )
-        
+
         # Create API client
         v1 = client.CoreV1Api()
-        
+
         # Get the secret
-        secret = v1.read_namespaced_secret(
-            name=secret_name,
-            namespace=namespace
-        )
-        
+        secret = v1.read_namespaced_secret(name=secret_name, namespace=namespace)
+
         # Extract and decode the kubeconfig
-        if 'kubeconfig' not in secret.data:
+        if "kubeconfig" not in secret.data:
             raise HTTPException(
-                status_code=500,
-                detail=f"Secret {secret_name} does not contain 'kubeconfig' key"
+                status_code=500, detail=f"Secret {secret_name} does not contain 'kubeconfig' key"
             )
-        
-        kubeconfig_b64 = secret.data['kubeconfig']
-        kubeconfig_content = base64.b64decode(kubeconfig_b64).decode('utf-8')
+
+        kubeconfig_b64 = secret.data["kubeconfig"]
+        kubeconfig_content = base64.b64decode(kubeconfig_b64).decode("utf-8")
         return kubeconfig_content
-            
+
     except ApiException as e:
         if e.status == 404:
             raise HTTPException(
-                status_code=404,
-                detail=f"Secret {secret_name} not found in namespace {namespace}"
+                status_code=404, detail=f"Secret {secret_name} not found in namespace {namespace}"
             )
         elif e.status == 403:
             raise HTTPException(
                 status_code=403,
-                detail=f"Permission denied accessing secret {secret_name} in namespace {namespace}"
+                detail=f"Permission denied accessing secret {secret_name} in namespace {namespace}",
             )
         else:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error retrieving secret: {e.reason}"
-            )
+            raise HTTPException(status_code=500, detail=f"Error retrieving secret: {e.reason}")
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error loading kubeconfig: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error loading kubeconfig: {str(e)}")
 
 
 @router.get("/kubeconfig")
@@ -90,8 +81,7 @@ async def get_miner_kubeconfig(
     try:
         # Get kubeconfig from the miner-credentials secret in default namespace
         kubeconfig_content = await get_kubeconfig_from_secret(
-            secret_name="miner-credentials",
-            namespace="default"
+            secret_name="miner-credentials", namespace="default"
         )
 
         return {"kubeconfig": kubeconfig_content}
@@ -102,6 +92,5 @@ async def get_miner_kubeconfig(
     except Exception as e:
         # Catch any unexpected errors
         raise HTTPException(
-            status_code=500,
-            detail=f"Unexpected error retrieving kubeconfig: {str(e)}"
+            status_code=500, detail=f"Unexpected error retrieving kubeconfig: {str(e)}"
         )
