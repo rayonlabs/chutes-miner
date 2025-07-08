@@ -13,6 +13,7 @@ requires-python = ">=3.12,<4.0"
 fastapi = "^0.115.4"
 pydantic-settings = "^2.10.1"
 chutes-common = {path = "../chutes-common", develop = true}
+kubernetes = "^33.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"

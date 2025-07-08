@@ -1,4 +1,6 @@
-from pathlib import Path
+import base64
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 from chutes_common.auth import authorize
 from chutes_miner_gpu.api.settings import Settings
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,41 +10,98 @@ router = APIRouter()
 
 settings = Settings()
 
+async def get_kubeconfig_from_secret(secret_name: str = "miner-credentials", namespace: str = "default") -> str:
+    """
+    Retrieve kubeconfig from a Kubernetes secret.
+    
+    Args:
+        secret_name (str): Name of the secret containing kubeconfig
+        namespace (str): Namespace where the secret is located
+        
+    Returns:
+        str: Decoded kubeconfig content
+        
+    Raises:
+        HTTPException: Various HTTP exceptions based on the error type
+    """
+    try:
+        # Load the current cluster config (assumes running in-cluster or with valid kubeconfig)
+        try:
+            config.load_incluster_config()
+        except config.ConfigException:
+            try:
+                config.load_kube_config()
+            except config.ConfigException:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Unable to load Kubernetes configuration"
+                )
+        
+        # Create API client
+        v1 = client.CoreV1Api()
+        
+        # Get the secret
+        secret = v1.read_namespaced_secret(
+            name=secret_name,
+            namespace=namespace
+        )
+        
+        # Extract and decode the kubeconfig
+        if 'kubeconfig' not in secret.data:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Secret {secret_name} does not contain 'kubeconfig' key"
+            )
+        
+        kubeconfig_b64 = secret.data['kubeconfig']
+        kubeconfig_content = base64.b64decode(kubeconfig_b64).decode('utf-8')
+        return kubeconfig_content
+            
+    except ApiException as e:
+        if e.status == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Secret {secret_name} not found in namespace {namespace}"
+            )
+        elif e.status == 403:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission denied accessing secret {secret_name} in namespace {namespace}"
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error retrieving secret: {e.reason}"
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error loading kubeconfig: {str(e)}"
+        )
+
 
 @router.get("/kubeconfig")
 async def get_miner_kubeconfig(
     _: None = Depends(authorize(allow_validator=True, purpose="management")),
 ):
     """
-    Get the kubeconfig for the miner role
+    Get the kubeconfig for the miner role from Kubernetes secret
     """
     try:
-        kubeconfig_path = Path(settings.miner_kube_config)
-
-        if not kubeconfig_path.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Kubeconfig file not found at {kubeconfig_path}"
-            )
-
-        if not kubeconfig_path.is_file():
-            raise HTTPException(status_code=400, detail=f"Path {kubeconfig_path} is not a file")
-
-        # Read the kubeconfig file contents
-        with open(kubeconfig_path, "r", encoding="utf-8") as file:
-            kubeconfig_content = file.read()
+        # Get kubeconfig from the miner-credentials secret in default namespace
+        kubeconfig_content = await get_kubeconfig_from_secret(
+            secret_name="miner-credentials",
+            namespace="default"
+        )
 
         return {"kubeconfig": kubeconfig_content}
 
     except HTTPException:
+        # Re-raise HTTPExceptions as-is
         raise
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=404, detail=f"Kubeconfig file not found at {settings.miner_kube_config}"
-        )
-    except PermissionError:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Permission denied reading kubeconfig file at {settings.miner_kube_config}",
-        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading kubeconfig file: {str(e)}")
+        # Catch any unexpected errors
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error retrieving kubeconfig: {str(e)}"
+        )
