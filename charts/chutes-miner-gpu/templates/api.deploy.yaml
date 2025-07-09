@@ -23,7 +23,7 @@ spec:
       labels:
         {{- include "api.labels" . | nindent 8 }}
     spec:
-      serviceAccountName: chutes
+      serviceAccountName: api
       {{- with .Values.api.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
