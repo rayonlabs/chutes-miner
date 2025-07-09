@@ -29,10 +29,12 @@ ENV PATH=$PATH:/home/chutes/.local/bin
 
 WORKDIR /app
 
-COPY --chown=chutes:chutes /src/chutes-common /app/chutes-common
-COPY --chown=chutes:chutes ${PROJECT_DIR}/pyproject.toml ${PROJECT_DIR}/poetry.lock ./${PROJECT}/
 RUN python -m venv .venv
-RUN . .venv/bin/activate && poetry install --without dev --no-root -P ${PROJECT}
+COPY --chown=chutes:chutes /src/chutes-common /app/chutes-common
+COPY --chown=chutes:chutes ${PROJECT_DIR}/pyproject.toml ${PROJECT_DIR}/poetry.lock ${PROJECT_DIR}/README.md  ./${PROJECT}/
+RUN . .venv/bin/activate && poetry install --only main --no-root -P ${PROJECT}
+COPY --chown=chutes:chutes ${PROJECT_DIR}/ ./${PROJECT}/
+RUN . .venv/bin/activate && poetry install --only main -P ${PROJECT}
 
 # Miner/API
 FROM base AS production
@@ -47,10 +49,9 @@ ENV APP_GROUP=chutes
 USER ${APP_USER}
 WORKDIR /app
 
-COPY --from=build /app/.venv ./.venv
-COPY --chown=chutes:chutes ${PROJECT_DIR}/ ./${PROJECT}/
+COPY --from=build /app /app
 
-ENTRYPOINT ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "--reload", "chutes_miner_gpu.api.main:app"]
+ENTRYPOINT ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "chutes_miner_gpu.api.main:app"]
 
 FROM build AS development
 

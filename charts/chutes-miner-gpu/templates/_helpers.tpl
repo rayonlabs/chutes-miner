@@ -18,7 +18,7 @@ chutes/chute: "true"
 node-bootstrap: "true"
 {{- end }}
 
-{{- define "minerApi.labels" -}}
+{{- define "api.labels" -}}
 app.kubernetes.io/name: api
 postgres-access: "true"
 redis-access: "true"

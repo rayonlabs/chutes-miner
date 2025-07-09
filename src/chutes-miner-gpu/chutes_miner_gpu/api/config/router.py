@@ -4,6 +4,7 @@ from kubernetes.client.rest import ApiException
 from chutes_common.auth import authorize
 from chutes_miner_gpu.api.settings import Settings
 from fastapi import APIRouter, Depends, HTTPException
+from loguru import logger
 
 
 router = APIRouter()
@@ -12,7 +13,7 @@ settings = Settings()
 
 
 async def get_kubeconfig_from_secret(
-    secret_name: str = "miner-credentials", namespace: str = "default"
+    secret_name: str = "miner-kubeconfig", namespace: str = "default"
 ) -> str:
     """
     Retrieve kubeconfig from a Kubernetes secret.
@@ -33,6 +34,7 @@ async def get_kubeconfig_from_secret(
             config.load_incluster_config()
         except config.ConfigException:
             try:
+                logger.warning("Falling back to kubeconfig")
                 config.load_kube_config()
             except config.ConfigException:
                 raise HTTPException(
@@ -73,7 +75,7 @@ async def get_kubeconfig_from_secret(
 
 @router.get("/kubeconfig")
 async def get_miner_kubeconfig(
-    _: None = Depends(authorize(allow_validator=True, purpose="management")),
+    _: None = Depends(authorize(allow_miner=True, purpose="registration")),
 ):
     """
     Get the kubeconfig for the miner role from Kubernetes secret
@@ -81,7 +83,7 @@ async def get_miner_kubeconfig(
     try:
         # Get kubeconfig from the miner-credentials secret in default namespace
         kubeconfig_content = await get_kubeconfig_from_secret(
-            secret_name="miner-credentials", namespace="default"
+            secret_name="miner-kubeconfig", namespace="default"
         )
 
         return {"kubeconfig": kubeconfig_content}

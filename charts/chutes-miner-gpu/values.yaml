@@ -52,6 +52,24 @@ auth:
     port: 8080
     targetPort: 8000
 
+api:
+  image: parachutes/chutes-miner-gpu:0.1.0
+  imagePullPolicy: Always
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+  service:
+    type: NodePort
+    nodePort: 32001
+    port: 8000
+    targetPort: 8000
+  nodeSelector: {}
+  affinity: {}
+
 failedChuteCleanup:
   image: bitnami/kubectl:latest
   nodeSelector:

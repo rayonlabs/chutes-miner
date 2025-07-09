@@ -13,5 +13,5 @@
   vars:
     cert_name: miner
     cert_organization: chutes
-    namespace: default  # Change this to your desired namespace
+    namespace: chutes  # Change this to your desired namespace
     store_as: secret   # Options: 'secret' or 'configmap'

@@ -14,6 +14,10 @@ fastapi = "^0.115.4"
 pydantic-settings = "^2.10.1"
 chutes-common = {path = "../chutes-common", develop = true}
 kubernetes = "^33.1.0"
+uvicorn = "^0.32.0"
+py-bip39-bindings = "^0.1.11"
+click = ">8.1.0,<8.2.0"
+loguru = "^0.7.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
