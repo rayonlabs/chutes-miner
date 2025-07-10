@@ -806,6 +806,34 @@ type = "directory"
 url = "src/chutes-miner-cli"
 
 [[package]]
+name = "chutes-monitor"
+version = "0.1.0"
+description = "Package to monitor chutes in member clusters"
+optional = false
+python-versions = ">=3.12,<4.0"
+groups = ["main"]
+files = []
+develop = true
+
+[package.dependencies]
+aiohttp = ">3.10.10,<4.0.0"
+chutes-common = {path = "../chutes-common", develop = true}
+click = ">8.1.0,<8.2.0"
+fastapi = "^0.115.4"
+kubernetes = "^31.0.0"
+kubernetes-asyncio = ">31.0.0,<32.0.0"
+loguru = "^0.7.3"
+py-bip39-bindings = "^0.1.11"
+pydantic = ">2.3,<3.0"
+pydantic-settings = "^2.10.1"
+tenacity = "^9.1.2"
+uvicorn = "^0.32.0"
+
+[package.source]
+type = "directory"
+url = "src/chutes-monitor"
+
+[[package]]
 name = "click"
 version = "8.1.8"
 description = "Composable command line interface toolkit"
@@ -4372,4 +4400,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "d79788b04274007dbceb3829a50081b77e7addc5572998f7e6ac7c33d53277b6"
+content-hash = "7ed49d6e3f3801110a40ac42bc8527b609e73765198d0b3204c62a6a7927b692"
