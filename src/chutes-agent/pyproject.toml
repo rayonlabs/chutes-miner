@@ -1,27 +1,31 @@
 [project]
-name = "chutes-miner-gpu"
+name = "chutes-agent"
 version = "0.1.0"
-description = "Chutes components for GPU worker nodes"
+description = "Agent to monitor chutes in Chutes clusters"
 authors = [
     {name = "Kyle Widmann",email = "kyle.widmann@gmail.com"}
 ]
-license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
 
 [tool.poetry.dependencies]
 fastapi = "^0.115.4"
 pydantic-settings = "^2.10.1"
-chutes-common = {path = "../chutes-common", develop = true}
-kubernetes = "^33.1.0"
 uvicorn = "^0.32.0"
 py-bip39-bindings = "^0.1.11"
 click = ">8.1.0,<8.2.0"
 loguru = "^0.7.3"
+chutes-common = {path = "../chutes-common", develop = true}
+kubernetes-asyncio = ">31.0.0,<32.0.0"
+tenacity = "^9.1.2"
+pydantic = ">2.3,<3.0"
+aiohttp = ">3.10.10,<4.0.0"
+kubernetes = "^31.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
 pytest-asyncio = "^1.0.0"
+pytest-mock = "^3.14.1"
 pytest-cov = "^6.2.1"
 httpx = "^0.28.1"
 

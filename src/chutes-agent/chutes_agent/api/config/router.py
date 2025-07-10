@@ -2,14 +2,11 @@ import base64
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from chutes_common.auth import authorize
-from chutes_miner_gpu.api.settings import Settings
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 
 router = APIRouter()
-
-settings = Settings()
 
 
 async def get_kubeconfig_from_secret(

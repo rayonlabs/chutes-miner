@@ -11,9 +11,9 @@ requires-python = ">=3.12,<4.0"
 
 [tool.poetry.dependencies]
 chutes-miner = {path = "src/chutes-miner", develop = true}
-chutes-miner-gpu = {path = "src/chutes-miner-gpu", develop = true}
 graval-bootstrap = {path = "src/graval-bootstrap", develop = true}
 chutes-miner-cli = {path = "src/chutes-miner-cli", develop = true}
+chutes-agent = {path = "src/chutes-agent", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
@@ -23,4 +23,3 @@ ruff = "^0.12.2"
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
-

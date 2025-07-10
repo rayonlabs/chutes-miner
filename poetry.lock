@@ -502,14 +502,14 @@ files = [
 
 [[package]]
 name = "certifi"
-version = "2025.6.15"
+version = "2025.7.9"
 description = "Python package for providing Mozilla's CA Bundle."
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "certifi-2025.6.15-py3-none-any.whl", hash = "sha256:2e0c7ce7cb5d8f8634ca55d2ba7e6ec2689a2fd6537d8dec1296a477a4910057"},
-    {file = "certifi-2025.6.15.tar.gz", hash = "sha256:d747aa5a8b9bbbb1bb8c22bb13e22bd1f18e9796defa16bab421f7f7a317323b"},
+    {file = "certifi-2025.7.9-py3-none-any.whl", hash = "sha256:d842783a14f8fdd646895ac26f719a061408834473cfc10203f6a575beb15d39"},
+    {file = "certifi-2025.7.9.tar.gz", hash = "sha256:c1d2ec05395148ee10cf672ffc28cd37ea0ab0d99f9cc74c43e588cbd111b079"},
 ]
 
 [[package]]
@@ -695,6 +695,34 @@ files = [
 ]
 
 [[package]]
+name = "chutes-agent"
+version = "0.1.0"
+description = "Agent to monitor chutes in Chutes clusters"
+optional = false
+python-versions = ">=3.12,<4.0"
+groups = ["main"]
+files = []
+develop = true
+
+[package.dependencies]
+aiohttp = ">3.10.10,<4.0.0"
+chutes-common = {path = "../chutes-common", develop = true}
+click = ">8.1.0,<8.2.0"
+fastapi = "^0.115.4"
+kubernetes = "^31.0.0"
+kubernetes-asyncio = ">31.0.0,<32.0.0"
+loguru = "^0.7.3"
+py-bip39-bindings = "^0.1.11"
+pydantic = ">2.3,<3.0"
+pydantic-settings = "^2.10.1"
+tenacity = "^9.1.2"
+uvicorn = "^0.32.0"
+
+[package.source]
+type = "directory"
+url = "src/chutes-agent"
+
+[[package]]
 name = "chutes-common"
 version = "0.1.0"
 description = "Common library for Chutes Miner"
@@ -776,25 +804,6 @@ typer = "^0.14.0"
 [package.source]
 type = "directory"
 url = "src/chutes-miner-cli"
-
-[[package]]
-name = "chutes-miner-gpu"
-version = "0.1.0"
-description = "Chutes components for GPU worker nodes"
-optional = false
-python-versions = ">=3.12,<4.0"
-groups = ["main"]
-files = []
-develop = true
-
-[package.dependencies]
-chutes-common = {path = "../chutes-common", develop = true}
-fastapi = "^0.115.4"
-pydantic-settings = "^2.10.1"
-
-[package.source]
-type = "directory"
-url = "src/chutes-miner-gpu"
 
 [[package]]
 name = "click"
@@ -1727,6 +1736,26 @@ websocket-client = ">=0.32.0,<0.40.0 || >0.40.0,<0.41.dev0 || >=0.43.dev0"
 
 [package.extras]
 adal = ["adal (>=1.0.2)"]
+
+[[package]]
+name = "kubernetes-asyncio"
+version = "31.1.1"
+description = "Kubernetes asynchronous python client"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "kubernetes_asyncio-31.1.1-py3-none-any.whl", hash = "sha256:d5e441674fde5dd8d0366cb6a204d7fbaef8d0dce7ca7a34c0791af0d13b6ff1"},
+    {file = "kubernetes_asyncio-31.1.1.tar.gz", hash = "sha256:393bb60a2740d482651d474956296b341348c3e4f883b171740e5a4bf105a87b"},
+]
+
+[package.dependencies]
+aiohttp = ">=3.9.0,<4.0.0"
+certifi = ">=14.05.14"
+python-dateutil = ">=2.5.3"
+pyyaml = ">=3.12"
+six = ">=1.9.0"
+urllib3 = ">=1.24.2"
 
 [[package]]
 name = "loguru"
@@ -3900,6 +3929,22 @@ xxhash = ">=1.3.0,<4"
 test = ["coverage", "pytest"]
 
 [[package]]
+name = "tenacity"
+version = "9.1.2"
+description = "Retry code until it succeeds"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "tenacity-9.1.2-py3-none-any.whl", hash = "sha256:f77bf36710d8b73a50b2dd155c97b870017ad21afe6ab300326b0371b3b05138"},
+    {file = "tenacity-9.1.2.tar.gz", hash = "sha256:1169d376c297e7de388d18b4481760d478b0e99a777cad3a9c86e556f4b697cb"},
+]
+
+[package.extras]
+doc = ["reno", "sphinx"]
+test = ["pytest", "tornado (>=4.5)", "typeguard"]
+
+[[package]]
 name = "toolz"
 version = "1.0.0"
 description = "List processing tools and functional utilities"
@@ -4327,4 +4372,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "a0875e959f3819e151f39dc4106e0896e3da9079407c04f8562729b6534e12a3"
+content-hash = "d79788b04274007dbceb3829a50081b77e7addc5572998f7e6ac7c33d53277b6"

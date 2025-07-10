@@ -1,15 +1,19 @@
 """
-Miner API entrypoint.
+Miner Agent API entrypoint.
 """
 
 import hashlib
 from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
-from chutes_miner_gpu.api.config.router import router as config_router
+from chutes_agent.api.config.router import router as config_router
+from chutes_agent.api.monitor.router import router as monitor_router
+from chutes_agent.config import settings
 
+settings.setup_logging()
 
 app = FastAPI(default_response_class=ORJSONResponse)
 app.include_router(config_router, prefix="/config", tags=["Config"])
+app.include_router(monitor_router, prefix="/monitor", tags=["Monitor"])
 app.get("/ping")(lambda: {"message": "pong"})
 
 @app.middleware("http")
