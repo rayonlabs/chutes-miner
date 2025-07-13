@@ -645,7 +645,9 @@ develop = true
 fastapi = "^0.115.4"
 loguru = "^0.7.3"
 orjson = "^3.10.18"
+py-bip39-bindings = "^0.1.11"
 pydantic-settings = "^2.10.1"
+redis = "^5.2.0"
 substrate-interface = "^1.7.11"
 
 [package.source]
@@ -4756,5 +4758,5 @@ type = ["pytest-mypy"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = "^3.12"
-content-hash = "61094d3616501ab9edcb13a1f3808ff88ca106a5d20d75b56463b9b09de4efc8"
+python-versions = "^3.12,<4.0"
+content-hash = "f2b64845245ed47489399c3988da2ff2cffa507a7b8f3b59cbdeb07bd34b7444"

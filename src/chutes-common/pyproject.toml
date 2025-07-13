@@ -1,20 +1,19 @@
-[project]
+[tool.poetry]
 name = "chutes-common"
 version = "0.1.0"
 description = "Common library for Chutes Miner"
-authors = [
-    {name = "Kyle Widmann",email = "kyle.widmann@gmail.com"}
-]
-license = {text = "MIT"}
+authors = ["Kyle Widmann <kyle.widmann@gmail.com>"]
 readme = "README.md"
-requires-python = ">=3.12,<4.0"
 
 [tool.poetry.dependencies]
+python = ">=3.12,<4.0"
 orjson = "^3.10.18"
 loguru = "^0.7.3"
 fastapi = "^0.115.4"
 substrate-interface = "^1.7.11"
 pydantic-settings = "^2.10.1"
+redis = "^5.2.0"
+py-bip39-bindings = "^0.1.11"
 
 
 [build-system]
