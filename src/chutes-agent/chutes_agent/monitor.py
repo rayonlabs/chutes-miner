@@ -1,7 +1,7 @@
 # agent/controller/watcher.py
 import asyncio
-from typing import Optional
-from chutes_agent.api.monitor.models import MonitoringState, MonitoringStatus
+from typing import Any, Callable, Optional
+from chutes_common.monitoring.models import ClusterState, MonitoringState, MonitoringStatus
 from chutes_common.k8s import WatchEvent
 from kubernetes_asyncio import client, config, watch
 from chutes_agent.client import ControlPlaneClient
@@ -28,6 +28,7 @@ class ResourceMonitor:
 
     async def stop(self):
         await self._stop_monitoring()
+        await self.control_plane_client.remove_cluster()
 
     def _restart(self):
         logger.info("Restarting monitor.")
@@ -50,7 +51,7 @@ class ResourceMonitor:
             
             # Start the watching process
             self._watcher_task = asyncio.create_task(
-                self._watch_resources()
+                self._start_watch_resources()
             )
             
             # Update status to running
@@ -100,16 +101,18 @@ class ResourceMonitor:
             logger.error(f"Failed to initialize: {e}")
             raise
     
-    async def _watch_resources(self):
+    async def _start_watch_resources(self):
         """Start watching all resource types"""
         try:
-            tasks: list[asyncio.Task] = []
+            tasks: list[asyncio.Task] = [
+                asyncio.create_task(self.watch_nodes()),
+                asyncio.create_task(self.send_heartbeat())
+            ]
             for namespace in settings.watch_namespaces:
                 namespace_tasks = [
                     asyncio.create_task(self.watch_namespaced_deployments(namespace)),
                     asyncio.create_task(self.watch_namespaced_pods(namespace)),
-                    asyncio.create_task(self.watch_namespaced_services(namespace)),
-                    asyncio.create_task(self.send_heartbeat(namespace))
+                    asyncio.create_task(self.watch_namespaced_services(namespace))
                 ]
                 tasks += namespace_tasks
             
@@ -125,50 +128,27 @@ class ResourceMonitor:
     
     async def watch_namespaced_deployments(self, namespace: str):
         """Watch deployments for changes"""
-        while True:
-            try:
-                stream =  watch.Watch().stream(
-                    self.apps_v1.list_namespaced_deployment,
-                    namespace=namespace
-                )
-                # Use the standard Kubernetes watch mechanism
-                async for event in stream:
-                    event = WatchEvent.from_dict(event)
-                    await self.handle_resource_event(event)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error watching deployments: {e}")
-                self._restart()
-                break
+        await self._watch_resources("deployments", self.apps_v1.list_namespaced_deployment, namespaces=namespace)
     
     async def watch_namespaced_pods(self, namespace: str):
         """Watch pods for changes"""
-        while True:
-            try:
-                stream =  watch.Watch().stream(
-                    self.core_v1.list_namespaced_pod,
-                    namespace=namespace
-                )
-                # Use the standard Kubernetes watch mechanism
-                async for event in stream:
-                    event = WatchEvent.from_dict(event)
-                    await self.handle_resource_event(event)
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error watching pods: {e}")
-                self._restart()
-                break
+        await self._watch_resources("pods", self.core_v1.list_namespaced_pod, namespaces=namespace)
     
     async def watch_namespaced_services(self, namespace: str):
         """Watch services for changes"""
+        await self._watch_resources("services", self.core_v1.list_namespaced_service, namespaces=namespace)
+
+    async def watch_nodes(self):
+        """Watch services for changes"""
+        await self._watch_resources("nodes", self.core_v1.list_node)
+
+    async def _watch_resources(self, resource_type: str, func: Callable[..., Any], **kwargs) -> None:
+        """Watch resources for changes"""
         while True:
             try:
                 stream =  watch.Watch().stream(
-                    self.core_v1.list_namespaced_service,
-                    namespace=namespace
+                    func,
+                    **kwargs
                 )
                 # Use the standard Kubernetes watch mechanism
                 async for event in stream:
@@ -178,7 +158,7 @@ class ResourceMonitor:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error watching services: {e}")
+                logger.error(f"Error watching {resource_type}: {e}")
                 self._restart()
                 break
     
@@ -196,10 +176,12 @@ class ResourceMonitor:
         """Send periodic heartbeat to control plane"""
         while True:
             try:
-                await self.control_plane_client.send_heartbeat()
+                await self.control_plane_client.send_heartbeat(ClusterState.ACTIVE)
                 await asyncio.sleep(settings.heartbeat_interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Failed to send heartbeat: {e}")
-                await asyncio.sleep(settings.heartbeat_interval)
+                # If a heartbeat failed just restart to ensure resources are synced properly.
+                self._restart()
+                break

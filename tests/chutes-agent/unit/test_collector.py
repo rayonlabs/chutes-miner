@@ -3,11 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from chutes_agent.config import settings
 
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.client.AppsV1Api')
-@patch('kubernetes_asyncio.client.CoreV1Api')
-async def test_initialize_clients(mock_core_v1, mock_apps_v1, resource_collector):
+@patch('kubernetes.client.AppsV1Api')
+@patch('kubernetes.client.CoreV1Api')
+@patch('chutes_agent.collector.config')
+async def test_initialize_clients(mock_config, mock_core_v1, mock_apps_v1, resource_collector):
     """Test client initialization"""
-    await resource_collector.initialize_clients()
+    resource_collector.initialize_clients()
     
     assert resource_collector.core_v1 is not None
     assert resource_collector.apps_v1 is not None
@@ -36,15 +37,10 @@ async def test_collect_all_resources_success(mock_namespaces, resource_collector
     
     resources = await resource_collector.collect_all_resources()
     
-    # Verify structure
-    assert 'deployments' in resources
-    assert 'pods' in resources
-    assert 'services' in resources
-    
     # Should have 2 of each (one from each namespace)
-    assert len(resources['deployments']) == 2
-    assert len(resources['pods']) == 2
-    assert len(resources['services']) == 2
+    assert len(resources.deployments) == 2
+    assert len(resources.pods) == 2
+    assert len(resources.services) == 2
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('mock_namespaces', [['default', 'restricted-ns']], indirect=True)
@@ -74,16 +70,20 @@ async def test_collect_all_resources_namespace_error(mock_namespaces, resource_c
     resources = await resource_collector.collect_all_resources()
     
     # Should still return resources from successful namespace
-    assert len(resources['pods']) == 1
-    assert len(resources['deployments']) == 0
-    assert len(resources['services']) == 0
+    assert len(resources.pods) == 1
+    assert len(resources.deployments) == 0
+    assert len(resources.services) == 0
 
 @pytest.mark.asyncio
 async def test_collect_all_resources_auto_initialize(resource_collector):
     """Test auto-initialization of clients"""
     assert resource_collector.core_v1 is None
     
-    with patch.object(resource_collector, 'initialize_clients') as mock_init:
+    with patch('chutes_agent.collector.ResourceCollector.initialize_clients') as mock_init:
+        def _mock_clients():
+            resource_collector.core_v1 = AsyncMock()
+            resource_collector.apps_v1 = AsyncMock()
+        mock_init.side_effect = _mock_clients
         await resource_collector.collect_all_resources()
     
     mock_init.assert_called_once()
@@ -98,6 +98,7 @@ async def test_collect_all_resources_empty_namespaces(resource_collector):
     resources = await resource_collector.collect_all_resources()
     
     # Should return empty collections
-    assert resources['deployments'] == []
-    assert resources['pods'] == []
-    assert resources['services'] == []
+    assert resources.deployments == []
+    assert resources.pods == []
+    assert resources.services == []
+    assert resources.nodes == []

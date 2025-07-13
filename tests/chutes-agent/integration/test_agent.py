@@ -1,3 +1,4 @@
+from chutes_common.monitoring.models import ClusterResources, ClusterState
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -40,7 +41,7 @@ async def test_complete_monitoring_workflow(
 async def test_error_handling_and_recovery(mock_config):
     """Test error handling and recovery mechanisms"""
     from chutes_agent.monitor import ResourceMonitor
-    from chutes_agent.api.monitor.models import MonitoringState
+    from chutes_common.monitoring.models import MonitoringState
     
     monitor = ResourceMonitor()
     
@@ -62,11 +63,7 @@ async def test_client_collector_integration(mock_sign_request, mock_aiohttp_sess
     
     # Mock collector to return sample data
     with patch.object(collector, 'collect_all_resources') as mock_collect:
-        mock_collect.return_value = {
-            'pods': [MagicMock()],
-            'deployments': [MagicMock()],
-            'services': [MagicMock()]
-        }
+        mock_collect.return_value = ClusterResources()
         
         # Test the integration
         resources = await collector.collect_all_resources()
@@ -122,7 +119,8 @@ def test_configuration_integration():
 
 def test_api_models_integration():
     """Test API models work with actual data"""
-    from chutes_agent.api.monitor.models import MonitoringStatus, StartMonitoringRequest, MonitoringState
+    from chutes_common.monitoring.models import MonitoringStatus, MonitoringState
+    from chutes_common.monitoring.requests import StartMonitoringRequest
     
     # Test creating status with realistic data
     status = MonitoringStatus(
@@ -144,7 +142,7 @@ def test_api_models_integration():
 async def test_error_propagation(mock_client_class):
     """Test that errors propagate correctly through the system"""
     from chutes_agent.monitor import ResourceMonitor
-    from chutes_agent.api.monitor.models import MonitoringState
+    from chutes_common.monitoring.models import MonitoringState
     
     monitor = ResourceMonitor()
     
@@ -168,7 +166,7 @@ async def test_monitor_restart_functionality(
 ):
     """Test monitor restart functionality in integration"""
     from chutes_agent.monitor import ResourceMonitor
-    from chutes_agent.api.monitor.models import MonitoringState
+    from chutes_common.monitoring.models import MonitoringState
     
     # Setup mocks
     mock_client = AsyncMock()
@@ -196,9 +194,9 @@ async def test_signed_request_integration(mock_sign_request, mock_aiohttp_sessio
     from chutes_agent.client import ControlPlaneClient
     
     client = ControlPlaneClient("http://test-control-plane")
-    
+
     # Test heartbeat (simplest signed request)
-    await client.send_heartbeat()
+    await client.send_heartbeat(ClusterState.ACTIVE)
     
     # Verify sign_request was called and session.post was called
     mock_sign_request.assert_called_once()
@@ -267,8 +265,3 @@ async def test_multi_namespace_integration(mock_namespaces):
     assert collector.core_v1.list_namespaced_pod.call_count == 2
     assert collector.apps_v1.list_namespaced_deployment.call_count == 2
     assert collector.core_v1.list_namespaced_service.call_count == 2
-    
-    # Verify structure
-    assert 'pods' in resources
-    assert 'deployments' in resources
-    assert 'services' in resources

@@ -1,14 +1,17 @@
+from chutes_agent.client import ControlPlaneClient
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from chutes_agent.monitor import ResourceMonitor
-from chutes_agent.api.monitor.models import MonitoringState
+from chutes_common.monitoring.models import ClusterState, MonitoringState
 from chutes_common.k8s import WatchEvent
 
 @pytest.fixture
 def resource_monitor() -> ResourceMonitor:
     """Create a ResourceMonitor instance for testing"""
-    return ResourceMonitor()
+    monitor = ResourceMonitor()
+    monitor.control_plane_client = MagicMock(spec=ControlPlaneClient)
+    return monitor
 
 def test_resource_monitor_init():
     """Test monitor initialization"""
@@ -102,7 +105,7 @@ async def test_initialize_success(mock_config, mock_core_v1, mock_apps_v1, resou
     # Setup mocks
     resource_monitor.control_plane_client = AsyncMock()
     resource_monitor.collector.collect_all_resources = AsyncMock(return_value={
-        'pods': [], 'deployments': [], 'services': []
+        'pods': [], 'deployments': [], 'services': [], 'nodes': []
     })
     
     await resource_monitor.initialize()
@@ -167,10 +170,12 @@ async def test_send_heartbeat_error_handling(mock_sleep, resource_monitor):
     """Test heartbeat error handling"""
     resource_monitor.control_plane_client = AsyncMock()
     resource_monitor.control_plane_client.send_heartbeat.side_effect = Exception("Network error")
-    
+    resource_monitor._async_restart = AsyncMock()
+
     # Should continue despite errors
-    with pytest.raises(asyncio.CancelledError):
-        await resource_monitor.send_heartbeat()
+    await resource_monitor.send_heartbeat()
+
+    resource_monitor._async_restart.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_watch_namespaced_deployments_success(resource_monitor):
@@ -303,7 +308,7 @@ async def test_start_monitoring_success(resource_monitor):
     """Test successful start monitoring flow"""
     # Setup mocks
     resource_monitor.initialize = AsyncMock()
-    resource_monitor._watch_resources = AsyncMock()
+    resource_monitor._start_watch_resources = AsyncMock()
     
     await resource_monitor._start_monitoring()
     
@@ -350,12 +355,13 @@ async def test_watch_resources_task_creation(mock_namespaces, resource_monitor):
     resource_monitor.watch_namespaced_deployments = AsyncMock()
     resource_monitor.watch_namespaced_pods = AsyncMock()
     resource_monitor.watch_namespaced_services = AsyncMock()
+    resource_monitor.watch_nodes = AsyncMock()
     resource_monitor.send_heartbeat = AsyncMock()
         
     # Make the gather finish quickly
     with patch('asyncio.gather', side_effect=asyncio.CancelledError()):
         try:
-            await resource_monitor._watch_resources()
+            await resource_monitor._start_watch_resources()
         except asyncio.CancelledError:
             pass
     
@@ -363,6 +369,7 @@ async def test_watch_resources_task_creation(mock_namespaces, resource_monitor):
     assert resource_monitor.watch_namespaced_deployments.call_count == 2
     assert resource_monitor.watch_namespaced_pods.call_count == 2
     assert resource_monitor.watch_namespaced_services.call_count == 2
+    assert resource_monitor.watch_nodes.call_count == 1
 
 @pytest.mark.asyncio
 async def test_watch_resources_exception_handling(resource_monitor):
@@ -371,6 +378,7 @@ async def test_watch_resources_exception_handling(resource_monitor):
     resource_monitor.watch_namespaced_deployments = AsyncMock()
     resource_monitor.watch_namespaced_pods = AsyncMock()
     resource_monitor.watch_namespaced_services = AsyncMock()
+    resource_monitor.watch_nodes = AsyncMock()
     resource_monitor.send_heartbeat = AsyncMock()
     
     # Mock settings
@@ -379,7 +387,7 @@ async def test_watch_resources_exception_handling(resource_monitor):
         
         # Make gather raise an exception
         with patch('asyncio.gather', side_effect=Exception("Gather failed")):
-            await resource_monitor._watch_resources()
+            await resource_monitor._start_watch_resources()
     
     # Verify error state is set
     assert resource_monitor._status.state == MonitoringState.ERROR

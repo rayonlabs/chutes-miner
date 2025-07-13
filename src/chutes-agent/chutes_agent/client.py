@@ -1,13 +1,16 @@
 # agent/client/api_client.py
+from datetime import datetime, timezone
 import logging
 import aiohttp
 import json
 from chutes_common.auth import sign_request
+from chutes_common.monitoring.models import ClusterResources, ClusterState, HeartbeatData
+from chutes_common.monitoring.requests import RegisterClusterRequest
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 from loguru import logger
 from chutes_agent.config import settings
 from typing import Dict, Any, List
-from chutes_agent.constants import CLUSTER_ENDPOINT, RESOURCE_PURPOSE
+from chutes_common.constants import CLUSTER_ENDPOINT, RESOURCE_PURPOSE
 
 class ControlPlaneClient:
     """Client for communicating with the control plane API"""
@@ -53,18 +56,17 @@ class ControlPlaneClient:
            wait=wait_exponential(multiplier=1, min=4, max=10),
            before_sleep=before_sleep_log(logger, logging.WARNING),
            reraise=True)
-    async def register_cluster(self, resources: Dict[str, List[Any]]):
+    async def register_cluster(self, resources: ClusterResources):
         """Send initial resource dump to control plane"""
         url = f"{self.base_url}/{CLUSTER_ENDPOINT}/{self.cluster_name}/register"
         
         # Serialize all Kubernetes objects
-        serialized_resources = {}
-        for resource_type, items in resources.items():
-            serialized_resources[resource_type] = [
-                self._serialize_k8s_object(item) for item in items
-            ]
+        request = RegisterClusterRequest(
+            cluster_name=settings.cluster_name,
+            initial_resources=resources
+        )
         
-        headers, payload = sign_request(serialized_resources, purpose=RESOURCE_PURPOSE)
+        headers, payload = sign_request(request, purpose=RESOURCE_PURPOSE)
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -86,19 +88,18 @@ class ControlPlaneClient:
         """Send initial resource dump to control plane"""
         url = f"{self.base_url}/{CLUSTER_ENDPOINT}/{self.cluster_name}"
         
-        headers, payload = sign_request(purpose=RESOURCE_PURPOSE)
+        headers, _ = sign_request(purpose=RESOURCE_PURPOSE)
 
         async with aiohttp.ClientSession() as session:
             async with session.delete(
-                url, 
-                json=payload,
+                url,
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=settings.control_plane_timeout)
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    raise Exception(f"Failed to send initial resources: {response.status} - {error_text}")
-                logger.info("Successfully sent initial resources")
+                    raise Exception(f"Failed to remove cluster: {response.status} - {error_text}")
+                logger.info("Successfully removed cluster")
     
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=4, max=10),
@@ -132,14 +133,15 @@ class ControlPlaneClient:
            wait=wait_exponential(multiplier=1, min=4, max=10),
            before_sleep=before_sleep_log(logger, logging.WARNING),
            reraise=True)
-    async def send_heartbeat(self):
+    async def send_heartbeat(self, state: ClusterState):
         """Send heartbeat to control plane"""
         url = f"{self.base_url}/{CLUSTER_ENDPOINT}/{self.cluster_name}/health"
         
-        heartbeat_data = {
-            "status": "healthy",
-            "cluster_name": settings.cluster_name
-        }
+        heartbeat_data = HeartbeatData(
+            status=state,
+            cluster_name=settings.cluster_name,
+            timestamp=datetime.now(timezone.utc).isoformat()
+        )
 
         headers, payload = sign_request(heartbeat_data, purpose=RESOURCE_PURPOSE)
         

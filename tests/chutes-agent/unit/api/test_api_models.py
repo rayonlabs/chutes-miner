@@ -1,5 +1,6 @@
 import pytest
-from chutes_agent.api.monitor.models import MonitoringState, MonitoringStatus, StartMonitoringRequest
+from chutes_common.monitoring.models import MonitoringState, MonitoringStatus
+from chutes_common.monitoring.requests import StartMonitoringRequest
 
 def test_monitoring_state_enum():
     """Test MonitoringState enum values"""

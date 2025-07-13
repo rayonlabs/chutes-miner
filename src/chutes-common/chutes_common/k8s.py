@@ -2,7 +2,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Dict, Any, Optional, Union
 import json
-from kubernetes.client import V1Deployment, V1Pod, V1Service
+from unittest.mock import MagicMock
+from kubernetes.client import V1Deployment, V1Pod, V1Service, V1Node
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class WatchEventType(Enum):
@@ -12,9 +14,14 @@ class WatchEventType(Enum):
     MODIFIED = "MODIFIED"
     DELETED = "DELETED"
 
+_resource_types = {
+    type(V1Deployment): "deployment",
+    type(V1Service): "service",
+    type(V1Pod): "pod",
+    type(V1Node): "node"
+}
 
-@dataclass
-class WatchEvent:
+class WatchEvent(BaseModel):
     """
     Represents a watch event for Kubernetes deployments.
 
@@ -22,9 +29,31 @@ class WatchEvent:
         type: The type of watch event (ADDED, MODIFIED, DELETED)
         object: The V1Deployment object from the Kubernetes API
     """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     type: WatchEventType
-    object: Union[V1Deployment | V1Pod | V1Service]
+    object: Union[V1Deployment , V1Pod , V1Service , V1Node, MagicMock] # Magic Mock for testing
+    
+    @field_validator('object', mode='before')
+    @classmethod
+    def validate_object(cls, v):
+        """Handle both Kubernetes objects and their dict representations"""
+        if isinstance(v, dict):
+            # If it's a dict, we need to determine what type it should be
+            # and reconstruct the appropriate Kubernetes object
+            kind = v.get('kind', '')
+            if kind == 'Deployment':
+                return V1Deployment(**v)
+            elif kind == 'Pod':
+                return V1Pod(**v)
+            elif kind == 'Service':
+                return V1Service(**v)
+            elif kind == 'Node':
+                return V1Node(**v)
+            else:
+                # For testing or unknown types, return as-is
+                return v
+        return v
 
     @classmethod
     def from_dict(cls, event_dict: dict) -> "WatchEvent":
@@ -46,7 +75,18 @@ class WatchEvent:
         Returns:
             Dictionary with 'type' and 'object' keys
         """
-        return {"type": self.type.value, "object": self.object}
+        # Serialize the Kubernetes object
+        if hasattr(self.object, 'to_dict'):
+            # V1Deployment has a to_dict() method
+            obj_dict = self.object.to_dict()
+        elif hasattr(self.object, '__dict__'):
+            # Fallback for other objects
+            obj_dict = vars(self.object)
+        else:
+            # For MagicMock in tests
+            obj_dict = self.object
+        
+        return {"type": self.type.value, "object": obj_dict}
 
     @property
     def is_added(self) -> bool:
@@ -83,6 +123,10 @@ class WatchEvent:
         """Get the deployment UID from the object."""
         return self.object.metadata.uid if self.object.metadata else None
     
+    @property
+    def resource_type(self) -> str:
+        return _resource_types.get(type(self.object), "unknown")
+
     @property
     def is_deployement(self) -> bool:
         return isinstance(self.object, V1Deployment)

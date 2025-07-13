@@ -1,3 +1,4 @@
+from chutes_common.monitoring.models import ClusterResources, ClusterState
 import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -72,10 +73,7 @@ async def test_send_initial_resources_success(mock_sign, mock_aiohttp_session, c
     # Setup mocks
     mock_sign.return_value = ({"Authorization": "Bearer token"}, {"data": "payload"})
 
-    resources = {
-        "pods": [sample_pod],
-        "deployments": [sample_deployment]
-    }
+    resources = ClusterResources()
 
     await control_plane_client.register_cluster(resources)
 
@@ -124,7 +122,7 @@ async def test_send_heartbeat_success(mock_sign, mock_aiohttp_session, control_p
     # Setup mocks
     mock_sign.return_value = ({"Authorization": "Bearer token"}, {"data": "payload"})
 
-    await control_plane_client.send_heartbeat()
+    await control_plane_client.send_heartbeat(ClusterState.ACTIVE)
 
     # Verify calls were made
     mock_sign.assert_called_once()
@@ -140,4 +138,4 @@ async def test_send_heartbeat_failure(mock_sign, mock_aiohttp_session, control_p
     mock_aiohttp_session.response.text = AsyncMock(return_value="Service Unavailable")
 
     with pytest.raises(Exception, match="Failed to send heartbeat: 503"):
-        await control_plane_client.send_heartbeat()
+        await control_plane_client.send_heartbeat(ClusterState.ACTIVE)

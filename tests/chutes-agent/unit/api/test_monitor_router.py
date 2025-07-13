@@ -1,10 +1,9 @@
 # test_api_monitor_router.py
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, AsyncMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from chutes_agent.api.monitor.router import router
-from chutes_agent.api.monitor.models import MonitoringState, MonitoringStatus, StartMonitoringRequest
+from chutes_common.monitoring.models import MonitoringState, MonitoringStatus
 
 # Create test app
 app = FastAPI()

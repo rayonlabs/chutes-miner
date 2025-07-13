@@ -1,0 +1,117 @@
+from chutes_common.k8s import WatchEvent, WatchEventType
+from chutes_common.monitoring.requests import ResourceUpdateRequest
+import pytest
+from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock
+from datetime import datetime, timezone
+from kubernetes.client import V1Deployment, V1ObjectMeta, V1DeploymentSpec
+
+from chutes_monitor.api.cluster.router import router
+from chutes_common.monitoring.models import ClusterState, ClusterStatus
+
+
+@pytest.fixture
+def test_client():
+    """Create test client for router testing"""
+    from fastapi import FastAPI
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app)
+
+
+def test_register_cluster_success(mock_cluster_monitor, test_client, create_cluster_request_data):
+    """Test successful cluster registration via API"""
+    mock_cluster_monitor.register_cluster = AsyncMock()
+    
+    request_data = create_cluster_request_data()
+    
+    response = test_client.post("/test-cluster", json=request_data)
+    
+    assert response.status_code == 200
+    mock_cluster_monitor.register_cluster.assert_called_once()
+
+
+def test_register_cluster_failure(mock_cluster_monitor, test_client, create_cluster_request_data):
+    """Test cluster registration failure via API"""
+    mock_cluster_monitor.register_cluster = AsyncMock(side_effect=Exception("Registration failed"))
+    
+    request_data = create_cluster_request_data()
+    
+    response = test_client.post("/test-cluster", json=request_data)
+    
+    assert response.status_code == 500
+
+
+def test_unregister_cluster_success(mock_cluster_monitor, test_client):
+    """Test successful cluster unregistration via API"""
+    mock_cluster_monitor.delete_cluster = AsyncMock()
+
+    response = test_client.delete("/test-cluster")
+    
+    assert response.status_code == 200
+    json_response = response.json()
+    assert json_response["message"] == "Cluster test-cluster unregistered successfully"
+    assert json_response["cluster_name"] == "test-cluster"
+
+
+def test_receive_heartbeat_success(mock_redis_client, test_client):
+    """Test successful heartbeat reception via API"""
+    # Mock cluster status as healthy
+
+    mock_cluster_status = ClusterStatus(
+        cluster_name="test-cluster",
+        state=ClusterState.ACTIVE,
+        last_heartbeat=datetime.now(timezone.utc).isoformat()
+    )
+    mock_redis_client.get_cluster_status.return_value = mock_cluster_status
+    mock_redis_client.update_cluster_status = AsyncMock()
+    
+    heartbeat_data = {
+        "status": ClusterState.ACTIVE,
+        "cluster_name": "test-cluster",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    
+    response = test_client.post("/test-cluster/health", json=heartbeat_data)
+    
+    assert response.status_code == 200
+    json_response = response.json()
+    assert json_response["status"] == "success"
+    assert json_response["cluster_name"] == "test-cluster"
+
+
+def test_receive_heartbeat_unhealthy_cluster(mock_redis_client, test_client):
+    """Test heartbeat reception for unhealthy cluster"""
+    # Mock cluster status as unhealthy
+    mock_cluster_status = ClusterStatus(
+        cluster_name="test-cluster",
+        state=ClusterState.UNHEALTHY,
+        last_heartbeat=datetime.now(timezone.utc).isoformat(),
+        error_message="Connection timeout"
+    )
+    mock_redis_client.get_cluster_status.return_value = mock_cluster_status
+    
+    heartbeat_data = {
+        "status": ClusterState.ACTIVE,
+        "cluster_name": "test-cluster",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    
+    response = test_client.post("/test-cluster/health", json=heartbeat_data)
+    
+    assert response.status_code == 409
+    json_response = response.json()
+    assert "unhealthy state" in json_response["detail"]
+
+
+def test_receive_resource_update_success(mock_redis_client, test_client, test_resource_update_request):
+    """Test successful resource update reception via API"""
+    mock_redis_client.update_resource = AsyncMock()
+    
+    json_data = test_resource_update_request.model_dump()
+    response = test_client.put("/test-cluster/resources", json=json_data)
+    
+    assert response.status_code == 200
+    json_response = response.json()
+    assert json_response["status"] == "success"
+    assert json_response["cluster_name"] == "test-cluster"

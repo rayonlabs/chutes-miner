@@ -1,5 +1,6 @@
 # agent/api/monitor/router.py
-from chutes_agent.api.monitor.models import MonitoringState, MonitoringStatus, StartMonitoringRequest
+from chutes_common.monitoring.models import MonitoringState, MonitoringStatus
+from chutes_common.monitoring.requests import StartMonitoringRequest
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 

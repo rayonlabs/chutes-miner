@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from chutes_agent.api.monitor.router import router
-from chutes_agent.api.monitor.models import MonitoringState, MonitoringStatus
+from chutes_common.monitoring.models import MonitoringState, MonitoringStatus
 
 # Create test app
 app = FastAPI()
