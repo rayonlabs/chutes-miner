@@ -9,6 +9,10 @@ class RegisterClusterRequest(BaseModel):
     cluster_name: str = Field(min_length=1, description="Unique cluster name")
     initial_resources: ClusterResources = Field(..., description="Intiial resources to register for this cluster")
 
+    @field_serializer('initial_resources')
+    def serialize_event(self, initial_resources: ClusterResources) -> Dict[str, Any]:
+        return initial_resources.to_dict()
+
 class ResourceUpdateRequest(BaseModel):
     """Resource update from member cluster"""
     event: WatchEvent

@@ -66,7 +66,7 @@ class ControlPlaneClient:
             initial_resources=resources
         )
         
-        headers, payload = sign_request(request, purpose=RESOURCE_PURPOSE)
+        headers, payload = sign_request(request.model_dump(), purpose=RESOURCE_PURPOSE)
 
         async with aiohttp.ClientSession() as session:
             async with session.post(

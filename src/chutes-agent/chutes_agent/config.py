@@ -26,7 +26,10 @@ class AgentSettings(BaseSettings):
     heartbeat_interval: int = Field(default=30, description="Heartbeat interval in seconds")
     
     # Resource watching configuration
-    watch_namespaces: List[str] = Field(default_factory=list, description="Namespaces to watch (empty = all)")
+    watch_namespaces: List[str] = Field(
+        default_factory=lambda: ["chutes"], 
+        description="Namespaces to watch (empty = all)"
+    )
     
     # Logging configuration
     log_level: str = Field(default="INFO", description="Logging level")
