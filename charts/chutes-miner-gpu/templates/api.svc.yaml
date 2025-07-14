@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: api
   labels:
-    {{- include "chutes.labels" . | nindent 4 }}
+    {{- include "api.labels" . | nindent 4 }}
 spec:
   type: NodePort
   ports:

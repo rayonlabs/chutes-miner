@@ -40,7 +40,7 @@ spec:
         - name: api
           image: "{{ .Values.api.image }}"
           imagePullPolicy: {{ .Values.api.imagePullPolicy }}
-          command: ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "chutes_miner_gpu.api.main:app"]
+          command: ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "chutes_agent.api.main:app"]
           env:
             - name: MINER_SS58
               valueFrom:
@@ -54,6 +54,10 @@ spec:
                   key: seed
             - name: VALIDATORS
               value: {{ .Values.validators | toJson | quote }}
+            - name: CLUSTER_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           ports:
             - name: http
               containerPort: {{ .Values.api.service.targetPort }}

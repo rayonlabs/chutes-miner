@@ -51,7 +51,7 @@ WORKDIR /app
 
 COPY --from=build /app /app
 
-ENTRYPOINT ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "chutes_miner_gpu.api.main:app"]
+ENTRYPOINT ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "chutes_agent.api.main:app"]
 
 FROM build AS development
 
