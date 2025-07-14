@@ -34,7 +34,7 @@ class ClusterRouter:
         self.router.add_api_route("/{cluster_name}", self.register_cluster, methods=["POST"])
         self.router.add_api_route("/{cluster_name}", self.unregister_cluster, methods=["DELETE"])
         self.router.add_api_route("/{cluster_name}/resources", self.update_resource, methods=["PUT"])
-        self.router.add_api_route("/{cluster_name}/health", self.handle_heartbeat, methods=["POST"])
+        self.router.add_api_route("/{cluster_name}/health", self.handle_heartbeat, methods=["PUT"])
     
     async def register_cluster(self, cluster_name: str, request: RegisterClusterRequest):
         """Register and start monitoring a new cluster"""

@@ -4,8 +4,9 @@ import logging
 import aiohttp
 import json
 from chutes_common.auth import sign_request
+from chutes_common.k8s import WatchEvent
 from chutes_common.monitoring.models import ClusterResources, ClusterState, HeartbeatData
-from chutes_common.monitoring.requests import RegisterClusterRequest
+from chutes_common.monitoring.requests import RegisterClusterRequest, ResourceUpdateRequest
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 from loguru import logger
 from chutes_agent.config import settings
@@ -58,7 +59,7 @@ class ControlPlaneClient:
            reraise=True)
     async def register_cluster(self, resources: ClusterResources):
         """Send initial resource dump to control plane"""
-        url = f"{self.base_url}/{CLUSTER_ENDPOINT}/{self.cluster_name}/register"
+        url = f"{self.base_url}{CLUSTER_ENDPOINT}/{self.cluster_name}"
         
         # Serialize all Kubernetes objects
         request = RegisterClusterRequest(
@@ -66,7 +67,7 @@ class ControlPlaneClient:
             initial_resources=resources
         )
         
-        headers, payload = sign_request(request.model_dump(), purpose=RESOURCE_PURPOSE)
+        headers, payload = sign_request(request.model_dump_json(), purpose=RESOURCE_PURPOSE)
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -105,21 +106,17 @@ class ControlPlaneClient:
            wait=wait_exponential(multiplier=1, min=4, max=10),
            before_sleep=before_sleep_log(logger, logging.WARNING),
            reraise=True)
-    async def send_resource_update(self, resource_data: Dict[str, Any]):
+    async def send_resource_update(self, event: WatchEvent):
         """Send resource update to control plane"""
         url = f"{self.base_url}/{CLUSTER_ENDPOINT}/{self.cluster_name}/resources"
         
         # Serialize the Kubernetes object
-        serialized_data = {
-            'event_type': resource_data['event_type'],
-            'resource_type': resource_data['resource_type'],
-            'resource': self._serialize_k8s_object(resource_data['resource'])
-        }
+        request = ResourceUpdateRequest(event=event)
         
-        headers, payload = sign_request(serialized_data, purpose=RESOURCE_PURPOSE)
+        headers, payload = sign_request(request.model_dump_json(), purpose=RESOURCE_PURPOSE)
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(
+            async with session.put(
                 url, 
                 json=payload,
                 headers=headers,
@@ -143,10 +140,10 @@ class ControlPlaneClient:
             timestamp=datetime.now(timezone.utc).isoformat()
         )
 
-        headers, payload = sign_request(heartbeat_data, purpose=RESOURCE_PURPOSE)
+        headers, payload = sign_request(heartbeat_data.model_dump_json(), purpose=RESOURCE_PURPOSE)
         
         async with aiohttp.ClientSession() as session:
-            async with session.post(
+            async with session.put(
                 url, 
                 json=payload,
                 headers=headers,
