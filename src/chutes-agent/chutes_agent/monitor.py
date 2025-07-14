@@ -3,7 +3,7 @@ import asyncio
 from typing import Any, Callable, Optional
 from chutes_common.monitoring.models import ClusterState, MonitoringState, MonitoringStatus
 from chutes_common.k8s import WatchEvent
-from kubernetes_asyncio import client, config, watch
+from kubernetes import client, config, watch
 from chutes_agent.client import ControlPlaneClient
 from chutes_agent.collector import ResourceCollector
 from chutes_agent.config import settings
@@ -128,15 +128,15 @@ class ResourceMonitor:
     
     async def watch_namespaced_deployments(self, namespace: str):
         """Watch deployments for changes"""
-        await self._watch_resources("deployments", self.apps_v1.list_namespaced_deployment, namespaces=namespace)
+        await self._watch_resources("deployments", self.apps_v1.list_namespaced_deployment, namespace=namespace)
     
     async def watch_namespaced_pods(self, namespace: str):
         """Watch pods for changes"""
-        await self._watch_resources("pods", self.core_v1.list_namespaced_pod, namespaces=namespace)
+        await self._watch_resources("pods", self.core_v1.list_namespaced_pod, namespace=namespace)
     
     async def watch_namespaced_services(self, namespace: str):
         """Watch services for changes"""
-        await self._watch_resources("services", self.core_v1.list_namespaced_service, namespaces=namespace)
+        await self._watch_resources("services", self.core_v1.list_namespaced_service, namespace=namespace)
 
     async def watch_nodes(self):
         """Watch services for changes"""
@@ -151,7 +151,7 @@ class ResourceMonitor:
                     **kwargs
                 )
                 # Use the standard Kubernetes watch mechanism
-                async for event in stream:
+                for event in stream:
                     event = WatchEvent.from_dict(event)
                     await self.handle_resource_event(event)
 
