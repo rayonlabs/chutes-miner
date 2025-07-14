@@ -26,8 +26,10 @@ ENV PATH=$PATH:/home/chutes/.local/bin
 WORKDIR /app
 
 COPY --chown=chutes:chutes /src/chutes-common /app/chutes-common
-COPY --chown=chutes:chutes ${PROJECT_DIR}/ ./${PROJECT}/
+COPY --chown=chutes:chutes ${PROJECT_DIR}/pyproject.toml ${PROJECT_DIR}/poetry.lock ${PROJECT_DIR}/README.md ./${PROJECT}/
 RUN python -m venv .venv
+RUN . .venv/bin/activate && poetry install --only main --no-root -P /app/${PROJECT}
+COPY --chown=chutes:chutes ${PROJECT_DIR}/ ./${PROJECT}/
 RUN . .venv/bin/activate && poetry install --only main -P /app/${PROJECT}
 
 # Miner/API
