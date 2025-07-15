@@ -4,13 +4,13 @@ all:
   children:
     control:
       hosts:
-        chutes-miner-control0:
+        chutes-miner-cpu-0:
           ansible_host: 10.0.0.1
     workers:
       hosts:
-        chutes-miner-gpu0:
+        chutes-miner-gpu-0:
           ansible_host: 10.0.0.2
-        chutes-miner-gpu1:
+        chutes-miner-gpu-1:
           ansible_host: 10.0.0.3
   vars:
     ansible_user: ubuntu
