@@ -3,7 +3,7 @@ name = "chutes-miner-repo"
 version = "0.1.0"
 description = "Chutes Miner monorepo"
 authors = ["Kyle Widmann <kyle.widmann@gmail.com>"]
-license = {text = "MIT"}
+license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]

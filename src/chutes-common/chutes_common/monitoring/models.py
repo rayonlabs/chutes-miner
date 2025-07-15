@@ -8,28 +8,35 @@ from kubernetes_asyncio.client import V1Deployment, V1Service, V1Pod, V1Node
 
 class MonitoringState(str, Enum):
     """Monitoring status enumeration"""
+
     STOPPED = "stopped"
     STARTING = "starting"
     RUNNING = "running"
     ERROR = "error"
 
+
 class MonitoringStatus(BaseModel):
     """Current monitoring status"""
+
     cluster_id: Optional[str] = None
     state: MonitoringState  # "stopped", "starting", "running", "error"
     error_message: Optional[str] = None
     last_heartbeat: Optional[str] = None
 
+
 class ClusterState(str, Enum):
     """Cluster monitoring state enumeration"""
+
     INACTIVE = "inactive"
     STARTING = "starting"
     ACTIVE = "active"
     ERROR = "error"
     UNHEALTHY = "unhealthy"
 
+
 class ClusterStatus(BaseModel):
     """Cluster monitoring status"""
+
     cluster_name: str
     state: ClusterState
     last_heartbeat: Optional[datetime] = None
@@ -40,6 +47,7 @@ class ClusterStatus(BaseModel):
     def is_healthy(self):
         return self.state in [ClusterState.ACTIVE, ClusterState.STARTING]
 
+
 class ClusterResources(BaseModel):
     """Cluster monitoring status"""
 
@@ -48,16 +56,15 @@ class ClusterResources(BaseModel):
     deployments: list[V1Deployment] = []
     services: list[V1Service] = []
     pods: list[V1Pod] = []
-    nodes:list[V1Node] = []
+    nodes: list[V1Node] = []
 
     @classmethod
     def from_dict(cls, v: dict) -> "ClusterResources":
-
         return cls(
-            deployments=serializer.deserialize(v.get('deployments', []), 'list[V1Deployment]'),
-            services=serializer.deserialize(v.get('services', []), 'list[V1Service]'),
-            pods=serializer.deserialize(v.get('pods', []), 'list[V1Pod]'),
-            nodes=serializer.deserialize(v.get('nodes', []), 'list[V1Node]')
+            deployments=serializer.deserialize(v.get("deployments", []), "list[V1Deployment]"),
+            services=serializer.deserialize(v.get("services", []), "list[V1Service]"),
+            pods=serializer.deserialize(v.get("pods", []), "list[V1Pod]"),
+            nodes=serializer.deserialize(v.get("nodes", []), "list[V1Node]"),
         )
 
     def to_dict(self) -> dict:
@@ -70,16 +77,20 @@ class ClusterResources(BaseModel):
                 result[field_name] = [serializer.serialize(obj) for obj in field_value]
             else:
                 result[field_name] = serializer.serialize(field_value)
-                
+
         return result
 
-    def items(self) -> Generator[Tuple[str, list[Union[V1Deployment, V1Service, V1Pod, V1Node]]], None, None]:
+    def items(
+        self,
+    ) -> Generator[Tuple[str, list[Union[V1Deployment, V1Service, V1Pod, V1Node]]], None, None]:
         yield "deployment", self.deployments
         yield "service", self.services
         yield "pod", self.pods
         yield "node", self.nodes
 
+
 class HeartbeatData(BaseModel):
     """Heartbeat data from member cluster"""
+
     state: ClusterState
     timestamp: Optional[str] = None

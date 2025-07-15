@@ -710,7 +710,7 @@ chutes-common = {path = "../chutes-common", develop = true}
 click = ">8.1.0,<8.2.0"
 fastapi = "^0.115.4"
 kubernetes = "^31.0.0"
-kubernetes-asyncio = ">31.0.0,<32.0.0"
+kubernetes-asyncio = "^32.3.2"
 loguru = "^0.7.3"
 py-bip39-bindings = "^0.1.11"
 pydantic = ">2.3,<3.0"
@@ -736,7 +736,9 @@ develop = true
 fastapi = "^0.115.4"
 loguru = "^0.7.3"
 orjson = "^3.10.18"
+py-bip39-bindings = "^0.1.11"
 pydantic-settings = "^2.10.1"
+redis = "^5.2.0"
 substrate-interface = "^1.7.11"
 
 [package.source]
@@ -748,7 +750,7 @@ name = "chutes-miner"
 version = "0.0.1"
 description = "chutes.ai miner API"
 optional = false
-python-versions = "^3.12"
+python-versions = "^3.12,<4.0"
 groups = ["main"]
 files = []
 develop = true
@@ -821,7 +823,7 @@ chutes-common = {path = "../chutes-common", develop = true}
 click = ">8.1.0,<8.2.0"
 fastapi = "^0.115.4"
 kubernetes = "^31.0.0"
-kubernetes-asyncio = ">31.0.0,<32.0.0"
+kubernetes-asyncio = "^32.3.2"
 loguru = "^0.7.3"
 py-bip39-bindings = "^0.1.11"
 pydantic = ">2.3,<3.0"
@@ -1767,14 +1769,14 @@ adal = ["adal (>=1.0.2)"]
 
 [[package]]
 name = "kubernetes-asyncio"
-version = "31.1.1"
+version = "32.3.2"
 description = "Kubernetes asynchronous python client"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "kubernetes_asyncio-31.1.1-py3-none-any.whl", hash = "sha256:d5e441674fde5dd8d0366cb6a204d7fbaef8d0dce7ca7a34c0791af0d13b6ff1"},
-    {file = "kubernetes_asyncio-31.1.1.tar.gz", hash = "sha256:393bb60a2740d482651d474956296b341348c3e4f883b171740e5a4bf105a87b"},
+    {file = "kubernetes_asyncio-32.3.2-py3-none-any.whl", hash = "sha256:3584e6358571e686ea1396fc310890263c58fa41c084a841a9609a54ad05de62"},
+    {file = "kubernetes_asyncio-32.3.2.tar.gz", hash = "sha256:a4b6da1dbfa16e87ab8df6898f54fa03f651591a502bd6480a647d5513a580bf"},
 ]
 
 [package.dependencies]
@@ -4400,4 +4402,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "7ed49d6e3f3801110a40ac42bc8527b609e73765198d0b3204c62a6a7927b692"
+content-hash = "a239ea986d31f182aff8673481063a5ead4807bcebded5b12c6c3bfc7c74f4b7"

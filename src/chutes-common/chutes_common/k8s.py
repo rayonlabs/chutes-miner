@@ -1,47 +1,46 @@
-from dataclasses import dataclass
 from enum import Enum
 from types import SimpleNamespace
-from typing import List, Dict, Any, Optional, Union
+from typing import Any, Optional, Union
 import json
 from unittest.mock import MagicMock
 from kubernetes_asyncio.client import V1Deployment, V1Pod, V1Service, V1Node
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict
 from kubernetes_asyncio.client import ApiClient
+
 
 class K8sSerializer:
     _instance = None
     _api_client = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
-    
+
     @property
     def api_client(self):
         if self._api_client is None:
             self._api_client = ApiClient()
         return self._api_client
-    
+
     async def close(self):
         if self._api_client:
             await self._api_client.close()
             self._api_client = None
 
     def deserialize(self, obj: dict[str, Any], kind: str):
-        obj = serializer.api_client.deserialize(
-                SimpleNamespace(data=json.dumps(obj)), 
-                kind
-            )   
+        obj = serializer.api_client.deserialize(SimpleNamespace(data=json.dumps(obj)), kind)
 
         return obj
 
     def serialize(self, obj: Any):
         obj_dict = serializer.api_client.sanitize_for_serialization(obj)
-        
+
         return obj_dict
 
+
 serializer = K8sSerializer()
+
 
 class WatchEventType(Enum):
     """Enumeration of watch event types."""
@@ -50,12 +49,9 @@ class WatchEventType(Enum):
     MODIFIED = "MODIFIED"
     DELETED = "DELETED"
 
-_resource_types = {
-    V1Deployment: "deployment",
-    V1Service: "service",
-    V1Pod: "pod",
-    V1Node: "node"
-}
+
+_resource_types = {V1Deployment: "deployment", V1Service: "service", V1Pod: "pod", V1Node: "node"}
+
 
 class WatchEvent(BaseModel):
     """
@@ -69,7 +65,7 @@ class WatchEvent(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     type: WatchEventType
-    object: Union[V1Deployment , V1Pod , V1Service , V1Node, MagicMock] # Magic Mock for testing
+    object: Union[V1Deployment, V1Pod, V1Service, V1Node, MagicMock]  # Magic Mock for testing
 
     @classmethod
     def from_dict(cls, event_dict: dict) -> "WatchEvent":
@@ -89,7 +85,7 @@ class WatchEvent(BaseModel):
             if not kind:
                 raise ValueError("event_dict object is not of kind Deployment, Pod, Service, Node")
 
-            obj = serializer.deserialize(event_dict.get('object', {}), f'V1{kind}')
+            obj = serializer.deserialize(event_dict.get("object", {}), f"V1{kind}")
 
         return cls(type=WatchEventType(event_dict["type"]), object=obj)
 
@@ -101,7 +97,7 @@ class WatchEvent(BaseModel):
             Dictionary with 'type' and 'object' keys
         """
         obj_dict = serializer.serialize(self.object)
-        
+
         return {"type": self.type.value, "object": obj_dict}
 
     @property
@@ -138,7 +134,7 @@ class WatchEvent(BaseModel):
     def obj_uid(self) -> Optional[str]:
         """Get the deployment UID from the object."""
         return self.object.metadata.uid if self.object.metadata else None
-    
+
     @property
     def resource_type(self) -> str:
         return _resource_types.get(type(self.object), "unknown")
@@ -146,11 +142,11 @@ class WatchEvent(BaseModel):
     @property
     def is_deployement(self) -> bool:
         return isinstance(self.object, V1Deployment)
-    
+
     @property
     def is_pod(self) -> bool:
         return isinstance(self.object, V1Pod)
-    
+
     @property
     def is_service(self) -> bool:
         return isinstance(self.object, V1Service)
