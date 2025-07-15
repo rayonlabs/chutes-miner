@@ -241,8 +241,8 @@ async def test_multi_namespace_integration(mock_namespaces):
     collector = ResourceCollector()
     
     # Setup mocks for K8s API calls
-    collector.core_v1 = MagicMock()
-    collector.apps_v1 = MagicMock()
+    collector.core_v1 = AsyncMock()
+    collector.apps_v1 = AsyncMock()
     
     # Mock responses for each namespace
     mock_response = MagicMock()

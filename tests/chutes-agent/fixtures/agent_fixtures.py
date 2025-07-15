@@ -43,8 +43,13 @@ def mock_aiohttp_session():
         mock_session.delete.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         mock_session.delete.return_value.__aexit__ = AsyncMock(return_value=None)
 
+        mock_client_session.return_value = mock_session            
         mock_client_session.return_value.__aenter__.return_value = mock_session
         mock_client_session.return_value.__aexit__.return_value = None
+
+        print(mock_client_session)
+        print(mock_session)
+        print(mock_response)
 
         yield MockHTTPComponents(
             client_session=mock_client_session,
