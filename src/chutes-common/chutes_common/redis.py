@@ -65,24 +65,6 @@ class MonitoringRedisClient:
         except Exception as e:
             logger.error(f"Failed to clear cluster {cluster_name}: {e}")
             raise
-
-    # Cluster configuration methods
-    # async def store_cluster_config(self, cluster_name: str, config: Dict[str, Any]):
-    #     """Store cluster configuration"""
-    #     key = f"clusters:{cluster_name}:config"
-    #     self.redis.hset(key, mapping=config)
-    #     self.redis.expire(key, 86400)  # 24 hours
-    
-    # async def get_cluster_config(self, cluster_name: str) -> Optional[Dict[str, Any]]:
-    #     """Get cluster configuration"""
-    #     key = f"clusters:{cluster_name}:config"
-    #     config = self.redis.hgetall(key)
-    #     return config if config else None
-    
-    # async def delete_cluster_config(self, cluster_name: str):
-    #     """Delete cluster configuration"""
-    #     key = f"clusters:{cluster_name}:config"
-    #     self.redis.delete(key)
     
     # Resource storage methods
     async def store_initial_resources(self, cluster_name: str, resources: ClusterResources):
