@@ -20,7 +20,7 @@ from chutes_miner.api.k8s.constants import (
     SEARCH_NODES_PATH,
     SEARCH_PODS_PATH,
 )
-from chutes_miner.api.k8s.operator import K8sOperator, KarmadaK8sOperator
+from chutes_miner.api.k8s.operator import K8sOperator, MultiClusterK8sOperator
 
 
 def get_mock_call_api_side_effect(responses: Dict[str, Any]):
@@ -73,7 +73,7 @@ def mock_karmada_k8s_operator():
 
     # Create a mock implementation that always returns KarmadaK8sOperator
     def mock_new(cls, *args, **kwargs):
-        return super(K8sOperator, cls).__new__(KarmadaK8sOperator)
+        return super(K8sOperator, cls).__new__(MultiClusterK8sOperator)
 
     # Apply the mock
     K8sOperator.__new__ = mock_new
