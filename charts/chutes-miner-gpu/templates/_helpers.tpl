@@ -18,8 +18,8 @@ chutes/chute: "true"
 node-bootstrap: "true"
 {{- end }}
 
-{{- define "api.labels" -}}
-app.kubernetes.io/name: api
+{{- define "agent.labels" -}}
+app.kubernetes.io/name: agent
 postgres-access: "true"
 redis-access: "true"
 {{- end }}

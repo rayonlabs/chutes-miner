@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent
+  labels:
+    {{- include "agent.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agent.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: agent
+      securityContext:
+        fsGroup: 1000  # This will make mounted volumes owned by group 1000
+        runAsUser: 1000  # Ensure we run as user 1000
+        runAsGroup: 1000
+      {{- with .Values.agent.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agent.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agent.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: fix-permissions
+          image: busybox:1.35
+          command: ['sh', '-c', 'chown -R 1000:1000 /app/state && chmod -R 755 /app/state']
+          volumeMounts:
+            - name: chutes-agent-state
+              mountPath: /app/state
+          securityContext:
+            runAsUser: 0  # Run as root to change ownership
+      containers:
+        - name: agent
+          image: "{{ .Values.agent.image }}"
+          imagePullPolicy: {{ .Values.agent.imagePullPolicy }}
+          command: ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "chutes_agent.agent.main:app"]
+          env:
+            - name: MINER_SS58
+              valueFrom:
+                secretKeyRef:
+                  name: miner-credentials
+                  key: ss58
+            - name: MINER_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: miner-credentials
+                  key: seed
+            - name: VALIDATORS
+              value: {{ .Values.validators | toJson | quote }}
+            - name: CLUSTER_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CONTROL_PLANE_URL_FILE
+              value: "/app/state/control_plane_url"
+          ports:
+            - name: http
+              containerPort: {{ .Values.agent.service.targetPort }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.agent.resources | nindent 12 }}
+          volumeMounts:
+            - name: chutes-agent-state
+              mountPath: /app/state
+              readOnly: false
+      volumes:
+        - name: chutes-agent-state
+          hostPath:
+            path: /var/lib/chutes/agent
+            type: DirectoryOrCreate

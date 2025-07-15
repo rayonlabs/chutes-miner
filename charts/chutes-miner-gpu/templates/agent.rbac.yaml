@@ -2,18 +2,18 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: api
+  name: agent
   namespace: chutes
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: api
+  name: agent
   namespace: chutes
 rules:
 - apiGroups: [""]
   resources: ["services", "pods", "secrets"]
-  verbs: ["get", "list"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["get", "list", "watch"]
@@ -21,21 +21,21 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: api
+  name: agent
   namespace: chutes
 subjects:
 - kind: ServiceAccount
-  name: api
+  name: agent
   namespace: chutes
 roleRef:
   kind: Role
-  name: api
+  name: agent
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: api-cluster
+  name: agent-cluster
 rules:
 - apiGroups: [""]
   resources: ["nodes"]
@@ -44,20 +44,20 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: api-cluster
+  name: agent-cluster
 subjects:
 - kind: ServiceAccount
-  name: api
+  name: agent
   namespace: chutes
 roleRef:
   kind: ClusterRole
-  name: api-cluster
+  name: agent-cluster
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: api-secret-access
+  name: agent-secret-access
   namespace: default
 rules:
 - apiGroups: [""]
@@ -67,13 +67,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: api-secret-access
+  name: agent-secret-access
   namespace: default
 subjects:
 - kind: ServiceAccount
-  name: api
+  name: agent
   namespace: chutes
 roleRef:
   kind: Role
-  name: api-secret-access
+  name: agent-secret-access
   apiGroup: rbac.authorization.k8s.io
