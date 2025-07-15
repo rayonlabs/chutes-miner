@@ -1,13 +1,12 @@
 # app/cache/redis_client.py
 from datetime import datetime, timezone
-from chutes_common.k8s import WatchEvent
+from chutes_common.k8s import WatchEvent, serializer
 from chutes_common.monitoring.models import ClusterResources, ClusterState, ClusterStatus
 import json
 from typing import Optional, Dict, Any, List
 from loguru import logger
 from chutes_monitor.config import settings
 from redis import Redis
-from kubernetes.client import ApiClient
 
 class MonitoringRedisClient:
     """Async Redis client for caching cluster resources"""
@@ -91,8 +90,6 @@ class MonitoringRedisClient:
         # Clear existing resources first
         await self.clear_cluster_resources(cluster_name)
 
-        api_client = ApiClient()
-
         for resource_type, items in resources.items():
             if items:
                 key = f"clusters:{cluster_name}:resources:{resource_type}"
@@ -100,7 +97,7 @@ class MonitoringRedisClient:
                 resource_map = {}
                 for item in items:
                     resource_name = f"{item.metadata.namespace}:{item.metadata.name}"
-                    _item = api_client.sanitize_for_serialization(item)
+                    _item = serializer.serialize(item)
                     resource_map[resource_name] = json.dumps(_item)
                 
                 if resource_map:
@@ -116,8 +113,7 @@ class MonitoringRedisClient:
         if event.is_deleted:
             self.redis.hdel(key, resource_name)
         else:
-            api_client = ApiClient()
-            _item = api_client.sanitize_for_serialization(event.object)
+            _item = serializer.serialize(event.object)
             self.redis.hset(key, resource_name, json.dumps(_item))
     
     async def get_cluster_resources(self, cluster_name: str, resource_type: Optional[str] = None) -> Dict[str, Any]:

@@ -4,7 +4,7 @@ import pytest
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 
-@pytest.fixture(autouse=True, scope="function")
+@pytest.fixture(autouse=True, scope="session")
 def fast_retry():
     """Make all retries immediate and single-attempt during tests"""
     def no_retry_decorator(*args, **kwargs):

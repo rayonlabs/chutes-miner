@@ -1,5 +1,6 @@
+from collections import namedtuple
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from chutes_common.monitoring.models import ClusterResources
 import pytest
 
@@ -175,3 +176,18 @@ def cluster_resources_with_objects(sample_k8s_objects):
         nodes=[sample_k8s_objects['node']]
     )
 
+MockWatchComponents = namedtuple('MockWatchComponents', ['mock_stream', 'mock_stream_events'])
+
+@pytest.fixture(scope="function")
+def mock_watch():
+    mock_stream_events = []
+    mock_stream = AsyncMock()
+    mock_stream.__aiter__.return_value = mock_stream_events
+
+    with patch('kubernetes_asyncio.watch.Watch') as mock_watch:
+        mock_watch.return_value.stream.return_value.__aenter__.return_value = mock_stream
+
+        yield MockWatchComponents(
+            mock_stream=mock_stream,
+            mock_stream_events=mock_stream_events
+        )

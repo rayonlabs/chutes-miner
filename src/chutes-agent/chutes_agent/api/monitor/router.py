@@ -33,7 +33,6 @@ async def start_monitoring(
         if resource_monitor.status == MonitoringState.RUNNING:
             logger.info("Stopping existing monitoring task")
             await resource_monitor.stop()
-            # await stop_monitoring_task()
         
         await resource_monitor.start(request.control_plane_url)
 

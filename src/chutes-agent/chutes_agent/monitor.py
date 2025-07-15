@@ -2,7 +2,7 @@
 import asyncio
 from typing import Any, Callable, Optional
 from chutes_common.monitoring.models import ClusterState, MonitoringState, MonitoringStatus
-from chutes_common.k8s import WatchEvent
+from chutes_common.k8s import WatchEvent, serializer
 from kubernetes_asyncio import client, config, watch
 from chutes_agent.client import ControlPlaneClient
 from chutes_agent.collector import ResourceCollector
@@ -54,6 +54,8 @@ class ResourceMonitor:
         if self.control_plane_client:
             await self.control_plane_client.remove_cluster()
             await self.control_plane_client.close()
+
+        serializer.close()
 
     def _restart(self):
         """Initiate a restart with protection against spam restarts"""

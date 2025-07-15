@@ -1,11 +1,10 @@
 from datetime import datetime
-import json
-from types import SimpleNamespace
 from typing import Generator, Optional, Tuple, Union
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from chutes_common.k8s import serializer
+from pydantic import BaseModel, ConfigDict
 from enum import Enum
-from kubernetes_asyncio.client import V1Deployment, V1Service, V1Pod, V1Node, ApiClient
-from yaml import serialize
+from kubernetes_asyncio.client import V1Deployment, V1Service, V1Pod, V1Node
+
 
 class MonitoringState(str, Enum):
     """Monitoring status enumeration"""
@@ -53,44 +52,24 @@ class ClusterResources(BaseModel):
 
     @classmethod
     def from_dict(cls, v: dict) -> "ClusterResources":
-        api_client = ApiClient()
 
         return cls(
-            deployments=api_client.deserialize(
-                SimpleNamespace(data=json.dumps(v.get('deployments', []))), 
-                'list[V1Deployment]'
-            ),
-            services=api_client.deserialize(
-                SimpleNamespace(data=json.dumps(v.get('services', []))), 
-                'list[V1Service]'
-            ),
-            pods=api_client.deserialize(
-                SimpleNamespace(data=json.dumps(v.get('pods', []))), 
-                'list[V1Pod]'
-            ),
-            nodes=api_client.deserialize(
-                SimpleNamespace(data=json.dumps(v.get('nodes', []))), 
-                'list[V1Node]'
-            )
+            deployments=serializer.deserialize(v.get('deployments', []), 'list[V1Deployment]'),
+            services=serializer.deserialize(v.get('services', []), 'list[V1Service]'),
+            pods=serializer.deserialize(v.get('pods', []), 'list[V1Pod]'),
+            nodes=serializer.deserialize(v.get('nodes', []), 'list[V1Node]')
         )
 
     def to_dict(self) -> dict:
         """Convert the cluster resources to a dictionary representation"""
         result = {}
-        api_client = ApiClient()
-
-        for pod in self.pods:
-            pod.to_dict(serialize=True)
 
         for field_name, field_value in self:
             if isinstance(field_value, list):
                 # Convert each Kubernetes object to dict using its to_dict method
-                result[field_name] = [
-                    api_client.sanitize_for_serialization(obj)
-                    for obj in field_value
-                ]
+                result[field_name] = [serializer.serialize(obj) for obj in field_value]
             else:
-                result[field_name] = api_client.sanitize_for_serialization(field_value)
+                result[field_name] = serializer.serialize(field_value)
                 
         return result
 

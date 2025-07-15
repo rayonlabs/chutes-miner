@@ -178,33 +178,31 @@ async def test_send_heartbeat_error_handling(mock_sleep, resource_monitor):
     resource_monitor._async_restart.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_watch_namespaced_deployments_success(resource_monitor):
+async def test_watch_namespaced_deployments_success(resource_monitor, mock_watch):
     """Test watching deployments successfully"""
     # Setup
     resource_monitor.apps_v1 = AsyncMock()
     resource_monitor.handle_resource_event = AsyncMock()
     
     # Mock watch stream
-    mock_event = {'type': 'ADDED', 'object': MagicMock()}
-    mock_stream = AsyncMock()
-    mock_stream.__aiter__.return_value = [mock_event]
     
-    with patch('kubernetes_asyncio.watch.Watch') as mock_watch:
-        with patch('chutes_common.k8s.WatchEvent.from_dict') as mock_from_dict:
-            mock_watch.return_value.stream.return_value = mock_stream
-            mock_watch_event = MagicMock()
-            mock_from_dict.return_value = mock_watch_event
-            
-            # Cancel after processing one event
-            resource_monitor.handle_resource_event.side_effect = asyncio.CancelledError()
-            
-            await resource_monitor.watch_namespaced_deployments("default")
-            
-            mock_from_dict.assert_called_once_with(mock_event)
-            resource_monitor.handle_resource_event.assert_called_once_with(mock_watch_event)
+    mock_event = {'type': 'ADDED', 'object': MagicMock()}
+    mock_watch.mock_stream_events.append(mock_event)
+
+    with patch('chutes_common.k8s.WatchEvent.from_dict') as mock_from_dict:
+        mock_watch_event = MagicMock()
+        mock_from_dict.return_value = mock_watch_event
+        
+        # Cancel after processing one event
+        resource_monitor.handle_resource_event.side_effect = asyncio.CancelledError()
+        
+        await resource_monitor.watch_namespaced_deployments("default")
+        
+        mock_from_dict.assert_called_once_with(mock_event)
+        resource_monitor.handle_resource_event.assert_called_once_with(mock_watch_event)
 
 @pytest.mark.asyncio
-async def test_watch_namespaced_deployments_error_triggers_restart(resource_monitor):
+async def test_watch_namespaced_deployments_error_triggers_restart(resource_monitor, mock_watch):
     """Test that errors in deployment watching trigger restart"""
     # Setup
     resource_monitor.apps_v1 = AsyncMock()
@@ -220,7 +218,7 @@ async def test_watch_namespaced_deployments_error_triggers_restart(resource_moni
         resource_monitor._restart.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_watch_namespaced_pods_success(resource_monitor):
+async def test_watch_namespaced_pods_success(resource_monitor, mock_watch):
     """Test watching pods successfully"""
     # Setup
     resource_monitor.core_v1 = AsyncMock()
@@ -228,22 +226,19 @@ async def test_watch_namespaced_pods_success(resource_monitor):
     
     # Mock watch stream
     mock_event = {'type': 'MODIFIED', 'object': MagicMock()}
-    mock_stream = AsyncMock()
-    mock_stream.__aiter__.return_value = [mock_event]
+    mock_watch.mock_stream_events.append(mock_event)
     
-    with patch('kubernetes_asyncio.watch.Watch') as mock_watch:
-        with patch('chutes_common.k8s.WatchEvent.from_dict') as mock_from_dict:
-            mock_watch.return_value.stream.return_value = mock_stream
-            mock_watch_event = MagicMock()
-            mock_from_dict.return_value = mock_watch_event
-            
-            # Cancel after processing one event
-            resource_monitor.handle_resource_event.side_effect = asyncio.CancelledError()
-            
-            await resource_monitor.watch_namespaced_pods("default")
-            
-            mock_from_dict.assert_called_once_with(mock_event)
-            resource_monitor.handle_resource_event.assert_called_once_with(mock_watch_event)
+    with patch('chutes_common.k8s.WatchEvent.from_dict') as mock_from_dict:
+        mock_watch_event = MagicMock()
+        mock_from_dict.return_value = mock_watch_event
+        
+        # Cancel after processing one event
+        resource_monitor.handle_resource_event.side_effect = asyncio.CancelledError()
+        
+        await resource_monitor.watch_namespaced_pods("default")
+        
+        mock_from_dict.assert_called_once_with(mock_event)
+        resource_monitor.handle_resource_event.assert_called_once_with(mock_watch_event)
 
 @pytest.mark.asyncio
 async def test_watch_namespaced_pods_error_triggers_restart(resource_monitor):
@@ -262,7 +257,7 @@ async def test_watch_namespaced_pods_error_triggers_restart(resource_monitor):
         resource_monitor._restart.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_watch_namespaced_services_success(resource_monitor):
+async def test_watch_namespaced_services_success(resource_monitor, mock_watch):
     """Test watching services successfully"""
     # Setup
     resource_monitor.core_v1 = AsyncMock()
@@ -270,22 +265,19 @@ async def test_watch_namespaced_services_success(resource_monitor):
     
     # Mock watch stream
     mock_event = {'type': 'DELETED', 'object': MagicMock()}
-    mock_stream = AsyncMock()
-    mock_stream.__aiter__.return_value = [mock_event]
+    mock_watch.mock_stream_events.append(mock_event)
     
-    with patch('kubernetes_asyncio.watch.Watch') as mock_watch:
-        with patch('chutes_common.k8s.WatchEvent.from_dict') as mock_from_dict:
-            mock_watch.return_value.stream.return_value = mock_stream
-            mock_watch_event = MagicMock()
-            mock_from_dict.return_value = mock_watch_event
-            
-            # Cancel after processing one event
-            resource_monitor.handle_resource_event.side_effect = asyncio.CancelledError()
-            
-            await resource_monitor.watch_namespaced_services("default")
-            
-            mock_from_dict.assert_called_once_with(mock_event)
-            resource_monitor.handle_resource_event.assert_called_once_with(mock_watch_event)
+    with patch('chutes_common.k8s.WatchEvent.from_dict') as mock_from_dict:
+        mock_watch_event = MagicMock()
+        mock_from_dict.return_value = mock_watch_event
+        
+        # Cancel after processing one event
+        resource_monitor.handle_resource_event.side_effect = asyncio.CancelledError()
+        
+        await resource_monitor.watch_namespaced_services("default")
+        
+        mock_from_dict.assert_called_once_with(mock_event)
+        resource_monitor.handle_resource_event.assert_called_once_with(mock_watch_event)
 
 @pytest.mark.asyncio
 async def test_watch_namespaced_services_error_triggers_restart(resource_monitor):

@@ -2,14 +2,35 @@
 Miner Agent API entrypoint.
 """
 
+from contextlib import asynccontextmanager
 import hashlib
 from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from chutes_agent.api.config.router import router as config_router
 from chutes_agent.api.monitor.router import router as monitor_router
 from chutes_agent.config import settings
+from loguru import logger
+from chutes_common.k8s import serializer
 
 settings.setup_logging()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan events"""
+    # Startup
+    logger.info("Starting Control Plane API server")
+    
+    logger.info("Agent API server started successfully")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Agent API server")
+    
+    # Close serializer API connection
+    await serializer.close()
+    
+    logger.info("Agent API server stopped")
 
 app = FastAPI(default_response_class=ORJSONResponse)
 app.include_router(config_router, prefix="/config", tags=["Config"])
