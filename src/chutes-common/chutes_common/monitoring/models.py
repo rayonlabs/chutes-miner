@@ -17,7 +17,7 @@ class MonitoringState(str, Enum):
 class MonitoringStatus(BaseModel):
     """Current monitoring status"""
     cluster_id: Optional[str] = None
-    state: str  # "stopped", "starting", "running", "error"
+    state: MonitoringState  # "stopped", "starting", "running", "error"
     error_message: Optional[str] = None
     last_heartbeat: Optional[str] = None
 
@@ -96,9 +96,9 @@ class ClusterResources(BaseModel):
 
     def items(self) -> Generator[Tuple[str, list[Union[V1Deployment, V1Service, V1Pod, V1Node]]], None, None]:
         yield "deployment", self.deployments
-        yield "services", self.services
-        yield "pods", self.pods
-        yield "nodes", self.nodes
+        yield "service", self.services
+        yield "pod", self.pods
+        yield "node", self.nodes
 
 class HeartbeatData(BaseModel):
     """Heartbeat data from member cluster"""

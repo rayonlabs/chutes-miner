@@ -42,39 +42,6 @@ class ControlPlaneClient:
             await self._session.close()
             self._session = None
     
-    def _serialize_k8s_object(self, obj) -> Dict[str, Any]:
-        """Convert Kubernetes object to JSON-serializable dict"""
-        # Use the object's to_dict() method if available, otherwise convert to dict
-        if hasattr(obj, 'to_dict'):
-            return obj.to_dict()
-        elif hasattr(obj, '__dict__'):
-            return self._convert_object_dict(obj.__dict__)
-        else:
-            return str(obj)
-    
-    def _convert_object_dict(self, obj_dict: Dict) -> Dict[str, Any]:
-        """Recursively convert object dict to JSON-serializable format"""
-        result = {}
-        for key, value in obj_dict.items():
-            if key.startswith('_'):
-                continue
-            
-            if hasattr(value, 'to_dict'):
-                result[key] = value.to_dict()
-            elif isinstance(value, dict):
-                result[key] = self._convert_object_dict(value)
-            elif isinstance(value, list):
-                result[key] = [
-                    item.to_dict() if hasattr(item, 'to_dict') else item 
-                    for item in value
-                ]
-            elif hasattr(value, 'isoformat'):  # datetime objects
-                result[key] = value.isoformat()
-            else:
-                result[key] = value
-        
-        return result
-    
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=4, max=10),
            before_sleep=before_sleep_log(logger, logging.WARNING),

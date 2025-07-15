@@ -25,6 +25,7 @@ class ResourceMonitor:
         self.apps_v1 = None
         self._status = MonitoringStatus(state=MonitoringState.STOPPED)
         self._watcher_task: Optional[asyncio.Task] = None
+        self._heartbeat_task: Optional[asyncio.Task] = None
         
         # Restart protection
         self._restart_lock = asyncio.Lock()
@@ -118,6 +119,7 @@ class ResourceMonitor:
 
             # Initialize and start watching
             await self.initialize()
+            self._heartbeat_task = asyncio.create_task(self.send_heartbeat())
             
             # Start the watching process
             self._watcher_task = asyncio.create_task(
@@ -148,7 +150,15 @@ class ResourceMonitor:
             except asyncio.CancelledError:
                 pass
         
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
         self._watcher_task = None
+        self._heartbeat_task = None
         self._status = MonitoringStatus(state=MonitoringState.STOPPED)
         logger.info("Monitoring stopped")
 
@@ -175,8 +185,7 @@ class ResourceMonitor:
         """Start watching all resource types"""
         try:
             tasks: list[asyncio.Task] = [
-                asyncio.create_task(self.watch_nodes()),
-                asyncio.create_task(self.send_heartbeat())
+                asyncio.create_task(self.watch_nodes())
             ]
             for namespace in settings.watch_namespaces:
                 namespace_tasks = [
@@ -216,14 +225,14 @@ class ResourceMonitor:
         """Watch resources for changes"""
         while True:
             try:
-                stream =  watch.Watch().stream(
+                async with watch.Watch().stream(
                     func,
                     **kwargs
-                )
+                ) as stream:
                 # Use the standard Kubernetes watch mechanism
-                async for event in stream:
-                    event = WatchEvent.from_dict(event)
-                    await self.handle_resource_event(event)
+                    async for event in stream:
+                        event = WatchEvent.from_dict(event)
+                        await self.handle_resource_event(event)
 
             except asyncio.CancelledError:
                 break

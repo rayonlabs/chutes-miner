@@ -108,7 +108,8 @@ async def test_receive_heartbeat_unhealthy_cluster(mock_redis_client, test_clien
     assert "unhealthy state" in json_response["detail"]
 
 
-def test_receive_resource_update_success(mock_redis_client, test_client, test_resource_update_request):
+@pytest.mark.asyncio
+async def test_receive_resource_update_success(mock_redis_client, test_client, test_resource_update_request):
     """Test successful resource update reception via API"""
     mock_redis_client.update_resource = AsyncMock()
     

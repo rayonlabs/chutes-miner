@@ -20,54 +20,6 @@ def test_control_plane_client_init_strips_trailing_slash():
     client = ControlPlaneClient("http://test-control-plane/")
     assert client.base_url == "http://test-control-plane"
 
-def test_serialize_k8s_object_with_to_dict(control_plane_client, sample_pod):
-    """Test serialization of object with to_dict method"""
-    result = control_plane_client._serialize_k8s_object(sample_pod)
-    expected = {
-        "metadata": {"name": "test-pod", "namespace": "default"},
-        "spec": {"containers": [{"name": "test-container"}]}
-    }
-    assert result == expected
-
-def test_serialize_k8s_object_with_dict(control_plane_client):
-    """Test serialization of dict object"""
-    obj = MagicMock()
-    obj.__dict__ = {"name": "test", "value": 123}
-    
-    result = control_plane_client._serialize_k8s_object(obj)
-    assert result == {"name": "test", "value": 123}
-
-def test_serialize_k8s_object_string_fallback(control_plane_client):
-    """Test serialization fallback to string"""
-    obj = "simple string"
-    result = control_plane_client._serialize_k8s_object(obj)
-    assert result == "simple string"
-
-def test_convert_object_dict_recursive(control_plane_client):
-    """Test recursive dict conversion"""
-    test_dict = {
-        "simple": "value",
-        "_private": "hidden",
-        "nested": {"key": "value"},
-        "list": [{"item": "value"}]
-    }
-    
-    result = control_plane_client._convert_object_dict(test_dict)
-    
-    assert result["simple"] == "value"
-    assert "_private" not in result
-    assert result["nested"] == {"key": "value"}
-    assert result["list"] == [{"item": "value"}]
-
-def test_convert_object_dict_datetime(control_plane_client):
-    """Test datetime handling in dict conversion"""
-    from datetime import datetime
-    dt = datetime(2023, 1, 1, 12, 0, 0)
-    test_dict = {"timestamp": dt}
-    
-    result = control_plane_client._convert_object_dict(test_dict)
-    assert result["timestamp"] == dt.isoformat()
-
 @pytest.mark.asyncio
 @patch('chutes_agent.client.sign_request')
 async def test_send_initial_resources_success(mock_sign, mock_aiohttp_session, control_plane_client, cluster_resources_with_objects):
