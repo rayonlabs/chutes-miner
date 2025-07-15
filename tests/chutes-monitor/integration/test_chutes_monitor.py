@@ -78,6 +78,3 @@ async def test_cluster_monitor_full_lifecycle(mock_redis_client):
         # Delete cluster
         await cluster_monitor.delete_cluster(cluster_name)
         mock_redis_client.clear_cluster.assert_called_once_with(cluster_name)
-        
-        # Verify health checker was started
-        mock_health_checker_instance.start.assert_called_once()

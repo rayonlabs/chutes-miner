@@ -80,10 +80,10 @@ class HealthChecker:
     
     async def _check_cluster_health(self, cluster_status: ClusterStatus):
         """Check health of a specific cluster based on heartbeat timestamp"""
+        last_heartbeat = cluster_status.last_heartbeat
+        cluster_name = cluster_status.cluster_name
+        
         try:
-            
-            last_heartbeat = cluster_status.last_heartbeat
-            cluster_name = cluster_status.cluster_name
             healthy = True
             reason = ""
             if not last_heartbeat:
@@ -117,11 +117,11 @@ class HealthChecker:
                     logger.debug(f"Cluster {cluster_name} heartbeat is stale: {last_heartbeat_dt} (timeout: {heartbeat_timeout})")
                     
             if not healthy:
-                self._mark_cluster_unhealthy(cluster_name)
+                await self._mark_cluster_unhealthy(cluster_status, reason)
                 
         except Exception as e:
             logger.error(f"Health check failed for cluster {cluster_name}: {e}")
-            await self._mark_cluster_unhealthy(cluster_status, reason)
+            await self._mark_cluster_unhealthy(cluster_status, f"Exception encountered: {e}")
     
     async def _mark_cluster_healthy(self, cluster_name: str):
         """Mark cluster as healthy"""
@@ -159,7 +159,7 @@ class HealthChecker:
     async def _cleanup_stale_clusters(self):
         """Remove clusters that haven't been seen for a long time"""
         try:
-            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=1)
             cluster_statuses = await self.redis_client.get_all_cluster_statuses()
             
             for cluster_status in cluster_statuses:
@@ -186,8 +186,6 @@ class ClusterMonitor:
     def __init__(self):
         # self.control_plane_url = settings.control_plane_url
         self.redis_client = MonitoringRedisClient()
-        self.health_checker = HealthChecker()
-        self.health_checker.start()
 
     def __new__(cls, *args, **kwargs):
         """

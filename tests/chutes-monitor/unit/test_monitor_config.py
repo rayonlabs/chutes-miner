@@ -22,7 +22,7 @@ def test_monitor_settings_default_values():
         # Note: The config has a syntax error with trailing commas, but assuming correct values
         assert settings.heartbeat_interval == 30  # Default from code
         assert settings.failure_threshold == 1    # Default from code
-        assert settings.redis_url == 'redis://monitor-redis:6379'  # Default from code
+        assert settings.redis_url == 'redis://redis:6379'  # Default from code
     
     finally:
         # Restore original environment variables

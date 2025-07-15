@@ -9,16 +9,14 @@ from chutes_agent.config import settings
 @patch('kubernetes_asyncio.client.CoreV1Api')
 @patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_complete_monitoring_workflow(
-    mock_config, mock_core_v1, mock_apps_v1, mock_client_class
+    mock_config, mock_core_v1, mock_apps_v1, mock_client_class, resource_monitor
 ):
     """Test the complete monitoring workflow from start to finish"""
-    from chutes_agent.monitor import ResourceMonitor
-    
     # Setup mocks
     mock_client = AsyncMock()
     mock_client_class.return_value = mock_client
     
-    monitor = ResourceMonitor()
+    monitor = resource_monitor
     
     # Mock collector to return empty resources
     with patch.object(monitor.collector, 'collect_all_resources') as mock_collect:
@@ -31,19 +29,19 @@ async def test_complete_monitoring_workflow(
         mock_client_class.assert_called_once_with("http://test-control-plane")
         mock_client.register_cluster.assert_called_once()
         
-        # Verify Kubernetes components were initialized
+        # Verify kubernetes_asyncio components were initialized
         mock_config.assert_called_once()
         mock_core_v1.assert_called_once()
         mock_apps_v1.assert_called_once()
 
+
 @pytest.mark.asyncio
 @patch('kubernetes_asyncio.config.load_incluster_config', side_effect=Exception("K8s error"))
-async def test_error_handling_and_recovery(mock_config):
+async def test_error_handling_and_recovery(mock_config, resource_monitor):
     """Test error handling and recovery mechanisms"""
-    from chutes_agent.monitor import ResourceMonitor
     from chutes_common.monitoring.models import MonitoringState
     
-    monitor = ResourceMonitor()
+    monitor = resource_monitor
     
     # Test initialization failure
     with pytest.raises(Exception, match="K8s error"):
@@ -80,16 +78,15 @@ async def test_client_collector_integration(mock_sign_request, mock_aiohttp_sess
 @patch.object(settings, 'cluster_name', 'test-cluster')
 @patch.object(settings, 'watch_namespaces', ['default'])
 async def test_full_startup_sequence(
-    mock_config, mock_core_v1, mock_apps_v1, mock_client_class
+    mock_config, mock_core_v1, mock_apps_v1, mock_client_class, resource_monitor
 ):
     """Test the full application startup sequence"""
-    from chutes_agent.monitor import ResourceMonitor
     
     # Setup mocks
     mock_client = AsyncMock()
     mock_client_class.return_value = mock_client
     
-    monitor = ResourceMonitor()
+    monitor = resource_monitor
     
     with patch.object(monitor.collector, 'collect_all_resources') as mock_collect:
         mock_collect.return_value = {'pods': [], 'deployments': [], 'services': []}
@@ -139,12 +136,11 @@ def test_api_models_integration():
     assert request.control_plane_url == "https://control.example.com"
 
 @pytest.mark.asyncio
-async def test_error_propagation(mock_client_class):
+async def test_error_propagation(mock_client_class, resource_monitor):
     """Test that errors propagate correctly through the system"""
-    from chutes_agent.monitor import ResourceMonitor
     from chutes_common.monitoring.models import MonitoringState
     
-    monitor = ResourceMonitor()
+    monitor = resource_monitor
     
     # Test that client errors affect monitor status
     with patch.object(monitor, 'initialize', side_effect=Exception("Client connection failed")):
@@ -162,17 +158,16 @@ async def test_error_propagation(mock_client_class):
 @patch('kubernetes_asyncio.client.CoreV1Api') 
 @patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_monitor_restart_functionality(
-    mock_config, mock_core_v1, mock_apps_v1, mock_client_class
+    mock_config, mock_core_v1, mock_apps_v1, mock_client_class, resource_monitor
 ):
     """Test monitor restart functionality in integration"""
-    from chutes_agent.monitor import ResourceMonitor
     from chutes_common.monitoring.models import MonitoringState
     
     # Setup mocks
     mock_client = AsyncMock()
     mock_client_class.return_value = mock_client
     
-    monitor = ResourceMonitor()
+    monitor = resource_monitor
     monitor.control_plane_client = mock_client
     
     with patch.object(monitor.collector, 'collect_all_resources') as mock_collect:
@@ -200,12 +195,12 @@ async def test_signed_request_integration(mock_sign_request, mock_aiohttp_sessio
     
     # Verify sign_request was called and session.post was called
     mock_sign_request.assert_called_once()
-    mock_aiohttp_session.session.post.assert_called_once()
+    mock_aiohttp_session.session.put.assert_called_once()
     
     # Verify the call was made with proper JSON payload
-    call_args = mock_aiohttp_session.session.post.call_args
-    assert 'json' in call_args.kwargs
-    assert call_args.kwargs['json'] == {"signed": "payload"}
+    call_args = mock_aiohttp_session.session.put.call_args
+    assert 'data' in call_args.kwargs
+    assert call_args.kwargs['data'] == {"signed": "payload"}
 
 @pytest.mark.asyncio
 @patch('kubernetes_asyncio.watch.Watch')
@@ -213,17 +208,16 @@ async def test_signed_request_integration(mock_sign_request, mock_aiohttp_sessio
 @patch('kubernetes_asyncio.client.CoreV1Api')
 @patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_watch_event_handling_integration(
-    mock_config, mock_core_v1, mock_apps_v1, mock_watch, mock_client_class
+    mock_config, mock_core_v1, mock_apps_v1, mock_watch, mock_client_class, resource_monitor
 ):
     """Test watch event handling in integration"""
-    from chutes_agent.monitor import ResourceMonitor
     from chutes_common.k8s import WatchEvent
     
     # Setup mocks
     mock_client = AsyncMock()
     mock_client_class.return_value = mock_client
     
-    monitor = ResourceMonitor()
+    monitor = resource_monitor
     monitor.control_plane_client = mock_client
     monitor.apps_v1 = AsyncMock()
     monitor.core_v1 = AsyncMock()
@@ -247,8 +241,8 @@ async def test_multi_namespace_integration(mock_namespaces):
     collector = ResourceCollector()
     
     # Setup mocks for K8s API calls
-    collector.core_v1 = AsyncMock()
-    collector.apps_v1 = AsyncMock()
+    collector.core_v1 = MagicMock()
+    collector.apps_v1 = MagicMock()
     
     # Mock responses for each namespace
     mock_response = MagicMock()

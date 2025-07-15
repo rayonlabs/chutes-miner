@@ -43,31 +43,11 @@ def sample_cluster_status():
 
 
 @pytest.fixture
-def sample_cluster_resources():
-    """Sample cluster resources for testing"""
-    return ClusterResources(
-        nodes=2,
-        pods=10,
-        services=5,
-        deployments=3
-    )
-
-
-@pytest.fixture
 def sample_heartbeat_data():
     """Sample heartbeat data for testing"""
     return HeartbeatData(
         status=ClusterState.ACTIVE,
         timestamp=datetime.now(timezone.utc).isoformat()
-    )
-
-
-@pytest.fixture
-def sample_register_request():
-    """Sample register cluster request for testing"""
-    return RegisterClusterRequest(
-        cluster_name="test-cluster",
-        resources=ClusterResources(nodes=2, pods=10, services=5, deployments=3)
     )
 
 

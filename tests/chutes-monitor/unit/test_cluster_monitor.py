@@ -4,11 +4,15 @@ from fastapi.testclient import TestClient
 
 
 @patch('chutes_monitor.api.main.MonitoringRedisClient')
+@patch('chutes_monitor.api.main.HealthChecker')
 @pytest.mark.asyncio
-async def test_lifespan_startup_and_shutdown(mock_redis_class):
+async def test_lifespan_startup_and_shutdown(mock_health_checker_class, mock_redis_class):
     """Test application lifespan startup and shutdown"""
     mock_redis_client = AsyncMock()
     mock_redis_class.return_value = mock_redis_client
+
+    mock_health_checker = AsyncMock()
+    mock_health_checker_class.return_value = mock_health_checker
     
     # Import here to avoid issues with patching
     from chutes_monitor.api.main import lifespan
@@ -19,9 +23,11 @@ async def test_lifespan_startup_and_shutdown(mock_redis_class):
     # Test lifespan context manager
     async with lifespan(app):
         # During startup
-        mock_redis_client.initialize.assert_called_once()
+        mock_redis_class.assert_called_once()
+        mock_health_checker_class.assert_called_once()
     
     # After shutdown
+    mock_health_checker.stop.assert_called_once()
     mock_redis_client.close.assert_called_once()
 
 

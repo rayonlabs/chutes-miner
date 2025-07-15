@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from enum import Enum
+from types import SimpleNamespace
 from typing import List, Dict, Any, Optional, Union
 import json
 from unittest.mock import MagicMock
-from kubernetes.client import V1Deployment, V1Pod, V1Service, V1Node
+from kubernetes_asyncio.client import V1Deployment, V1Pod, V1Service, V1Node
 from pydantic import BaseModel, ConfigDict, field_validator
-
+from kubernetes_asyncio.client import ApiClient
 
 class WatchEventType(Enum):
     """Enumeration of watch event types."""
@@ -15,10 +16,10 @@ class WatchEventType(Enum):
     DELETED = "DELETED"
 
 _resource_types = {
-    type(V1Deployment): "deployment",
-    type(V1Service): "service",
-    type(V1Pod): "pod",
-    type(V1Node): "node"
+    V1Deployment: "deployment",
+    V1Service: "service",
+    V1Pod: "pod",
+    V1Node: "node"
 }
 
 class WatchEvent(BaseModel):
@@ -29,31 +30,11 @@ class WatchEvent(BaseModel):
         type: The type of watch event (ADDED, MODIFIED, DELETED)
         object: The V1Deployment object from the Kubernetes API
     """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     type: WatchEventType
     object: Union[V1Deployment , V1Pod , V1Service , V1Node, MagicMock] # Magic Mock for testing
-    
-    @field_validator('object', mode='before')
-    @classmethod
-    def validate_object(cls, v):
-        """Handle both Kubernetes objects and their dict representations"""
-        if isinstance(v, dict):
-            # If it's a dict, we need to determine what type it should be
-            # and reconstruct the appropriate Kubernetes object
-            kind = v.get('kind', '')
-            if kind == 'Deployment':
-                return V1Deployment(**v)
-            elif kind == 'Pod':
-                return V1Pod(**v)
-            elif kind == 'Service':
-                return V1Service(**v)
-            elif kind == 'Node':
-                return V1Node(**v)
-            else:
-                # For testing or unknown types, return as-is
-                return v
-        return v
 
     @classmethod
     def from_dict(cls, event_dict: dict) -> "WatchEvent":
@@ -66,7 +47,20 @@ class WatchEvent(BaseModel):
         Returns:
             DeploymentWatchEvent instance
         """
-        return cls(type=WatchEventType(event_dict["type"]), object=event_dict["object"])
+        obj = event_dict.get("object", {})
+        if isinstance(obj, dict):
+            kind = obj.get("kind", "")
+
+            if not kind:
+                raise ValueError("event_dict object is not of kind Deployment, Pod, Service, Node")
+
+            api_client = ApiClient()
+            obj = api_client.deserialize(
+                    SimpleNamespace(data=json.dumps(event_dict.get('object', {}))), 
+                    f'V1{kind}'
+                )        
+
+        return cls(type=WatchEventType(event_dict["type"]), object=obj)
 
     def to_dict(self) -> dict:
         """
@@ -75,16 +69,8 @@ class WatchEvent(BaseModel):
         Returns:
             Dictionary with 'type' and 'object' keys
         """
-        # Serialize the Kubernetes object
-        if hasattr(self.object, 'to_dict'):
-            # V1Deployment has a to_dict() method
-            obj_dict = self.object.to_dict()
-        elif hasattr(self.object, '__dict__'):
-            # Fallback for other objects
-            obj_dict = vars(self.object)
-        else:
-            # For MagicMock in tests
-            obj_dict = self.object
+        api_client = ApiClient()
+        obj_dict = api_client.sanitize_for_serialization(self.object)
         
         return {"type": self.type.value, "object": obj_dict}
 

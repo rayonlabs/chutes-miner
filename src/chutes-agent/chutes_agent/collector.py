@@ -1,6 +1,6 @@
 # agent/controller/collector.py
 from chutes_common.monitoring.models import ClusterResources
-from kubernetes import client, config
+from kubernetes_asyncio import client, config
 from loguru import logger
 from typing import Dict, List, Any
 from chutes_agent.config import settings
@@ -26,22 +26,22 @@ class ResourceCollector:
         
         resources = ClusterResources()
         try:
-            nodes_response = self.core_v1.list_node()
+            nodes_response = await self.core_v1.list_node()
             resources.nodes.extend(nodes_response.items)
 
             # Collect from specific namespaces
             for namespace in self.namespaces:
                 try:
                     # Collect deployments for this namespace
-                    deployments_response = self.apps_v1.list_namespaced_deployment(namespace)
+                    deployments_response = await self.apps_v1.list_namespaced_deployment(namespace)
                     resources.deployments.extend(deployments_response.items)
                     
                     # Collect pods for this namespace
-                    pods_response = self.core_v1.list_namespaced_pod(namespace)
+                    pods_response = await self.core_v1.list_namespaced_pod(namespace)
                     resources.pods.extend(pods_response.items)
                     
                     # Collect services for this namespace
-                    services_response = self.core_v1.list_namespaced_service(namespace)
+                    services_response = await self.core_v1.list_namespaced_service(namespace)
                     resources.services.extend(services_response.items)
 
                     logger.debug(f"Collected from namespace {namespace}: {len(deployments_response.items)} deployments, {len(pods_response.items)} pods, {len(services_response.items)} services, {len(nodes_response.items)} nodes")

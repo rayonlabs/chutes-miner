@@ -1,9 +1,11 @@
 from datetime import datetime
 import json
+from types import SimpleNamespace
 from typing import Generator, Optional, Tuple, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from enum import Enum
-from kubernetes.client import V1Deployment, V1Service, V1Pod, V1Node
+from kubernetes_asyncio.client import V1Deployment, V1Service, V1Pod, V1Node, ApiClient
+from yaml import serialize
 
 class MonitoringState(str, Enum):
     """Monitoring status enumeration"""
@@ -35,6 +37,10 @@ class ClusterStatus(BaseModel):
     error_message: Optional[str] = None
     heartbeat_failures: int = 0
 
+    @property
+    def is_healthy(self):
+        return self.state in [ClusterState.ACTIVE, ClusterState.STARTING]
+
 class ClusterResources(BaseModel):
     """Cluster monitoring status"""
 
@@ -46,52 +52,45 @@ class ClusterResources(BaseModel):
     nodes:list[V1Node] = []
 
     @classmethod
-    def _validate_k8s_objects(cls, v, target_type):
-        """Generic method to handle Kubernetes objects and their dict representations"""
-        if not isinstance(v, list):
-            return v
-            
-        objects = []
-        for item in v:
-            if isinstance(item, dict):
-                objects.append(target_type(**item))
-            else:
-                objects.append(item)
-        return objects
+    def from_dict(cls, v: dict) -> "ClusterResources":
+        api_client = ApiClient()
 
-    @field_validator('deployments', mode='before')
-    @classmethod
-    def validate_deployments(cls, v):
-        return cls._validate_k8s_objects(v, V1Deployment)
-    
-    @field_validator('services', mode='before')
-    @classmethod
-    def validate_services(cls, v):
-        return cls._validate_k8s_objects(v, V1Service)
-    
-    @field_validator('pods', mode='before')
-    @classmethod
-    def validate_pods(cls, v):
-        return cls._validate_k8s_objects(v, V1Pod)
-    
-    @field_validator('nodes', mode='before')
-    @classmethod
-    def validate_nodes(cls, v):
-        return cls._validate_k8s_objects(v, V1Node)
-    
+        return cls(
+            deployments=api_client.deserialize(
+                SimpleNamespace(data=json.dumps(v.get('deployments', []))), 
+                'list[V1Deployment]'
+            ),
+            services=api_client.deserialize(
+                SimpleNamespace(data=json.dumps(v.get('services', []))), 
+                'list[V1Service]'
+            ),
+            pods=api_client.deserialize(
+                SimpleNamespace(data=json.dumps(v.get('pods', []))), 
+                'list[V1Pod]'
+            ),
+            nodes=api_client.deserialize(
+                SimpleNamespace(data=json.dumps(v.get('nodes', []))), 
+                'list[V1Node]'
+            )
+        )
+
     def to_dict(self) -> dict:
         """Convert the cluster resources to a dictionary representation"""
         result = {}
-        
+        api_client = ApiClient()
+
+        for pod in self.pods:
+            pod.to_dict(serialize=True)
+
         for field_name, field_value in self:
             if isinstance(field_value, list):
                 # Convert each Kubernetes object to dict using its to_dict method
                 result[field_name] = [
-                    obj.to_dict() if hasattr(obj, 'to_dict') else obj
+                    api_client.sanitize_for_serialization(obj)
                     for obj in field_value
                 ]
             else:
-                result[field_name] = field_value
+                result[field_name] = api_client.sanitize_for_serialization(field_value)
                 
         return result
 
@@ -103,6 +102,5 @@ class ClusterResources(BaseModel):
 
 class HeartbeatData(BaseModel):
     """Heartbeat data from member cluster"""
-    status: ClusterState
-    cluster_name: str
+    state: ClusterState
     timestamp: Optional[str] = None

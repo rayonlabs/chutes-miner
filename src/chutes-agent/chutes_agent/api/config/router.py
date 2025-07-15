@@ -1,6 +1,6 @@
 import base64
-from kubernetes import client, config
-from kubernetes.client.rest import ApiException
+from kubernetes_asyncio import client, config
+from kubernetes_asyncio.client.rest import ApiException
 from chutes_common.auth import authorize
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger

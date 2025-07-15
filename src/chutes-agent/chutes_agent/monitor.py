@@ -3,11 +3,19 @@ import asyncio
 from typing import Any, Callable, Optional
 from chutes_common.monitoring.models import ClusterState, MonitoringState, MonitoringStatus
 from chutes_common.k8s import WatchEvent
-from kubernetes import client, config, watch
+from kubernetes_asyncio import client, config, watch
 from chutes_agent.client import ControlPlaneClient
 from chutes_agent.collector import ResourceCollector
 from chutes_agent.config import settings
 from loguru import logger
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log,
+    after_log
+)
 
 class ResourceMonitor:
     def __init__(self):
@@ -17,6 +25,10 @@ class ResourceMonitor:
         self.apps_v1 = None
         self._status = MonitoringStatus(state=MonitoringState.STOPPED)
         self._watcher_task: Optional[asyncio.Task] = None
+        
+        # Restart protection
+        self._restart_lock = asyncio.Lock()
+        self._restart_task: Optional[asyncio.Task] = None
 
     @property
     def status(self):
@@ -27,17 +39,71 @@ class ResourceMonitor:
         await self._start_monitoring()
 
     async def stop(self):
+        # Cancel any pending restart
+        if self._restart_task and not self._restart_task.done():
+            self._restart_task.cancel()
+            try:
+                await self._restart_task
+            except asyncio.CancelledError:
+                pass
+        
         await self._stop_monitoring()
         await self.control_plane_client.remove_cluster()
 
     def _restart(self):
-        logger.info("Restarting monitor.")
-        asyncio.create_task(self._async_restart())
+        """Initiate a restart with protection against spam restarts"""
+        if self._restart_lock.locked():
+            logger.info("Restart already in progress, skipping")
+            return
+        
+        # Cancel any existing restart task
+        if self._restart_task and not self._restart_task.done():
+            self._restart_task.cancel()
+        
+        logger.info("Scheduling restart.")
+        self._restart_task = asyncio.create_task(self._async_restart())
 
+    @retry(
+        stop=stop_after_attempt(10),
+        wait=wait_exponential(
+            multiplier=1,
+            min=1,
+            max=300,  # 5 minutes max
+            exp_base=2
+        ),
+        retry=retry_if_exception_type((Exception,)),
+        before_sleep=before_sleep_log(logger, logger.level("INFO").no),
+        after=after_log(logger, logger.level("INFO").no)
+    )
     async def _async_restart(self):
-        await self.control_plane_client.remove_cluster()
-        await self._stop_monitoring()
-        await self._start_monitoring()
+        """Async restart with retry logic"""
+        async with self._restart_lock:
+            logger.info("Executing restart")
+            
+            # Update status to restarting
+            self._status.state = MonitoringState.STARTING
+            self._status.error_message = "Restarting due to error"
+            
+            try:
+                # Perform the restart
+                await self.control_plane_client.remove_cluster()
+                await self._stop_monitoring()
+                await self._start_monitoring()
+                
+                logger.info("Restart completed successfully")
+                
+            except asyncio.CancelledError:
+                logger.info("Restart was cancelled")
+                self._status.state = MonitoringState.STOPPED
+                # Don't retry on cancellation
+                raise
+            except Exception as e:
+                logger.error(f"Restart attempt failed: {e}")
+                # Set error state but let tenacity handle retries
+                self._status.state = MonitoringState.ERROR
+                self._status.error_message = f"Restart failed: {str(e)}"
+                # Re-raise to trigger tenacity retry
+                raise
 
     async def _start_monitoring(self):
         """Background task to start monitoring"""
@@ -151,7 +217,7 @@ class ResourceMonitor:
                     **kwargs
                 )
                 # Use the standard Kubernetes watch mechanism
-                for event in stream:
+                async for event in stream:
                     event = WatchEvent.from_dict(event)
                     await self.handle_resource_event(event)
 

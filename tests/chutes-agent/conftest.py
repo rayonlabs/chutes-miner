@@ -15,4 +15,5 @@ pytest_configure(None)
 
 from fixtures.client_fixtures import *  # noqa
 from fixtures.agent_fixtures import *  # noqa
-from fixtures.settings_fixtures import *
+from fixtures.settings_fixtures import * # noqa
+from fixtures.k8s_fixtures import * # noqa

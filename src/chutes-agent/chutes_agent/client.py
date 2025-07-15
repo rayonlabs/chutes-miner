@@ -68,11 +68,13 @@ class ControlPlaneClient:
         )
         
         headers, payload = sign_request(request.model_dump_json(), purpose=RESOURCE_PURPOSE)
-
+        # Need to apply json header since passing in string instead of dict
+        headers["Content-Type"] = "application/json"
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 url, 
-                json=payload,
+                data=payload,
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=settings.control_plane_timeout)
             ) as response:
@@ -87,7 +89,7 @@ class ControlPlaneClient:
         reraise=True)
     async def remove_cluster(self):
         """Send initial resource dump to control plane"""
-        url = f"{self.base_url}/{CLUSTER_ENDPOINT}/{self.cluster_name}"
+        url = f"{self.base_url}{CLUSTER_ENDPOINT}/{self.cluster_name}"
         
         headers, _ = sign_request(purpose=RESOURCE_PURPOSE)
 
@@ -108,17 +110,19 @@ class ControlPlaneClient:
            reraise=True)
     async def send_resource_update(self, event: WatchEvent):
         """Send resource update to control plane"""
-        url = f"{self.base_url}/{CLUSTER_ENDPOINT}/{self.cluster_name}/resources"
+        url = f"{self.base_url}{CLUSTER_ENDPOINT}/{self.cluster_name}/resources"
         
         # Serialize the Kubernetes object
         request = ResourceUpdateRequest(event=event)
         
         headers, payload = sign_request(request.model_dump_json(), purpose=RESOURCE_PURPOSE)
+        # Need to apply json header since passing in string instead of dict
+        headers["Content-Type"] = "application/json"
 
         async with aiohttp.ClientSession() as session:
             async with session.put(
                 url, 
-                json=payload,
+                data=payload,
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=settings.control_plane_timeout)
             ) as response:
@@ -132,20 +136,21 @@ class ControlPlaneClient:
            reraise=True)
     async def send_heartbeat(self, state: ClusterState):
         """Send heartbeat to control plane"""
-        url = f"{self.base_url}/{CLUSTER_ENDPOINT}/{self.cluster_name}/health"
+        url = f"{self.base_url}{CLUSTER_ENDPOINT}/{self.cluster_name}/health"
         
         heartbeat_data = HeartbeatData(
-            status=state,
-            cluster_name=settings.cluster_name,
+            state=state,
             timestamp=datetime.now(timezone.utc).isoformat()
         )
 
         headers, payload = sign_request(heartbeat_data.model_dump_json(), purpose=RESOURCE_PURPOSE)
-        
+        # Need to apply json header since passing in string instead of dict
+        headers["Content-Type"] = "application/json"
+
         async with aiohttp.ClientSession() as session:
             async with session.put(
                 url, 
-                json=payload,
+                data=payload,
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=settings.control_plane_timeout)
             ) as response:

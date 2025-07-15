@@ -3,6 +3,8 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest_asyncio
+
 @pytest.fixture(scope="function")
 def event_loop():
     """Create an instance of the default event loop for the test session."""
@@ -12,7 +14,7 @@ def event_loop():
 
 @pytest.fixture(scope="function")
 def mock_k8s_client():
-    """Mock Kubernetes client"""
+    """Mock kubernetes_asyncio client"""
     mock_client = MagicMock()
     mock_client.CoreV1Api = MagicMock()
     mock_client.AppsV1Api = MagicMock()
@@ -34,6 +36,12 @@ def mock_aiohttp_session():
 
         mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
         mock_session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session.put.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_session.put.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session.delete.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_session.delete.return_value.__aexit__ = AsyncMock(return_value=None)
 
         mock_client_session.return_value.__aenter__.return_value = mock_session
         mock_client_session.return_value.__aexit__.return_value = None
@@ -62,7 +70,7 @@ def mock_sign_request(mock_module_sign_request):
 
 @pytest.fixture(scope="function")
 def sample_pod():
-    """Sample Kubernetes pod object"""
+    """Sample kubernetes_asyncio pod object"""
     pod = MagicMock()
     pod.metadata.name = "test-pod"
     pod.metadata.namespace = "default"
@@ -74,7 +82,7 @@ def sample_pod():
 
 @pytest.fixture(scope="function")
 def sample_deployment():
-    """Sample Kubernetes deployment object"""
+    """Sample kubernetes_asyncio deployment object"""
     deployment = MagicMock()
     deployment.metadata.name = "test-deployment"
     deployment.metadata.namespace = "default"
@@ -86,7 +94,7 @@ def sample_deployment():
 
 @pytest.fixture(scope="function")
 def sample_service():
-    """Sample Kubernetes service object"""
+    """Sample kubernetes_asyncio service object"""
     service = MagicMock()
     service.metadata.name = "test-service"
     service.metadata.namespace = "default"
@@ -118,8 +126,10 @@ def resource_collector():
     from chutes_agent.collector import ResourceCollector
     return ResourceCollector()
 
-@pytest.fixture(scope="function")
-def resource_monitor():
+@pytest_asyncio.fixture(scope="function")
+async def resource_monitor():
     """Create ResourceMonitor instance for testing"""
     from chutes_agent.monitor import ResourceMonitor
-    return ResourceMonitor()
+    monitor = ResourceMonitor()
+    yield monitor
+    await monitor.stop()

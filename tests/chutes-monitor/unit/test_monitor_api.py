@@ -5,25 +5,6 @@ from fastapi.testclient import TestClient
 # Note: Import from your actual main module path
 # from chutes_monitor.api.main import app
 
-
-@pytest.mark.asyncio
-async def test_lifespan_startup_and_shutdown(mock_redis_client):
-    """Test application lifespan startup and shutdown"""    
-    # Import here to avoid issues with patching
-    from chutes_monitor.api.main import lifespan
-    from fastapi import FastAPI
-    
-    app = FastAPI()
-    
-    # Test lifespan context manager
-    async with lifespan(app):
-        # During startup
-        mock_redis_client.initialize.assert_called_once()
-    
-    # After shutdown
-    mock_redis_client.close.assert_called_once()
-
-
 def test_health_check_endpoint():
     """Test health check endpoint"""
     from chutes_monitor.api.main import app

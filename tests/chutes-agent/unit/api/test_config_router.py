@@ -11,8 +11,8 @@ app.include_router(router)
 client = TestClient(app)
 
 @pytest.mark.asyncio
-@patch('kubernetes.client.CoreV1Api')
-@patch('kubernetes.config.load_incluster_config')
+@patch('kubernetes_asyncio.client.CoreV1Api')
+@patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_get_kubeconfig_from_secret_success(mock_load_config, mock_core_v1_class):
     """Test successful kubeconfig retrieval"""
     # Mock the secret data
@@ -35,11 +35,11 @@ async def test_get_kubeconfig_from_secret_success(mock_load_config, mock_core_v1
     )
 
 @pytest.mark.asyncio
-@patch('kubernetes.client.CoreV1Api')
-@patch('kubernetes.config.load_incluster_config')
+@patch('kubernetes_asyncio.client.CoreV1Api')
+@patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_get_kubeconfig_from_secret_not_found(mock_load_config, mock_core_v1_class):
     """Test kubeconfig retrieval when secret not found"""
-    from kubernetes.client.rest import ApiException
+    from kubernetes_asyncio.client.rest import ApiException
     
     mock_v1 = MagicMock()
     mock_v1.read_namespaced_secret.side_effect = ApiException(status=404, reason="Not Found")
@@ -52,11 +52,11 @@ async def test_get_kubeconfig_from_secret_not_found(mock_load_config, mock_core_
     assert "not found" in exc_info.value.detail
 
 @pytest.mark.asyncio
-@patch('kubernetes.client.CoreV1Api')
-@patch('kubernetes.config.load_incluster_config')
+@patch('kubernetes_asyncio.client.CoreV1Api')
+@patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_get_kubeconfig_from_secret_permission_denied(mock_load_config, mock_core_v1_class):
     """Test kubeconfig retrieval with permission denied"""
-    from kubernetes.client.rest import ApiException
+    from kubernetes_asyncio.client.rest import ApiException
     
     mock_v1 = MagicMock()
     mock_v1.read_namespaced_secret.side_effect = ApiException(status=403, reason="Forbidden")
@@ -69,8 +69,8 @@ async def test_get_kubeconfig_from_secret_permission_denied(mock_load_config, mo
     assert "Permission denied" in exc_info.value.detail
 
 @pytest.mark.asyncio
-@patch('kubernetes.client.CoreV1Api')
-@patch('kubernetes.config.load_incluster_config')
+@patch('kubernetes_asyncio.client.CoreV1Api')
+@patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_get_kubeconfig_from_secret_missing_key(mock_load_config, mock_core_v1_class):
     """Test kubeconfig retrieval when secret missing kubeconfig key"""
     mock_secret = MagicMock()
@@ -87,8 +87,8 @@ async def test_get_kubeconfig_from_secret_missing_key(mock_load_config, mock_cor
     assert "does not contain 'kubeconfig' key" in exc_info.value.detail
 
 @pytest.mark.asyncio
-@patch('kubernetes.config.load_kube_config', side_effect=Exception("Kube config error"))
-@patch('kubernetes.config.load_incluster_config', side_effect=Exception("Config error"))
+@patch('kubernetes_asyncio.config.load_kube_config', side_effect=Exception("Kube config error"))
+@patch('kubernetes_asyncio.config.load_incluster_config', side_effect=Exception("Config error"))
 async def test_get_kubeconfig_from_secret_config_failure(mock_incluster_config, mock_kube_config):
     """Test kubeconfig retrieval when config loading fails"""
     with pytest.raises(HTTPException) as exc_info:
@@ -98,8 +98,8 @@ async def test_get_kubeconfig_from_secret_config_failure(mock_incluster_config, 
     assert "Error loading kubeconfig" in exc_info.value.detail
 
 @pytest.mark.asyncio
-@patch('kubernetes.client.CoreV1Api')
-@patch('kubernetes.config.load_incluster_config')
+@patch('kubernetes_asyncio.client.CoreV1Api')
+@patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_get_kubeconfig_from_secret_custom_params(mock_load_config, mock_core_v1_class):
     """Test kubeconfig retrieval with custom secret name and namespace"""
     kubeconfig_content = "custom config"

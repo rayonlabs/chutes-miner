@@ -1053,14 +1053,14 @@ adal = ["adal (>=1.0.2)"]
 
 [[package]]
 name = "kubernetes-asyncio"
-version = "31.1.1"
+version = "32.3.2"
 description = "Kubernetes asynchronous python client"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "kubernetes_asyncio-31.1.1-py3-none-any.whl", hash = "sha256:d5e441674fde5dd8d0366cb6a204d7fbaef8d0dce7ca7a34c0791af0d13b6ff1"},
-    {file = "kubernetes_asyncio-31.1.1.tar.gz", hash = "sha256:393bb60a2740d482651d474956296b341348c3e4f883b171740e5a4bf105a87b"},
+    {file = "kubernetes_asyncio-32.3.2-py3-none-any.whl", hash = "sha256:3584e6358571e686ea1396fc310890263c58fa41c084a841a9609a54ad05de62"},
+    {file = "kubernetes_asyncio-32.3.2.tar.gz", hash = "sha256:a4b6da1dbfa16e87ab8df6898f54fa03f651591a502bd6480a647d5513a580bf"},
 ]
 
 [package.dependencies]
@@ -2818,4 +2818,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "3c9d7fa5801fe9de5d4e88a8abd2fc54b3520406c850463aa5fbf2bb341d62e6"
+content-hash = "69b4a25537138d47375444a6d4397db449dabda48a0b67fee425aec90201face"

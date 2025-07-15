@@ -6,6 +6,7 @@ Control Plane API entrypoint for K3s cluster monitoring.
 import hashlib
 import asyncio
 from contextlib import asynccontextmanager
+from chutes_monitor.cluster_monitor import HealthChecker
 from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from loguru import logger
@@ -31,7 +32,10 @@ async def lifespan(app: FastAPI):
     
     # Initialize Redis
     redis_client = MonitoringRedisClient()
-    await redis_client.initialize()
+
+    # Initialize health checker
+    health_checker = HealthChecker()
+    health_checker.start()
     
     logger.info("Control Plane API server started successfully")
     
@@ -41,7 +45,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Control Plane API server")
     
     # Close Redis connection
-    await redis_client.close()
+    redis_client.close()
+    await health_checker.stop()
     
     logger.info("Control Plane API server stopped")
 

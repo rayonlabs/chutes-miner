@@ -1,11 +1,13 @@
 # app/cache/redis_client.py
+from datetime import datetime, timezone
 from chutes_common.k8s import WatchEvent
 from chutes_common.monitoring.models import ClusterResources, ClusterState, ClusterStatus
-import redis.asyncio as redis
 import json
 from typing import Optional, Dict, Any, List
 from loguru import logger
 from chutes_monitor.config import settings
+from redis import Redis
+from kubernetes.client import ApiClient
 
 class MonitoringRedisClient:
     """Async Redis client for caching cluster resources"""
@@ -13,8 +15,8 @@ class MonitoringRedisClient:
     _instance: Optional['MonitoringRedisClient'] = None
     
     def __init__(self):
-        self.redis: Optional[redis.Redis] = None
         self.url = settings.redis_url
+        self._initialize()
         
     def __new__(cls, *args, **kwargs):
         """
@@ -26,42 +28,41 @@ class MonitoringRedisClient:
             cls._instance = super().__new__(MonitoringRedisClient)
 
         return cls._instance
-
-    @classmethod
-    def get_instance(cls) -> 'MonitoringRedisClient':
-        """Get singleton instance"""
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
     
-    async def initialize(self):
+    def _initialize(self):
         """Initialize Redis connection"""
-        try:
-            self.redis = redis.from_url(self.url, decode_responses=True)
-            await self.redis.ping()
-            logger.info(f"Connected to Redis at {self.url}")
-        except Exception as e:
-            logger.error(f"Failed to connect to Redis: {e}")
-            raise
+        if not hasattr(self, "_redis"):
+            try:
+                self._redis = Redis.from_url(self.url, decode_responses=True)
+                self._redis.ping()
+                logger.info(f"Connected to Redis at {self.url}")
+            except Exception as e:
+                logger.error(f"Failed to connect to Redis: {e}")
+                raise
     
-    async def close(self):
+    @property
+    def redis(self) -> Redis:
+        return self._redis
+    
+    def close(self):
         """Close Redis connection"""
         if self.redis:
-            await self.redis.close()
+            self.redis.close()
     
     async def track_cluster(self, cluster_name: str, resources: ClusterResources):
-        await self.update_cluster_status(cluster_name, ClusterStatus(
+        await self.update_cluster_status(ClusterStatus(
             cluster_name=cluster_name,
-            state=ClusterState.STARTING
+            state=ClusterState.STARTING,
+            last_heartbeat=datetime.now(timezone.utc)
         ))
         await self.store_initial_resources(cluster_name, resources)
 
     async def clear_cluster(self, cluster_name):
         try:
-            self.clear_cluster_resources(cluster_name)
+            await self.clear_cluster_resources(cluster_name)
             # Clear health data
             health_key = f"clusters:{cluster_name}:health"
-            await self.redis.delete(health_key)
+            self.redis.delete(health_key)
         except Exception as e:
             logger.error(f"Failed to clear cluster {cluster_name}: {e}")
             raise
@@ -70,19 +71,19 @@ class MonitoringRedisClient:
     # async def store_cluster_config(self, cluster_name: str, config: Dict[str, Any]):
     #     """Store cluster configuration"""
     #     key = f"clusters:{cluster_name}:config"
-    #     await self.redis.hset(key, mapping=config)
-    #     await self.redis.expire(key, 86400)  # 24 hours
+    #     self.redis.hset(key, mapping=config)
+    #     self.redis.expire(key, 86400)  # 24 hours
     
     # async def get_cluster_config(self, cluster_name: str) -> Optional[Dict[str, Any]]:
     #     """Get cluster configuration"""
     #     key = f"clusters:{cluster_name}:config"
-    #     config = await self.redis.hgetall(key)
+    #     config = self.redis.hgetall(key)
     #     return config if config else None
     
     # async def delete_cluster_config(self, cluster_name: str):
     #     """Delete cluster configuration"""
     #     key = f"clusters:{cluster_name}:config"
-    #     await self.redis.delete(key)
+    #     self.redis.delete(key)
     
     # Resource storage methods
     async def store_initial_resources(self, cluster_name: str, resources: ClusterResources):
@@ -90,17 +91,20 @@ class MonitoringRedisClient:
         # Clear existing resources first
         await self.clear_cluster_resources(cluster_name)
 
+        api_client = ApiClient()
+
         for resource_type, items in resources.items():
             if items:
                 key = f"clusters:{cluster_name}:resources:{resource_type}"
                 # Store each resource with its name as the hash field
                 resource_map = {}
                 for item in items:
-                    resource_name = f"{item.get('metadata', {}).get('namespace', 'unknown')}:{item.get('metadata', {}).get('name', 'unknown')}"
-                    resource_map[resource_name] = json.dumps(item)
+                    resource_name = f"{item.metadata.namespace}:{item.metadata.name}"
+                    _item = api_client.sanitize_for_serialization(item)
+                    resource_map[resource_name] = json.dumps(_item)
                 
                 if resource_map:
-                    await self.redis.hset(key, mapping=resource_map)
+                    self.redis.hset(key, mapping=resource_map)
         
         logger.info(f"Stored initial resources for cluster {cluster_name}")
     
@@ -110,25 +114,27 @@ class MonitoringRedisClient:
         resource_name = f"{event.obj_namespace}:{event.obj_name}"
         
         if event.is_deleted:
-            await self.redis.hdel(key, resource_name)
+            self.redis.hdel(key, resource_name)
         else:
-            await self.redis.hset(key, resource_name, json.dumps(event.object))
+            api_client = ApiClient()
+            _item = api_client.sanitize_for_serialization(event.object)
+            self.redis.hset(key, resource_name, json.dumps(_item))
     
     async def get_cluster_resources(self, cluster_name: str, resource_type: Optional[str] = None) -> Dict[str, Any]:
         """Get resources for a cluster"""
         if resource_type:
             key = f"clusters:{cluster_name}:resources:{resource_type}"
-            resources = await self.redis.hgetall(key)
+            resources = self.redis.hgetall(key)
             return {k: json.loads(v) for k, v in resources.items()}
         else:
             # Get all resource types
             pattern = f"clusters:{cluster_name}:resources:*"
-            keys = await self.redis.keys(pattern)
+            keys = self.redis.keys(pattern)
             all_resources = {}
             
             for key in keys:
                 resource_type = key.split(':')[-1]
-                resources = await self.redis.hgetall(key)
+                resources = self.redis.hgetall(key)
                 all_resources[resource_type] = {k: json.loads(v) for k, v in resources.items()}
             
             return all_resources
@@ -136,35 +142,34 @@ class MonitoringRedisClient:
     async def clear_cluster_resources(self, cluster_name: str):
         """Clear all resources for a cluster"""
         pattern = f"clusters:{cluster_name}:resources:*"
-        keys = await self.redis.keys(pattern)
+        keys = self.redis.keys(pattern)
         if keys:
-            await self.redis.delete(*keys)
+            self.redis.delete(*keys)
             logger.info(f"Cleared {len(keys)} resource keys for cluster {cluster_name}")
 
     # Health tracking methods
     async def update_cluster_status(self, status: ClusterStatus):
         """Update cluster health status"""
         health_key = f"clusters:{status.cluster_name}:health"
-        await self.redis.hset(health_key, mapping={
+        self.redis.hset(health_key, mapping={
             "cluster_name": status.cluster_name,
             "state": status.state.value,
-            "last_heartbeat": status.last_heartbeat or "",
+            "last_heartbeat": status.last_heartbeat.isoformat() if status.last_heartbeat else "",
             "error_message": status.error_message or "",
             "heartbeat_failures": str(status.heartbeat_failures)
         })
-        await self.redis.expire(health_key, 300)  # 5 minutes
     
     async def increment_health_failures(self, cluster_name: str) -> int:
         """Increment health check failure count"""
         health_key = f"clusters:{cluster_name}:health"
-        failures = await self.redis.hincrby(health_key, "failures", 1)
-        await self.redis.expire(health_key, 300)
+        failures = self.redis.hincrby(health_key, "failures", 1)
+        self.redis.expire(health_key, 300)
         return failures
     
     async def get_cluster_status(self, cluster_name: str) -> Optional[ClusterStatus]:
         """Get cluster health information"""
         health_key = f"clusters:{cluster_name}:health"
-        health_data = await self.redis.hgetall(health_key)
+        health_data = self.redis.hgetall(health_key)
         cluster_status = None
 
         if health_data:
@@ -181,7 +186,7 @@ class MonitoringRedisClient:
     async def get_all_cluster_statuses(self) -> List[ClusterStatus]:
         """Get all cluster health information"""
         # Option 1: Pipeline approach (most efficient)
-        health_keys = await self.redis.keys("clusters:*:health")
+        health_keys = self.redis.keys("clusters:*:health")
         cluster_statuses = []
         
         if health_keys:
@@ -192,7 +197,7 @@ class MonitoringRedisClient:
                 pipeline.hgetall(health_key)
             
             # Execute all commands at once
-            results = await pipeline.execute()
+            results = pipeline.execute()
 
             for health_key, health_data in zip(health_keys, results):
                 if health_data:
@@ -214,7 +219,7 @@ class MonitoringRedisClient:
     async def get_all_cluster_names(self) -> List[str]:
         """Get all registered cluster names"""
         pattern = "clusters:*:health"
-        keys = await self.redis.keys(pattern)
+        keys = self.redis.keys(pattern)
         return [key.split(':')[1] for key in keys]
     
     async def get_resource_counts(self, cluster_name: str) -> Dict[str, int]:
@@ -222,6 +227,6 @@ class MonitoringRedisClient:
         counts = {}
         for resource_type in ['deployments', 'pods', 'services']:
             key = f"clusters:{cluster_name}:resources:{resource_type}"
-            count = await self.redis.hlen(key)
+            count = self.redis.hlen(key)
             counts[resource_type] = count
         return counts

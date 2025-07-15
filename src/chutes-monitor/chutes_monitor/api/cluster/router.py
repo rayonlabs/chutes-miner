@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 
 from chutes_monitor.cluster_monitor import ClusterMonitor
-from chutes_common.monitoring.models import ClusterState, HeartbeatData
+from chutes_common.monitoring.models import ClusterState, ClusterStatus, HeartbeatData
 from chutes_common.monitoring.requests import RegisterClusterRequest, ResourceUpdateRequest
 from chutes_common.redis import MonitoringRedisClient
 import os
@@ -39,7 +39,7 @@ class ClusterRouter:
     async def register_cluster(self, cluster_name: str, request: RegisterClusterRequest):
         """Register and start monitoring a new cluster"""
         try:
-            await self.cluster_monitor.register_cluster(request)
+            await self.cluster_monitor.register_cluster(cluster_name, request.initial_resources)
         except Exception as e:
             logger.error(f"Error registering cluster {request.cluster_name}: {e}")
             raise HTTPException(status_code=500, detail=str(e))
@@ -77,15 +77,15 @@ class ClusterRouter:
         try:
             logger.debug(f"Received heartbeat from cluster {cluster_name}")
             current_status = await self.redis_client.get_cluster_status(cluster_name)
-            if current_status.state != ClusterState.ACTIVE:
+            if not current_status.is_healthy:
                 logger.debug(f"Cluster {cluster_name} is in an unhealthy state in cache, rejecting heartbeat.")
                 raise HTTPException(status_code=409, detail="Cluster is in an unhealthy state.  Resync resources.")
             
-            await self.redis_client.update_cluster_status(
-                cluster_name, 
-                heartbeat.status, 
-                heartbeat.timestamp
-            )
+            await self.redis_client.update_cluster_status(ClusterStatus(
+                cluster_name=cluster_name,
+                state=heartbeat.state,
+                last_heartbeat=heartbeat.timestamp
+            ))
             return {"status": "success", "cluster_name": cluster_name}
         except HTTPException:
             raise

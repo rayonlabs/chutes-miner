@@ -174,7 +174,7 @@ async def test_cleanup_stale_clusters(mock_settings, mock_redis_client):
     )
     
     # Create recent cluster status
-    recent_time = datetime.now(timezone.utc) - timedelta(hours=1)
+    recent_time = datetime.now(timezone.utc) - timedelta(minutes=5)
     recent_cluster = ClusterStatus(
         cluster_name="recent-cluster",
         state=ClusterState.ACTIVE,

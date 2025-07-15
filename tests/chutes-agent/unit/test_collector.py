@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from chutes_agent.config import settings
 
 @pytest.mark.asyncio
-@patch('kubernetes.client.AppsV1Api')
-@patch('kubernetes.client.CoreV1Api')
+@patch('kubernetes_asyncio.client.AppsV1Api')
+@patch('kubernetes_asyncio.client.CoreV1Api')
 @patch('chutes_agent.collector.config')
 async def test_initialize_clients(mock_config, mock_core_v1, mock_apps_v1, resource_collector):
     """Test client initialization"""
@@ -20,8 +20,8 @@ async def test_initialize_clients(mock_config, mock_core_v1, mock_apps_v1, resou
 async def test_collect_all_resources_success(mock_namespaces, resource_collector, sample_pod, sample_deployment, sample_service):
     """Test successful resource collection"""
     # Setup mocks
-    resource_collector.core_v1 = AsyncMock()
-    resource_collector.apps_v1 = AsyncMock()
+    resource_collector.core_v1 = MagicMock()
+    resource_collector.apps_v1 = MagicMock()
     
     # Mock responses
     pods_response = MagicMock()
@@ -47,8 +47,8 @@ async def test_collect_all_resources_success(mock_namespaces, resource_collector
 async def test_collect_all_resources_namespace_error(mock_namespaces, resource_collector, sample_pod):
     """Test resource collection with namespace error"""
     # Setup mocks
-    resource_collector.core_v1 = AsyncMock()
-    resource_collector.apps_v1 = AsyncMock()
+    resource_collector.core_v1 = MagicMock()
+    resource_collector.apps_v1 = MagicMock()
     
     # Mock one namespace to fail
     pods_response = MagicMock()
@@ -81,8 +81,8 @@ async def test_collect_all_resources_auto_initialize(resource_collector):
     
     with patch('chutes_agent.collector.ResourceCollector.initialize_clients') as mock_init:
         def _mock_clients():
-            resource_collector.core_v1 = AsyncMock()
-            resource_collector.apps_v1 = AsyncMock()
+            resource_collector.core_v1 = MagicMock()
+            resource_collector.apps_v1 = MagicMock()
         mock_init.side_effect = _mock_clients
         await resource_collector.collect_all_resources()
     
@@ -92,8 +92,8 @@ async def test_collect_all_resources_auto_initialize(resource_collector):
 async def test_collect_all_resources_empty_namespaces(resource_collector):
     """Test collection with empty namespaces list"""
     # Setup mocks
-    resource_collector.core_v1 = AsyncMock()
-    resource_collector.apps_v1 = AsyncMock()
+    resource_collector.core_v1 = MagicMock()
+    resource_collector.apps_v1 = MagicMock()
     
     resources = await resource_collector.collect_all_resources()
     
