@@ -48,7 +48,11 @@ class ResourceMonitor:
                 pass
         
         await self._stop_monitoring()
-        await self.control_plane_client.remove_cluster()
+        
+        # Clean up client
+        if self.control_plane_client:
+            await self.control_plane_client.remove_cluster()
+            await self.control_plane_client.close()
 
     def _restart(self):
         """Initiate a restart with protection against spam restarts"""
