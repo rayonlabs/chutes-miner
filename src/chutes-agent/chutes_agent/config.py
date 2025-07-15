@@ -1,4 +1,5 @@
 # agent/config/config.py
+import logging
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional, Dict
@@ -42,6 +43,8 @@ class AgentSettings(BaseSettings):
     batch_size: int = Field(default=100, description="Batch size for processing resources")
     batch_timeout: int = Field(default=5, description="Batch timeout in seconds")
     
+    control_plane_url_file: str = Field(default="/app/state/control_plane_url", descrption="File to store control plane URL for auto restarts.")
+
     def setup_logging(self) -> None:
         """Configure logging based on settings"""
         logger.remove()  # Remove default handler
@@ -50,6 +53,21 @@ class AgentSettings(BaseSettings):
             level=self.log_level,
             format=self.log_format
         )
+        
+        # Intercept standard logging and redirect to loguru
+        class InterceptHandler(logging.Handler):
+            def emit(self, record):
+                logger.opt(depth=6, exception=record.exc_info).log(record.levelname, record.getMessage())
+        
+        # Replace standard logging with intercept handler
+        logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+        
+        # Specifically target uvicorn loggers
+        for logger_name in ["uvicorn", "uvicorn.access", "uvicorn.error"]:
+            uvicorn_logger = logging.getLogger(logger_name)
+            uvicorn_logger.handlers = [InterceptHandler()]
+            uvicorn_logger.propagate = False
+        
         logger.info(f"Logging configured with level: {self.log_level}")
 
 

@@ -1,5 +1,6 @@
 # agent/controller/watcher.py
 import asyncio
+import os
 from typing import Any, Callable, Optional
 from chutes_common.monitoring.models import ClusterState, MonitoringState, MonitoringStatus
 from chutes_common.k8s import WatchEvent, serializer
@@ -30,16 +31,83 @@ class ResourceMonitor:
         # Restart protection
         self._restart_lock = asyncio.Lock()
         self._restart_task: Optional[asyncio.Task] = None
+        
+        # Persistence - using mounted host path for persistence across pod restarts
+        self._control_plane_url_file = settings.control_plane_url_file
 
     @property
     def status(self):
         return self._status
+    
+    def _ensure_state_directory(self):
+        """Ensure the state directory exists"""
+        state_dir = os.path.dirname(self._control_plane_url_file)
+        try:
+            os.makedirs(state_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"Failed to create state directory {state_dir}: {e}")
+    
+    def _persist_control_plane_url(self, url: str):
+        """Persist control plane URL to file"""
+        try:
+            self._ensure_state_directory()
+            with open(self._control_plane_url_file, 'w') as f:
+                f.write(url)
+            logger.debug(f"Persisted control plane URL to {self._control_plane_url_file}")
+        except Exception as e:
+            logger.warning(f"Failed to persist control plane URL: {e}")
+    
+    def _load_control_plane_url(self) -> Optional[str]:
+        """Load control plane URL from file"""
+        try:
+            if os.path.exists(self._control_plane_url_file):
+                with open(self._control_plane_url_file, 'r') as f:
+                    url = f.read().strip()
+                logger.debug(f"Loaded control plane URL from {self._control_plane_url_file}")
+                return url
+        except Exception as e:
+            logger.warning(f"Failed to load control plane URL: {e}")
+        return None
+    
+    def _clear_control_plane_url(self):
+        """Clear persisted control plane URL"""
+        try:
+            if os.path.exists(self._control_plane_url_file):
+                os.remove(self._control_plane_url_file)
+                logger.debug(f"Cleared persisted control plane URL")
+        except Exception as e:
+            logger.warning(f"Failed to clear control plane URL: {e}")
+    
+    async def auto_start(self):
+        """Auto-start monitoring if control plane URL is persisted"""
+        url = self._load_control_plane_url()
+        if url:
+            logger.info(f"Found persisted control plane URL, auto-starting monitoring")
+            try:
+                await self.start(url)
+            except Exception as e:
+                logger.error(f"Failed to auto-start monitoring: {e}")
+                # Clear the URL if auto-start fails
+                self._clear_control_plane_url()
+        else:
+            logger.info("Did not find control plane URL.  Waiting for monitoring to be initiated by control plane.")
         
     async def start(self, control_plane_url: str):
+        # Persist the control plane URL
+        self._persist_control_plane_url(control_plane_url)
+        
         self.control_plane_client = ControlPlaneClient(control_plane_url)
         await self._start_monitoring()
 
     async def stop(self):
+        await self.shutdown()
+        
+        # Clear persisted URL when explicitly stopped
+        self._clear_control_plane_url()
+
+        await serializer.close()
+
+    async def shutdown(self):
         # Cancel any pending restart
         if self._restart_task and not self._restart_task.done():
             self._restart_task.cancel()
@@ -54,8 +122,6 @@ class ResourceMonitor:
         if self.control_plane_client:
             await self.control_plane_client.remove_cluster()
             await self.control_plane_client.close()
-
-        serializer.close()
 
     def _restart(self):
         """Initiate a restart with protection against spam restarts"""
