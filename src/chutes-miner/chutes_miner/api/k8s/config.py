@@ -250,7 +250,10 @@ class MultiClusterKubeConfig:
     _instance: Optional["MultiClusterKubeConfig"] = None
 
     def __init__(self):
-        self._kubeconfig: KubeConfig = KubeConfig()
+        if not hasattr(self, '_kubeconfig'):
+            # Only set once to ensure we don't overwrite 
+            # when getting the singleton
+            self._kubeconfig: KubeConfig = KubeConfig()
 
     def __new__(cls, *args, **kwargs):
         """
@@ -293,13 +296,16 @@ class MultiClusterKubeConfig:
 
         return next([ctx for ctx in self.contexts if ctx.name == context_name])
 
-    def add_config(self, kubeconfig: str):
+    def add_config(self, other_config: KubeConfig):
         """Add a cluster configuration from database to the consolidated config"""
         """Add a cluster configuration from database"""
-        other_config = KubeConfig.from_dict(yaml.safe_load(kubeconfig))
+        # other_config = KubeConfig.from_dict(yaml.safe_load(kubeconfig))
 
         # Merge with prefix to avoid naming conflicts
         self.kubeconfig.merge(other_config)
+
+    def remove_config(self, context: str):
+        self.kubeconfig.remove_context(context)
 
     def set_context(self, context_name: str):
         """Set the current context"""

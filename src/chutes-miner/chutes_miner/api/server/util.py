@@ -2,6 +2,7 @@
 Server uility functions.
 """
 
+import json
 import time
 import math
 import backoff
@@ -9,7 +10,8 @@ import aiohttp
 import asyncio
 import traceback
 import chutes_common.constants as cst
-from chutes_miner.api.k8s.config import KubeConfig
+from chutes_common.monitoring.requests import StartMonitoringRequest
+from chutes_miner.api.k8s.config import KubeConfig, MultiClusterKubeConfig
 from loguru import logger
 from kubernetes.client import (
     V1Node,
@@ -83,6 +85,21 @@ async def get_server_kubeconfig(ip_address: str):
             headers=headers,
         ) as response:
             return KubeConfig.from_dict(yaml.safe_load(response.json()["kubeconfig"]))
+        
+async def start_server_monitoring(ip_address: str):
+    request = StartMonitoringRequest(
+        control_plane_url=settings.control_plane_ip
+    )
+    payload = request.model_dump()
+    async with aiohttp.ClientSession() as session:
+        headers, payload_string = sign_request(payload, purpose="monitoring")
+        async with session.get(
+            f"{ip_address}:{settings.gpu_node_api_port}/monitor/start",
+            data=payload_string,
+            headers=headers,
+        ) as response:
+            if response.status != 200:
+                raise Exception("Failed to start monitoring for cluster.")
 
 
 async def gather_gpu_info(
@@ -280,7 +297,8 @@ async def deploy_graval(
 
 
 async def track_server(
-    validator: str, hourly_cost: float, node_object: V1Node, add_labels: Dict[str, str] = None
+    validator: str, hourly_cost: float, node_object: V1Node, 
+    add_labels: Dict[str, str] = None, kubeconfig: Optional[KubeConfig] = None
 ) -> Tuple[V1Node, Server]:
     """
     Track a new kubernetes (worker/GPU) node in our inventory.
@@ -349,6 +367,7 @@ async def track_server(
             cpu_per_gpu=cpu_per_gpu,
             memory_per_gpu=memory_per_gpu,
             hourly_cost=hourly_cost,
+            kubeconfig = json.dumps(kubeconfig.to_dict())
         )
         session.add(server)
         try:
@@ -433,7 +452,7 @@ async def check_verification_task_status(validator: Validator, task_id: str) -> 
 
 
 async def bootstrap_server(
-    node_object: V1Node, server_args: ServerArgs, server_kubeconfig: Optional[KubeConfig]
+    node_object: V1Node, server_args: ServerArgs, kubeconfig: Optional[KubeConfig]
 ):
     """
     Bootstrap a server from start to finish, yielding SSEs for miner to track status.
@@ -457,6 +476,10 @@ async def bootstrap_server(
                     await session.delete(node)
                 await session.commit()
 
+            nonlocal kubeconfig
+            if kubeconfig:
+                MultiClusterKubeConfig().remove_config(server_args.name)
+
     yield sse_message(
         f"attempting to add node server_id={node_object.metadata.uid} to inventory...",
     )
@@ -471,7 +494,12 @@ async def bootstrap_server(
                 "chutes/validator": server_args.validator,
                 "chutes/worker": "true",
             },
+            kubeconfig=kubeconfig
         )
+
+        if kubeconfig:
+            # Make sure this is available for deploying
+            MultiClusterKubeConfig().add_config(kubeconfig)
 
         # Great, now it's in our database, but we need to startup graval so the validator can check the GPUs.
         yield sse_message(
@@ -539,6 +567,10 @@ async def bootstrap_server(
             error_message = f"GPU verification failed for {validator.hotkey}, aborting!"
             yield sse_message(error_message)
             raise GraValBootstrapFailure(error_message)
+        
+        if server_args.ip_address:
+            # If adding a standalone cluster, need to start monitoring
+            await start_server_monitoring(server_args.ip_address)
 
     except Exception as exc:
         error_message = (

@@ -60,7 +60,7 @@ async def create_server(
     _: None = Depends(authorize(allow_miner=True, allow_validator=False)),
 ):
     """
-    Add a new server/kubernetes node to our inventory.  This is a very
+    Add a new server/kubernetes cluster to our inventory.  This is a very
     slow/long-running response via SSE, since it needs to do a lot of things.
     """
     server_kubeconfig: Optional[KubeConfig] = None

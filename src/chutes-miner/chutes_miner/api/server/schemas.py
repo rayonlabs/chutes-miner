@@ -4,7 +4,7 @@ Server (kubernetes node) tracking ORM.
 
 from typing import Optional
 from pydantic import BaseModel
-from sqlalchemy import Column, String, DateTime, Integer, BigInteger, Float, Boolean
+from sqlalchemy import Column, String, DateTime, Integer, BigInteger, Float, Boolean, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -36,6 +36,7 @@ class Server(Base):
     memory_per_gpu = Column(Integer, nullable=False, default=1)
     hourly_cost = Column(Float, nullable=False)
     locked = Column(Boolean, default=False)
+    kubeconfig = Column(Text, nullable=True) # Make this false if enforicng migration
 
     gpus = relationship("GPU", back_populates="server", lazy="joined", cascade="all, delete-orphan")
     deployments = relationship(
