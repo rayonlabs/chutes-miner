@@ -7,7 +7,7 @@ import json
 from loguru import logger
 import redis.asyncio as redis
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any
 from kubernetes import client
 from kubernetes.config import load_kube_config, load_incluster_config
 from chutes_common.settings import MinerSettings as CommonSettings
@@ -67,7 +67,6 @@ def validator_by_hotkey(hotkey: str):
 
 
 class Settings(CommonSettings):
-
     sqlalchemy: str = os.getenv(
         "POSTGRESQL", "postgresql+asyncpg://user:password@127.0.0.1:5432/chutes"
     )
@@ -96,5 +95,6 @@ class Settings(CommonSettings):
     migrations_dir: str = os.getenv("MIGRATIONS_DIR", "chutes-miner/chutes_miner/api/migrations")
 
     gpu_node_api_port: int = int(os.getenv("GPU_NODE_API_PORT", "32001"))
+
 
 settings = Settings()

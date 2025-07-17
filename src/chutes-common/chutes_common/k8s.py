@@ -52,12 +52,7 @@ class WatchEventType(Enum):
 
 # ToDo: Update to use values from ResourceType after
 # resolving ciruclar dependency
-_resource_types = {
-    V1Deployment: "deployment", 
-    V1Service: "service", 
-    V1Pod: "pod", 
-    V1Node: "node"
-}
+_resource_types = {V1Deployment: "deployment", V1Service: "service", V1Pod: "pod", V1Node: "node"}
 
 
 class WatchEvent(BaseModel):

@@ -49,6 +49,7 @@ from chutes_common.settings import RedisSettings
 
 redis_settings = RedisSettings()
 
+
 # Abstract base class for all Kubernetes operations
 class K8sOperator(abc.ABC):
     """Base class for Kubernetes operations that works with both single-cluster and Karmada setups."""
@@ -496,7 +497,9 @@ class SingleClusterK8sOperator(K8sOperator):
         Retrieve all nodes from the environment
         """
         if kubeconfig:
-            raise RuntimeError("Can not retrieve node using kubeconfig in single cluster environment. Do not provide an IP address when adding a node.")
+            raise RuntimeError(
+                "Can not retrieve node using kubeconfig in single cluster environment. Do not provide an IP address when adding a node."
+            )
         return k8s_core_client().read_node(name=name)
 
     def _get_nodes(self):
@@ -785,7 +788,7 @@ class MultiClusterK8sOperator(K8sOperator):
         Retrieve a node from the cluster by name.
         """
         _client: CoreV1Api = self._manager.get_core_client(context=name, kubeconfig=kubeconfig)
-        
+
         return _client.read_node(name=name)
 
     def _get_nodes(self) -> V1NodeList:
@@ -803,8 +806,10 @@ class MultiClusterK8sOperator(K8sOperator):
     async def get_deployment(self, deployment_id: str) -> Dict:
         """Get a single deployment by ID."""
         deployment_name = f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}"
-        
-        resources = self._redis.get_resources(resource_type=ResourceType.DEPLOYMENT, resource_name=deployment_name)
+
+        resources = self._redis.get_resources(
+            resource_type=ResourceType.DEPLOYMENT, resource_name=deployment_name
+        )
 
         # Handle case where no deployments found or more than one found
         if len(resources.deployments) == 0:
@@ -815,9 +820,7 @@ class MultiClusterK8sOperator(K8sOperator):
 
     def delete_deployment(self, name, namespace=settings.namespace):
         context = self._redis.get_resource_cluster(
-            resource_name=name, 
-            resource_type=ResourceType.DEPLOYMENT, 
-            namespace=namespace
+            resource_name=name, resource_type=ResourceType.DEPLOYMENT, namespace=namespace
         )
         client = self._manager.get_app_client(context)
         client.delete_namespaced_deployment(
@@ -827,9 +830,7 @@ class MultiClusterK8sOperator(K8sOperator):
 
     def delete_service(self, name, namespace=settings.namespace):
         context = self._redis.get_resource_cluster(
-            resource_name=name, 
-            resource_type=ResourceType.SERVICE, 
-            namespace=namespace
+            resource_name=name, resource_type=ResourceType.SERVICE, namespace=namespace
         )
         client = self._manager.get_core_client(context)
         client.delete_namespaced_service(
@@ -839,9 +840,7 @@ class MultiClusterK8sOperator(K8sOperator):
 
     def delete_config_map(self, name, namespace=settings.namespace):
         context = self._redis.get_resource_cluster(
-            resource_name=name, 
-            resource_type=ResourceType.SERVICE, 
-            namespace=namespace
+            resource_name=name, resource_type=ResourceType.SERVICE, namespace=namespace
         )
         client = self._manager.get_core_client(context)
         client.delete_namespaced_config_map(
@@ -917,7 +916,7 @@ class MultiClusterK8sOperator(K8sOperator):
             namespace=namespace,
             label_selector=label_selector,
             field_selector=field_selector,
-            timeout=timeout
+            timeout=timeout,
         ):
             yield event
 
@@ -963,30 +962,29 @@ class MultiClusterK8sOperator(K8sOperator):
             namespace=namespace,
             label_selector=label_selector,
             field_selector=field_selector,
-            timeout=timeout
+            timeout=timeout,
         ):
             yield event
 
     def _watch_resources(
-        self, resource_type: ResourceType, 
+        self,
+        resource_type: ResourceType,
         namespace: Optional[str] = None,
         label_selector: Optional[Union[str | Dict[str, str]]] = None,
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
-        timeout=120
+        timeout=120,
     ):
-
         pubsub = self._redis.subscribe_to_resource_type(resource_type)
         try:
-
             for message in pubsub.listen():
-                if message['type'] == 'message':
-                    data = json.loads(message['data'])
+                if message["type"] == "message":
+                    data = json.loads(message["data"])
                     _message = ResourceChangeMessage.from_dict(data)
                     if self._matches_filters(
-                        _message.event.object, 
+                        _message.event.object,
                         namespace=namespace,
                         label_selector=label_selector,
-                        field_selector=field_selector
+                        field_selector=field_selector,
                     ):
                         yield _message.event
         finally:

@@ -33,7 +33,6 @@ miner_settings = MinerSettings()
 
 
 class RedisSettings(BaseSettings):
-    
     redis_url: str = Field(default="redis://redis:6379", description="Redis URL")
 
 

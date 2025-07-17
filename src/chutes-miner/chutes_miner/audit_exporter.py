@@ -20,7 +20,7 @@ from sqlalchemy import text
 from datetime import UTC, datetime, timedelta
 from prometheus_api_client import PrometheusConnect
 from substrateinterface import SubstrateInterface
-from chutes_miner.api.config import settings, k8s_core_client
+from chutes_miner.api.config import settings
 from chutes_miner.api.database import get_session
 from chutes_common.auth import sign_request
 import chutes_miner.api.database.orms  # noqa

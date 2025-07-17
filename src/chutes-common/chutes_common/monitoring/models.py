@@ -5,13 +5,14 @@ from pydantic import BaseModel, ConfigDict
 from enum import Enum
 from kubernetes_asyncio.client import V1Deployment, V1Service, V1Pod, V1Node
 
-class ResourceType(str, Enum):
 
+class ResourceType(str, Enum):
     ALL = "*"
     NODE = "node"
     DEPLOYMENT = "deployment"
     SERVICE = "service"
     POD = "pod"
+
 
 class MonitoringState(str, Enum):
     """Monitoring status enumeration"""
@@ -89,7 +90,9 @@ class ClusterResources(BaseModel):
 
     def items(
         self,
-    ) -> Generator[Tuple[ResourceType, list[Union[V1Deployment, V1Service, V1Pod, V1Node]]], None, None]:
+    ) -> Generator[
+        Tuple[ResourceType, list[Union[V1Deployment, V1Service, V1Pod, V1Node]]], None, None
+    ]:
         yield ResourceType.DEPLOYMENT, self.deployments
         yield ResourceType.SERVICE, self.services
         yield ResourceType.POD, self.pods

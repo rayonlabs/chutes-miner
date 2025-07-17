@@ -2,15 +2,20 @@
 from datetime import datetime, timezone
 from chutes_common.k8s import WatchEvent, serializer
 from chutes_common.monitoring.messages import ResourceChangeMessage
-from chutes_common.monitoring.models import ClusterResources, ClusterState, ClusterStatus, ResourceType
+from chutes_common.monitoring.models import (
+    ClusterResources,
+    ClusterState,
+    ClusterStatus,
+    ResourceType,
+)
 import json
 from typing import Optional, Dict, Any, List
 from chutes_common.settings import RedisSettings
 from loguru import logger
+
 # from chutes_monitor.config import settings
 from redis import Redis
 from redis.client import PubSub
-from referencing import Resource
 
 
 class MonitoringRedisClient:
@@ -74,6 +79,7 @@ class MonitoringRedisClient:
             raise
 
         # Pub/Sub methods
+
     def _publish_resource_change(self, cluster_name: str, event: WatchEvent):
         """Publish resource change event to Redis pub/sub"""
         try:
@@ -82,28 +88,28 @@ class MonitoringRedisClient:
                 f"cluster:{cluster_name}:resources",  # All resources for specific cluster
                 f"cluster:{cluster_name}:resources:{event.resource_type}",  # Specific resource type for cluster
                 f"resources:{event.resource_type}",  # All clusters for specific resource type
-                "resources:all"  # All resource changes across all clusters
+                "resources:all",  # All resource changes across all clusters
             ]
-            
+
             # Create the message payload
             message = ResourceChangeMessage(
-                cluster_name=cluster_name,
-                event=event,
-                timestamp=datetime.now(timezone.utc)
+                cluster_name=cluster_name, event=event, timestamp=datetime.now(timezone.utc)
             )
-            
+
             message_json = json.dumps(message.to_dict())
-            
+
             # Publish to all relevant channels
             for channel in channels:
                 self.redis.publish(channel, message_json)
-                
-            logger.debug(f"Published resource change to {len(channels)} channels: {event.resource_type} {event.obj_name}")
-            
+
+            logger.debug(
+                f"Published resource change to {len(channels)} channels: {event.resource_type} {event.obj_name}"
+            )
+
         except Exception as e:
             logger.error(f"Failed to publish resource change: {e}")
             # Don't raise - pub/sub failures shouldn't break the main functionality
-    
+
     def subscribe_to_cluster_resources(self, cluster_name: str) -> PubSub:
         """Subscribe to all resource changes for a specific cluster"""
         pubsub = self.redis.pubsub()
@@ -111,20 +117,22 @@ class MonitoringRedisClient:
         pubsub.subscribe(channel)
         logger.info(f"Subscribed to channel: {channel}")
         return pubsub
-    
-    def subscribe_to_resource_type(self, resource_type: str, cluster_name: Optional[str] = None) -> PubSub:
+
+    def subscribe_to_resource_type(
+        self, resource_type: str, cluster_name: Optional[str] = None
+    ) -> PubSub:
         """Subscribe to specific resource type changes"""
         pubsub = self.redis.pubsub()
-        
+
         if cluster_name:
             channel = f"cluster:{cluster_name}:resources:{resource_type}"
         else:
             channel = f"resources:{resource_type}"
-            
+
         pubsub.subscribe(channel)
         logger.info(f"Subscribed to channel: {channel}")
         return pubsub
-    
+
     def subscribe_to_all_resources(self) -> PubSub:
         """Subscribe to all resource changes across all clusters"""
         pubsub = self.redis.pubsub()
@@ -169,8 +177,11 @@ class MonitoringRedisClient:
         self._publish_resource_change(cluster_name, event)
 
     def get_resources(
-        self, cluster_name: str = "*", resource_type: ResourceType = ResourceType.ALL, 
-        resource_name: Optional[str] = None, namespace: Optional[str] = None
+        self,
+        cluster_name: str = "*",
+        resource_type: ResourceType = ResourceType.ALL,
+        resource_name: Optional[str] = None,
+        namespace: Optional[str] = None,
     ) -> ClusterResources:
         """Get resources for a cluster"""
         # Get all resource types
@@ -185,17 +196,18 @@ class MonitoringRedisClient:
             # Initialize the resource type if it doesn't exist
             if _resource_type not in _results:
                 _results[_resource_type] = {}
-            
+
             # Merge the new resources with existing ones
             _results[_resource_type].update({k: json.loads(v) for k, v in _resources.items()})
 
         return ClusterResources.from_dict(_results)
-    
+
     def _filter_resources(
-        self, resources: dict[str, Any], resource_name: Optional[str] = None,
-        namespace: Optional[str] = None
+        self,
+        resources: dict[str, Any],
+        resource_name: Optional[str] = None,
+        namespace: Optional[str] = None,
     ) -> dict[str, Any]:
-        
         results = {}
         for k, v in resources.items():
             _parts = k.split(":")
@@ -213,7 +225,7 @@ class MonitoringRedisClient:
         return results
 
     def get_resource_cluster(
-            self, resource_name: str, resource_type: ResourceType, namespace: str = None
+        self, resource_name: str, resource_type: ResourceType, namespace: str = None
     ):
         pattern = f"clusters:*:resources:{resource_type.value}"
         keys = self.redis.keys(pattern)
@@ -231,10 +243,11 @@ class MonitoringRedisClient:
 
         if len(_clusters) > 1:
             # logger.warning(f"Found multiple clusters with {resource_type.value} {resource_name} in namespace {namespace}, but execpted to only exist in 1 cluster.")
-            raise ValueError(f"Found multiple clusters with {resource_type.value} {resource_name} in namespace {namespace}, but execpted to only exist in 1 cluster.")
-        
-        return _clusters[0] if len(_clusters) == 1 else None
+            raise ValueError(
+                f"Found multiple clusters with {resource_type.value} {resource_name} in namespace {namespace}, but execpted to only exist in 1 cluster."
+            )
 
+        return _clusters[0] if len(_clusters) == 1 else None
 
     async def clear_cluster_resources(self, cluster_name: str):
         """Clear all resources for a cluster"""

@@ -73,13 +73,17 @@ async def _fetch_devices(url):
         async with session.get(url, headers=headers, timeout=5) as response:
             return (await response.json())["devices"]
 
+
 async def get_server_kubeconfig(ip_address: str):
     async with aiohttp.ClientSession() as session:
         headers, payload_string = sign_request(purpose="management")
         async with session.get(
-            f"{ip_address}:{settings.gpu_node_api_port}/config/kubeconfig", data=payload_string, headers=headers
+            f"{ip_address}:{settings.gpu_node_api_port}/config/kubeconfig",
+            data=payload_string,
+            headers=headers,
         ) as response:
             return KubeConfig.from_dict(yaml.safe_load(response.json()["kubeconfig"]))
+
 
 async def gather_gpu_info(
     server_id: str,
@@ -428,7 +432,9 @@ async def check_verification_task_status(validator: Validator, task_id: str) -> 
             return True
 
 
-async def bootstrap_server(node_object: V1Node, server_args: ServerArgs, server_kubeconfig: Optional[KubeConfig]):
+async def bootstrap_server(
+    node_object: V1Node, server_args: ServerArgs, server_kubeconfig: Optional[KubeConfig]
+):
     """
     Bootstrap a server from start to finish, yielding SSEs for miner to track status.
     """
