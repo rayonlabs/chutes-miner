@@ -54,7 +54,7 @@ async def test_stop_monitoring(resource_monitor):
     mock_task = asyncio.create_task(dummy_task())
     resource_monitor._watcher_task = mock_task
     
-    await resource_monitor.stop()
+    await resource_monitor.shutdown()
     
     assert mock_task.cancelled()
     assert resource_monitor._watcher_task is None
@@ -66,7 +66,7 @@ async def test_stop_monitoring_no_task(resource_monitor):
     resource_monitor._watcher_task = None
     
     # Should not raise exception
-    await resource_monitor.stop()
+    await resource_monitor.shutdown()
     assert resource_monitor._status.state == MonitoringState.STOPPED
 
 @pytest.mark.asyncio

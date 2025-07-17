@@ -2,14 +2,16 @@
 Unit tests for kubernetes helper module.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
+import json
 from typing import Any, Dict
 import uuid
+from chutes_common.monitoring.messages import ResourceChangeMessage
 from chutes_common.monitoring.models import ClusterResources, ResourceType
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from kubernetes.client.rest import ApiException
-from chutes_common.k8s import serializer
+from chutes_common.k8s import WatchEvent, WatchEventType, serializer
 
 
 # Import the module under test
@@ -483,28 +485,50 @@ async def test_wait_for_deletion_no_pods(mock_k8s_client_manager, mock_redis_cli
 
 
 @pytest.mark.asyncio
-async def test_wait_for_deletion_with_pods(mock_k8s_api_client, mock_watch, create_api_test_pods):
+async def test_wait_for_deletion_with_pods(mock_redis_client, mock_k8s_api_client, create_api_test_pods):
     """Test wait_for_deletion when pods exist and then get deleted."""
     # Setup mock to return pods initially, then empty
     pods = create_api_test_pods(1)
+    cluster_resources = ClusterResources.from_dict({
+        "pod": pods
+    })
 
-    mock_k8s_api_client.call_api.side_effect = [
-        {"kind": "PodList", "apiVersion": "v1", "items": pods},  # Initial check - pods exist
-        {"kind": "PodList", "apiVersion": "v1", "items": pods},  # Initial watch check - pods exist
-        {"kind": "PodList", "apiVersion": "v1", "items": []},  # Check in the watch loop - pods gone
+    mock_redis_client.get_resources.return_value = cluster_resources
+
+    mock_pubsub = MagicMock()
+    mock_redis_client.subscribe_to_resource_type.return_value = mock_pubsub
+    mock_pubsub.listen.return_value = [
+        {
+            "type": "message",
+            "data": json.dumps(ResourceChangeMessage(
+                cluster="test-cluster", 
+                event=WatchEvent(type=WatchEventType.MODIFIED, object=cluster_resources.pods[0]),
+                timestamp=datetime.now(timezone.utc)
+            ).to_dict())
+        },
+        {
+            "type": "message",
+            "data": json.dumps(ResourceChangeMessage(
+                cluster="test-cluster", 
+                event=WatchEvent(type=WatchEventType.DELETED, object=cluster_resources.pods[0]),
+                timestamp=datetime.now(timezone.utc)
+            ).to_dict())
+        }
     ]
 
     # Call the function
     await k8s.wait_for_deletion("app=chute")
 
     # Assertions
-    assert mock_k8s_api_client.call_api.call_count == 3
+    assert mock_redis_client.get_resources.call_count == 1
+    assert mock_redis_client.subscribe_to_resource_type.call_count == 1
+    assert mock_pubsub.close.call_count == 1
 
 
 # Tests for undeploy
 @pytest.mark.asyncio
 async def test_undeploy_success(
-    mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client
+    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client, mock_k8s_app_client
 ):
     """Test successful undeployment of a chute."""
     # Setup mocks
@@ -516,12 +540,10 @@ async def test_undeploy_success(
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
         mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
-        assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count == 1
-
 
 @pytest.mark.asyncio
 async def test_undeploy_with_service_error(
-    mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client
+    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client, mock_k8s_app_client
 ):
     """Test undeployment when service deletion fails."""
     # Setup service deletion to fail
@@ -536,12 +558,13 @@ async def test_undeploy_with_service_error(
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
         mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
         mock_wait.assert_called_once()
-        assert mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count == 1
 
 
 # Tests for create_code_config_map
 @pytest.mark.asyncio
-async def test_create_code_config_map_success(mock_k8s_core_client, mock_k8s_custom_objects_client):
+async def test_create_code_config_map_success(
+    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client
+):
     """Test successful creation of code configmap."""
     # Setup mock chute
     chute = MagicMock()
@@ -550,22 +573,22 @@ async def test_create_code_config_map_success(mock_k8s_core_client, mock_k8s_cus
     chute.filename = "app.py"
     chute.code = "print('Hello World')"
 
+    clusters = ["test-1", "test-2", "test-3"]
+    mock_redis_client.get_all_cluster_names.return_value = clusters
+
     # Call the function
     await k8s.create_code_config_map(chute)
 
     # Assertions
-    mock_k8s_core_client.create_namespaced_config_map.assert_called_once()
+    mock_k8s_core_client.create_namespaced_config_map.call_count == len(clusters)
     # Check configmap data
     called_config_map = mock_k8s_core_client.create_namespaced_config_map.call_args[1]["body"]
     assert called_config_map.data["app.py"] == "print('Hello World')"
 
-    # mock_k8s_custom_objects_client.create_namespaced_custom_object.assert_called_once()
-    # assert mock_k8s_custom_objects_client.create_namespaced_custom_object.call_args[1]["plural"] == "propagationpolicies"
-
 
 @pytest.mark.asyncio
 async def test_create_code_config_map_conflict(
-    mock_k8s_core_client, mock_k8s_custom_objects_client
+    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client
 ):
     """Test handling of 409 conflict when creating configmap."""
     # Setup mock to raise ApiException with 409
@@ -579,11 +602,14 @@ async def test_create_code_config_map_conflict(
     chute.filename = "app.py"
     chute.code = "print('Hello World')"
 
+    clusters = ["test-1", "test-2", "test-3"]
+    mock_redis_client.get_all_cluster_names.return_value = clusters
+
     # Call the function - should not raise exception
     await k8s.create_code_config_map(chute)
 
     # Assertions
-    mock_k8s_core_client.create_namespaced_config_map.assert_called_once()
+    mock_k8s_core_client.create_namespaced_config_map.call_count == len(clusters)
 
     # Check configmap data
     called_config_map = mock_k8s_core_client.create_namespaced_config_map.call_args[1]["body"]
@@ -591,7 +617,9 @@ async def test_create_code_config_map_conflict(
 
 
 @pytest.mark.asyncio
-async def test_create_code_config_map_other_error(mock_k8s_core_client):
+async def test_create_code_config_map_other_error(
+    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client
+):
     """Test handling of non-409 error when creating configmap."""
     # Setup mock to raise ApiException with 500
     error = ApiException(status=500)
@@ -604,17 +632,24 @@ async def test_create_code_config_map_other_error(mock_k8s_core_client):
     chute.filename = "app.py"
     chute.code = "print('Hello World')"
 
+    clusters = ["test-1", "test-2", "test-3"]
+    mock_redis_client.get_all_cluster_names.return_value = clusters
+
     # Call the function and expect exception
     with pytest.raises(ApiException):
         await k8s.create_code_config_map(chute)
+
+    # Exception raised on first call
+    mock_k8s_core_client.create_namespaced_config_map.call_count == 1
 
 
 # Tests for deploy_chute
 @pytest.mark.asyncio
 async def test_deploy_chute_success(
+    mock_k8s_client_manager, 
+    mock_redis_client,
     mock_k8s_core_client,
     mock_k8s_app_client,
-    mock_k8s_custom_objects_client,
     mock_db_session,
     sample_server,
     sample_chute,
@@ -657,10 +692,6 @@ async def test_deploy_chute_success(
     assert mock_deployment_db.port == 30000
     assert mock_deployment_db.stub is False
 
-    mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 3
-    for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
-        assert mock_call[2]["plural"] == "propagationpolicies"
-
 
 @pytest.mark.asyncio
 async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute, mock_db_session):
@@ -684,9 +715,10 @@ async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute, mock_db
 
 @pytest.mark.asyncio
 async def test_deploy_chute_deployment_disappeared(
+    mock_k8s_client_manager, 
+    mock_redis_client,
     mock_k8s_core_client,
     mock_k8s_app_client,
-    mock_k8s_custom_objects_client,
     mock_db_session,
     sample_server,
     sample_chute,
@@ -711,18 +743,15 @@ async def test_deploy_chute_deployment_disappeared(
     with pytest.raises(DeploymentFailure, match="Deployment disappeared mid-flight"):
         await k8s.deploy_chute(sample_chute, sample_server)
 
-    mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 3
-    for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
-        assert mock_call[2]["plural"] == "propagationpolicies"
-
     # Add assertions for PP cleanup
 
 
 @pytest.mark.asyncio
 async def test_deploy_chute_api_exception(
+    mock_k8s_client_manager, 
+    mock_redis_client,
     mock_k8s_core_client,
     mock_k8s_app_client,
-    mock_k8s_custom_objects_client,
     mock_db_session,
     sample_server,
     sample_chute,
@@ -751,13 +780,16 @@ async def test_deploy_chute_api_exception(
 
     # Verify cleanup was attempted
     mock_k8s_core_client.delete_namespaced_service.assert_called_once()
-    mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count = 3
 
 
 # Tests for deploy_chute
 @pytest.mark.asyncio
 async def test_deploy_graval_success(
-    mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client, mock_db_session
+    mock_k8s_client_manager, 
+    mock_redis_client,
+    mock_k8s_core_client, 
+    mock_k8s_app_client, 
+    mock_db_session
 ):
     """Test successful deployment of a chute."""
     # Setup mocks for kubernetes deployment and service creation
@@ -796,14 +828,14 @@ async def test_deploy_graval_success(
     assert created_deployment == mock_deployment
     assert created_service == mock_service
 
-    mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 1
-    for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
-        assert mock_call[2]["plural"] == "propagationpolicies"
-
 
 @pytest.mark.asyncio
 async def test_deploy_graval_port_mismatch(
-    mock_k8s_core_client, mock_k8s_app_client, mock_k8s_custom_objects_client, mock_db_session
+    mock_k8s_client_manager, 
+    mock_redis_client,
+    mock_k8s_core_client, 
+    mock_k8s_app_client, 
+    mock_db_session
 ):
     """Test handling when deployment disappears mid-flight."""
     # Setup mocks for kubernetes deployment and service creation
@@ -832,16 +864,13 @@ async def test_deploy_graval_port_mismatch(
     ):
         await K8sOperator().deploy_graval(mock_node, mock_deployment, mock_service)
 
-    mock_k8s_custom_objects_client.create_namespaced_custom_object.call_count == 3
-    for mock_call in mock_k8s_custom_objects_client.create_namespaced_custom_object.mock_calls:
-        assert mock_call[2]["plural"] == "propagationpolicies"
-
 
 @pytest.mark.asyncio
 async def test_deploy_graval_api_exception(
+    mock_k8s_client_manager, 
+    mock_redis_client,
     mock_k8s_core_client,
     mock_k8s_app_client,
-    mock_k8s_custom_objects_client,
     mock_db_session,
     sample_server,
     sample_chute,
@@ -875,4 +904,3 @@ async def test_deploy_graval_api_exception(
 
     # Verify cleanup was attempted
     mock_k8s_core_client.delete_namespaced_service.assert_called_once()
-    mock_k8s_custom_objects_client.delete_namespaced_custom_object.call_count = 3

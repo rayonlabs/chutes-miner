@@ -396,7 +396,7 @@ async def test_get_all_cluster_names(redis_client, mock_redis):
         "clusters:cluster3:health"
     ]
     
-    result = await redis_client.get_all_cluster_names()
+    result = redis_client.get_all_cluster_names()
     
     assert result == ["cluster1", "cluster2", "cluster3"]
     mock_redis.keys.assert_called_once_with("clusters:*:health")
@@ -408,7 +408,7 @@ async def test_get_resource_counts(redis_client, mock_redis):
     cluster_name = "test-cluster"
     mock_redis.hlen.side_effect = [5, 10, 3]  # deployments, pods, services
     
-    result = await redis_client.get_resource_counts(cluster_name)
+    result = redis_client.get_resource_counts(cluster_name)
     
     assert result == {
         "deployments": 5,

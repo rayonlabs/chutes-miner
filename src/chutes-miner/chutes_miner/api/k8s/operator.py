@@ -327,7 +327,6 @@ class K8sOperator(abc.ABC):
             logger.info(f"Nothing to wait for: {label_selector}")
             return
 
-        # w = watch.Watch()
         try:
             for event in self.watch_pods(
                 namespace=settings.namespace, label_selector=label_selector, timeout=timeout_seconds
@@ -337,6 +336,7 @@ class K8sOperator(abc.ABC):
                     break
         except Exception as exc:
             logger.warning(f"Error waiting for pods to be deleted: {exc}")
+            raise
 
     async def undeploy(self, deployment_id: str) -> None:
         """Delete a chute, and associated service."""
@@ -976,18 +976,21 @@ class MultiClusterK8sOperator(K8sOperator):
     ):
 
         pubsub = self._redis.subscribe_to_resource_type(resource_type)
+        try:
 
-        for message in pubsub.listen():
-            if message['type'] == 'message':
-                data = json.loads(message['data'])
-                _message = ResourceChangeMessage.from_dict(data)
-                if self._matches_filters(
-                    _message.event.object, 
-                    namespace=namespace,
-                    label_selector=label_selector,
-                    field_selector=field_selector
-                ):
-                    yield _message.event
+            for message in pubsub.listen():
+                if message['type'] == 'message':
+                    data = json.loads(message['data'])
+                    _message = ResourceChangeMessage.from_dict(data)
+                    if self._matches_filters(
+                        _message.event.object, 
+                        namespace=namespace,
+                        label_selector=label_selector,
+                        field_selector=field_selector
+                    ):
+                        yield _message.event
+        finally:
+            pubsub.close()
 
     def _matches_filters(
         self,
@@ -1062,16 +1065,15 @@ class MultiClusterK8sOperator(K8sOperator):
         return obj
 
     async def deploy_graval(self, node: V1Node, deployment: V1Deployment, service: V1Service):
+        core_client = self._manager.get_core_client(node.metadata.name)
+        app_client = self._manager.get_app_client(node.metadata.name)
         try:
-            created_service = self.core_client.create_namespaced_service(
+            created_service = core_client.create_namespaced_service(
                 namespace=settings.namespace, body=service
             )
-            created_deployment = self.app_client.create_namespaced_deployment(
+            created_deployment = app_client.create_namespaced_deployment(
                 namespace=settings.namespace, body=deployment
             )
-
-            # Create propagation policy
-            self._create_graval_propagation_policy(node, service, deployment)
 
             # Track the verification port.
             # Need to get the service port from the search API

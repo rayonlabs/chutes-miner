@@ -76,6 +76,7 @@ def mock_k8s_client_manager(mock_k8s_api_client, mock_k8s_core_client, mock_k8s_
         mock_manager.get_core_client.return_value = mock_k8s_core_client
         mock_manager_class.return_value = mock_manager
         yield mock_manager
+
 # @pytest.fixture(autouse=True)
 # def mock_k8s_api_client():
 #     import_paths = ["chutes_miner.api.k8s.operator.k8s_api_client"]

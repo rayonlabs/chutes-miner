@@ -16,7 +16,7 @@ class ResourceChangeMessage:
         return cls(
             cluster=v.get("cluster"),
             event=WatchEvent.from_dict(v.get("event")),
-            timestamp=datetime.strptime(v.get("timestamp"))
+            timestamp=datetime.strptime(v.get("timestamp"), '%Y-%m-%dT%H:%M:%S.%f%z')
         )
 
     def to_dict(self):

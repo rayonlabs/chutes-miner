@@ -68,10 +68,10 @@ class ClusterResources(BaseModel):
     @classmethod
     def from_dict(cls, v: dict) -> "ClusterResources":
         return cls(
-            deployments=serializer.deserialize(v.get("deployment", []), "list[V1Deployment]"),
-            services=serializer.deserialize(v.get("service", []), "list[V1Service]"),
-            pods=serializer.deserialize(v.get("pod", []), "list[V1Pod]"),
-            nodes=serializer.deserialize(v.get("node", []), "list[V1Node]"),
+            deployments=serializer.deserialize(v.get("deployments", []), "list[V1Deployment]"),
+            services=serializer.deserialize(v.get("services", []), "list[V1Service]"),
+            pods=serializer.deserialize(v.get("pods", []), "list[V1Pod]"),
+            nodes=serializer.deserialize(v.get("nodes", []), "list[V1Node]"),
         )
 
     def to_dict(self) -> dict:
