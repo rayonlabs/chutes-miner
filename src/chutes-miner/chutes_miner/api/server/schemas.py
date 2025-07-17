@@ -2,6 +2,7 @@
 Server (kubernetes node) tracking ORM.
 """
 
+from typing import Optional
 from pydantic import BaseModel
 from sqlalchemy import Column, String, DateTime, Integer, BigInteger, Float, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
@@ -15,6 +16,7 @@ class ServerArgs(BaseModel):
     validator: str
     hourly_cost: float
     gpu_short_ref: str
+    ip_address: Optional[str] = None
 
 
 class Server(Base):

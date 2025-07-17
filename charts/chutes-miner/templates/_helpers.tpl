@@ -10,6 +10,11 @@ app.kubernetes.io/name: chutes-redis
 app.kubernetes.io/name: chutes-registry
 {{- end }}
 
+{{- define "monitor.labels" -}}
+app.kubernetes.io/name: chutes-monitor
+redis-access: "true"
+{{- end }}
+
 {{- define "chutes.labels" -}}
 chutes/chute: "true"
 {{- end }}

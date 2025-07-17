@@ -9,6 +9,7 @@ import aiohttp
 import asyncio
 import traceback
 import chutes_common.constants as cst
+from chutes_miner.api.k8s.config import KubeConfig
 from loguru import logger
 from kubernetes.client import (
     V1Node,
@@ -28,7 +29,7 @@ from kubernetes.client import (
 )
 from sqlalchemy import update, select
 from sqlalchemy.exc import IntegrityError
-from typing import Tuple, Dict, List
+from typing import Optional, Tuple, Dict, List
 from chutes_common.auth import sign_request
 from chutes_common.settings import Validator
 from chutes_miner.api.config import settings, validator_by_hotkey
@@ -44,6 +45,7 @@ from chutes_miner.api.exceptions import (
     GPUlessServer,
     GraValBootstrapFailure,
 )
+import yaml
 
 
 @backoff.on_exception(
@@ -71,6 +73,13 @@ async def _fetch_devices(url):
         async with session.get(url, headers=headers, timeout=5) as response:
             return (await response.json())["devices"]
 
+async def get_server_kubeconfig(ip_address: str):
+    async with aiohttp.ClientSession() as session:
+        headers, payload_string = sign_request(purpose="management")
+        async with session.get(
+            f"{ip_address}:{settings.gpu_node_api_port}/config/kubeconfig", data=payload_string, headers=headers
+        ) as response:
+            return KubeConfig.from_dict(yaml.safe_load(response.json()["kubeconfig"]))
 
 async def gather_gpu_info(
     server_id: str,
@@ -419,7 +428,7 @@ async def check_verification_task_status(validator: Validator, task_id: str) -> 
             return True
 
 
-async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
+async def bootstrap_server(node_object: V1Node, server_args: ServerArgs, server_kubeconfig: Optional[KubeConfig]):
     """
     Bootstrap a server from start to finish, yielding SSEs for miner to track status.
     """

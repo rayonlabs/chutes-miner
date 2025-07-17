@@ -1,7 +1,7 @@
 import os
 import json
 from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from substrateinterface import Keypair
 from pydantic_settings import BaseSettings
 
@@ -13,7 +13,7 @@ class Validator(BaseModel):
     socket: str
 
 
-class Settings(BaseSettings):
+class MinerSettings(BaseSettings):
     _validators: List[Validator] = []
 
     miner_ss58: str = os.environ["MINER_SS58"]
@@ -29,4 +29,12 @@ class Settings(BaseSettings):
         return self._validators
 
 
-settings = Settings()
+miner_settings = MinerSettings()
+
+
+class RedisSettings(BaseSettings):
+    
+    redis_url: str = Field(default="redis://redis:6379", description="Redis URL")
+
+
+# redis_settings = RedisSettings()

@@ -1,0 +1,63 @@
+{{- define "redis.url" -}}
+redis://:$(REDIS_PASSWORD)@redis:6379
+{{- end }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitor
+  labels:
+    {{- include "monitor.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "monitor.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "monitor.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.monitor.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.monitor.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.monitor.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: monitor
+          image: "{{ .Values.monitor.image }}"
+          imagePullPolicy: {{ .Values.monitor.imagePullPolicy }}
+          command: ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "chutes_monitor.api.main:app"]
+          env:
+            - name: MINER_SS58
+              valueFrom:
+                secretKeyRef:
+                  name: miner-credentials
+                  key: ss58
+            - name: MINER_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: miner-credentials
+                  key: seed
+            - name: VALIDATORS
+              value: {{ .Values.validators | toJson | quote }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: {{ .Values.redis.password.passwordKey }}
+            - name: REDIS_URL
+              value: {{ include "redis.url" . }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.monitor.service.targetPort }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.monitor.resources | nindent 12 }}

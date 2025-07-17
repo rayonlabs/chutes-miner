@@ -7,10 +7,10 @@ import json
 from loguru import logger
 import redis.asyncio as redis
 from functools import lru_cache
-from typing import Any
+from typing import Any, Optional
 from kubernetes import client
 from kubernetes.config import load_kube_config, load_incluster_config
-from chutes_common.settings import Settings as CommonSettings
+from chutes_common.settings import MinerSettings as CommonSettings
 
 
 def create_kubernetes_client(cls: Any = client.CoreV1Api, karmada_api: bool = False):
@@ -67,6 +67,7 @@ def validator_by_hotkey(hotkey: str):
 
 
 class Settings(CommonSettings):
+
     sqlalchemy: str = os.getenv(
         "POSTGRESQL", "postgresql+asyncpg://user:password@127.0.0.1:5432/chutes"
     )
@@ -92,7 +93,8 @@ class Settings(CommonSettings):
     cache_max_size_gb: int = int(os.getenv("CACHE_MAX_SIZE_GB", "500"))
     cache_overrides: dict = json.loads(os.getenv("CACHE_OVERRIDES", "{}")) or {}
 
-    migrations_dir: str = os.getenv("MIGRATIONS_DIR", "api/migrations")
+    migrations_dir: str = os.getenv("MIGRATIONS_DIR", "chutes-miner/chutes_miner/api/migrations")
 
+    gpu_node_api_port: int = int(os.getenv("GPU_NODE_API_PORT", "32001"))
 
 settings = Settings()

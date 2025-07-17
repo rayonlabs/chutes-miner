@@ -40,7 +40,7 @@ spec:
         - name: api
           image: "{{ .Values.minerApi.image }}"
           imagePullPolicy: {{ .Values.minerApi.imagePullPolicy }}
-          command: ["poetry", "run", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "{{ .Values.minerApi.service.targetPort }}", "--workers", "4"]
+          command: ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "{{ .Values.minerApi.service.targetPort }}", "--workers", "4", "chutes_miner.api.main:app"]
           env:
             - name: MINER_SS58
               valueFrom:
@@ -80,15 +80,3 @@ spec:
               protocol: TCP
           resources:
             {{- toYaml .Values.minerApi.resources | nindent 12 }}
-          volumeMounts:
-          {{ if .Values.multiCluster }}
-          - name: karmada-kubeconfig
-            mountPath: /etc/karmada
-            readOnly: true
-          {{- end }}
-      volumes:
-      {{ if .Values.multiCluster }}
-      - name: karmada-kubeconfig
-        secret:
-          secretName: karmada-kubeconfig
-      {{- end }}

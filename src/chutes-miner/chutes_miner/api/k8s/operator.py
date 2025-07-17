@@ -1,9 +1,14 @@
 from functools import lru_cache
+import json
 import math
-import time
 import uuid
 import traceback
 import abc
+from chutes_common.monitoring.messages import ResourceChangeMessage
+from chutes_common.monitoring.models import ResourceType
+from chutes_common.redis import MonitoringRedisClient
+from chutes_miner.api.k8s.client import KubernetesMultiClusterClientManager
+from chutes_miner.api.k8s.config import KubeConfig
 from loguru import logger
 from typing import Generator, List, Dict, Any, Optional, Tuple, Union
 from kubernetes import watch
@@ -19,39 +24,30 @@ from kubernetes.client import (
     V1ConfigMap,
 )
 from kubernetes.client.rest import ApiException
+from kubernetes.client import CoreV1Api
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from chutes_miner.api.exceptions import DeploymentFailure
-from chutes_miner.api.config import k8s_api_client, k8s_custom_objects_client, settings
+from chutes_miner.api.config import settings
 from chutes_miner.api.database import get_session
 from chutes_miner.api.k8s.constants import (
     CHUTE_CODE_CM_PREFIX,
     CHUTE_DEPLOY_PREFIX,
-    CHUTE_PP_PREFIX,
     CHUTE_SVC_PREFIX,
     GRAVAL_DEPLOY_PREFIX,
-    GRAVAL_PP_PREFIX,
     GRAVAL_SVC_PREFIX,
-    SEARCH_DEPLOYMENTS_PATH,
-    SEARCH_NODES_PATH,
-    SEARCH_PODS_PATH,
 )
 from chutes_miner.api.k8s.karmada.models import (
-    ClusterAffinity,
     WatchEvent,
-    Placement,
-    PropagationPolicy,
-    ReplicaScheduling,
-    ResourceSelector,
-    WatchEventType,
 )
-from chutes_miner.api.k8s.response import ApiResponse
 from chutes_miner.api.k8s.util import build_chute_deployment, build_chute_service
 from chutes_miner.api.server.schemas import Server
 from chutes_miner.api.chute.schemas import Chute
 from chutes_miner.api.deployment.schemas import Deployment
 from chutes_miner.api.config import k8s_core_client, k8s_app_client
+from chutes_common.settings import RedisSettings
 
+redis_settings = RedisSettings()
 
 # Abstract base class for all Kubernetes operations
 class K8sOperator(abc.ABC):
@@ -79,7 +75,7 @@ class K8sOperator(abc.ABC):
             nodes = k8s_core_client().list_node(label_selector="karmada-control-plane=true")
             if nodes.items:
                 logger.debug("Creating K8S Operator for Karmada")
-                cls._instance = super().__new__(KarmadaK8sOperator)
+                cls._instance = super().__new__(MultiClusterK8sOperator)
             else:
                 logger.debug("Creating K8S Operator for K3S")
                 cls._instance = super().__new__(SingleClusterK8sOperator)
@@ -192,9 +188,9 @@ class K8sOperator(abc.ABC):
         return nodes
 
     @abc.abstractmethod
-    def get_node(self, name: str) -> V1Node:
+    def get_node(self, name: str, kubeconfig: Optional[str] = None) -> V1Node:
         """
-        Retrieve all node from the environment by name
+        Retrieve a node from the environment by name
         """
         raise NotImplementedError()
 
@@ -495,10 +491,12 @@ class K8sOperator(abc.ABC):
 class SingleClusterK8sOperator(K8sOperator):
     """Kubernetes operations for legacy single-cluster setup."""
 
-    def get_node(self, name: str) -> V1Node:
+    def get_node(self, name: str, kubeconfig: Optional[str] = None) -> V1Node:
         """
         Retrieve all nodes from the environment
         """
+        if kubeconfig:
+            raise RuntimeError("Can not retrieve node using kubeconfig in single cluster environment. Do not provide an IP address when adding a node.")
         return k8s_core_client().read_node(name=name)
 
     def _get_nodes(self):
@@ -773,91 +771,90 @@ class SingleClusterK8sOperator(K8sOperator):
             ...
 
 
-class KarmadaK8sOperator(K8sOperator):
-    """Kubernetes operations for Karmada-based multi-cluster setup."""
+class MultiClusterK8sOperator(K8sOperator):
+    """Kubernetes operations for multi-cluster setup."""
 
     # This class will implement the K8sOperator interface but translate operations
     # to work with Karmada's multi-cluster orchestration
+    def __init__(self):
+        self._manager = KubernetesMultiClusterClientManager()
+        self._redis = MonitoringRedisClient(redis_settings)
 
-    @property
-    def karmada_api_client(self):
-        return k8s_api_client(karmada_api=True)
-
-    @property
-    def karmada_custom_objects_client(self):
-        return k8s_custom_objects_client(karmada_api=True)
-
-    @property
-    def karmada_app_client(self):
-        return k8s_app_client(True)
-
-    @property
-    def karmada_core_client(self):
-        return k8s_core_client(True)
-
-    def get_node(self, name: str) -> V1Node:
+    def get_node(self, name: str, kubeconfig: Optional[KubeConfig] = None) -> V1Node:
         """
-        Retrieve all nodes from the environment
+        Retrieve a node from the cluster by name.
         """
-        node_path = f"{SEARCH_NODES_PATH}/{name}"
-        response = self._search(node_path)
-        node_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1NodeList")
-        return node_list.items[0] if len(node_list.items) == 1 else None
+        _client: CoreV1Api = self._manager.get_core_client(context=name, kubeconfig=kubeconfig)
+        
+        return _client.read_node(name=name)
 
     def _get_nodes(self) -> V1NodeList:
-        response = self._search(SEARCH_NODES_PATH)
-        node_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1NodeList")
-        return node_list
+        resources = self._redis.get_resources(resource_type=ResourceType.NODE)
+        return V1NodeList(items=resources.nodes)
 
     def patch_node(self, name: str, body: Dict) -> V1Node:
-        # Construct the API path for the Search API cache endpoint
-        api_path = f"/apis/cluster.karmada.io/v1alpha1/clusters/{name}/proxy/api/v1/nodes/{name}"
-
-        headers = {"Content-Type": "application/strategic-merge-patch+json"}
-
-        # Call the Search API using the client
-        logger.info("Patching node via karmada proxy")
-        self.karmada_api_client.call_api(api_path, "PATCH", header_params=headers, body=body)
+        # cluster = self._redis.get_resource_cluster(resource_name=name, resource_type="node")
+        # We can assume the node name is the same as the context, if this changes this will break
+        client = self._manager.get_core_client(context_name=name)
+        client.patch_node(name=name, body=body)
 
         return self.get_node(name)
 
     async def get_deployment(self, deployment_id: str) -> Dict:
         """Get a single deployment by ID."""
         deployment_name = f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}"
-        deploy_list = self.get_deployments(field_selector=f"metadata.name={deployment_name}")
+        
+        resources = self._redis.get_resources(resource_type=ResourceType.DEPLOYMENT, resource_name=deployment_name)
 
-        if len(deploy_list.items) == 0:
+        # Handle case where no deployments found or more than one found
+        if len(resources.deployments) == 0:
             logger.warning(f"Failed to find deployment {deployment_name}")
             raise ApiException(status=404, reason=f"Failed to find deployment {deployment_name}")
 
-        # Handle case where no deployments found or more than one found
-        return self._extract_deployment_info(deploy_list.items[0])
+        return self._extract_deployment_info(resources.deployments[0])
 
     def delete_deployment(self, name, namespace=settings.namespace):
-        self.karmada_app_client.delete_namespaced_deployment(
+        context = self._redis.get_resource_cluster(
+            resource_name=name, 
+            resource_type=ResourceType.DEPLOYMENT, 
+            namespace=namespace
+        )
+        client = self._manager.get_app_client(context)
+        client.delete_namespaced_deployment(
             name=name,
             namespace=namespace,
         )
 
     def delete_service(self, name, namespace=settings.namespace):
-        self.karmada_core_client.delete_namespaced_service(
+        context = self._redis.get_resource_cluster(
+            resource_name=name, 
+            resource_type=ResourceType.SERVICE, 
+            namespace=namespace
+        )
+        client = self._manager.get_core_client(context)
+        client.delete_namespaced_service(
             name=name,
             namespace=namespace,
         )
 
     def delete_config_map(self, name, namespace=settings.namespace):
-        self.karmada_core_client.delete_namespaced_config_map(name=name, namespace=namespace)
+        context = self._redis.get_resource_cluster(
+            resource_name=name, 
+            resource_type=ResourceType.SERVICE, 
+            namespace=namespace
+        )
+        client = self._manager.get_core_client(context)
+        client.delete_namespaced_config_map(
+            name=name,
+            namespace=namespace,
+        )
 
     def create_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
-        # This is the one exception where we do not create the propagation policy for
-        # the CM since we use a predefined PP to propagate all chute code CMs to all clusters
-        self.karmada_core_client.create_namespaced_config_map(namespace=namespace, body=config_map)
-
-    async def undeploy(self, deployment_id: str) -> None:
-        """Delete a deployment, and associated service."""
-        await super().undeploy(deployment_id)
-        chute_pp_name = f"{CHUTE_PP_PREFIX}-{deployment_id}"
-        self._delete_propagation_policy(chute_pp_name)
+        # Create CM on all clusters
+        clusters = self._redis.get_all_cluster_names()
+        for cluster in clusters:
+            client = self._manager.get_core_client(cluster)
+            client.create_namespaced_config_map(namespace=namespace, body=config_map)
 
     async def _deploy_chute(
         self,
@@ -867,14 +864,15 @@ class KarmadaK8sOperator(K8sOperator):
         chute: Chute,
         server: Server,
     ):
+        core_client = self._manager.get_core_client(server.name)
+        app_client = self._manager.get_app_client(server.name)
         try:
-            created_service = self.karmada_core_client.create_namespaced_service(
+            created_service = core_client.create_namespaced_service(
                 namespace=settings.namespace, body=service
             )
-            created_deployment = self.karmada_app_client.create_namespaced_deployment(
+            created_deployment = app_client.create_namespaced_deployment(
                 namespace=settings.namespace, body=deployment
             )
-            self._create_chute_propagation_policy(deployment_id, service, deployment, server)
 
             deployment_port = created_service.spec.ports[0].node_port
             async with get_session() as session:
@@ -912,80 +910,14 @@ class KarmadaK8sOperator(K8sOperator):
             self.delete_deployment(f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}")
         except Exception:
             ...
-        try:
-            self._delete_propagation_policy(f"{CHUTE_PP_PREFIX}-{deployment_id}")
-        except Exception:
-            ...
-
-    def _create_chute_propagation_policy(
-        self,
-        deployment_id: str,
-        service: V1Service,
-        deployment: V1Deployment,
-        server: Server,
-    ):
-        pp = PropagationPolicy(
-            name=f"{CHUTE_PP_PREFIX}-{deployment_id}",
-            namespace=settings.namespace,
-            resource_selectors=[
-                ResourceSelector(
-                    api_version="apps/v1", kind="Deployment", name=deployment.metadata.name
-                ),
-                ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name),
-            ],
-            placement=Placement(
-                cluster_affinity=ClusterAffinity(cluster_names=[server.name]),
-                replica_scheduling=ReplicaScheduling(scheduling_type="Duplicated"),
-            ),
-        )
-        self._create_propagation_policy(pp)
-
-    def _create_graval_propagation_policy(
-        self, node: V1Node, service: V1Service, deployment: V1Deployment
-    ):
-        pp = PropagationPolicy(
-            name=f"{GRAVAL_PP_PREFIX}-{node.metadata.name.replace('.', '-')}",
-            namespace=settings.namespace,
-            resource_selectors=[
-                ResourceSelector(
-                    api_version="apps/v1", kind="Deployment", name=deployment.metadata.name
-                ),
-                ResourceSelector(api_version="v1", kind="Service", name=service.metadata.name),
-            ],
-            placement=Placement(
-                cluster_affinity=ClusterAffinity(cluster_names=[node.metadata.name]),
-                replica_scheduling=ReplicaScheduling(scheduling_type="Duplicated"),
-            ),
-        )
-        self._create_propagation_policy(pp)
-
-    def _create_propagation_policy(
-        self, propagation_policy: PropagationPolicy, namespace: str = settings.namespace
-    ):
-        self.karmada_custom_objects_client.create_namespaced_custom_object(
-            group="policy.karmada.io",
-            version="v1alpha1",
-            namespace=namespace,
-            plural="propagationpolicies",
-            body=propagation_policy.to_dict(),
-        )
-
-    def _delete_propagation_policy(self, pp_name, namespace=settings.namespace):
-        self.karmada_custom_objects_client.delete_namespaced_custom_object(
-            group="policy.karmada.io",
-            version="v1alpha1",
-            namespace=namespace,
-            plural="propagationpolicies",
-            name=pp_name,
-        )
 
     def watch_pods(self, namespace=None, label_selector=None, field_selector=None, timeout=120):
         for event in self._watch_resources(
-            timeout,
-            self._get_pods,
+            ResourceType.POD,
             namespace=namespace,
             label_selector=label_selector,
             field_selector=field_selector,
+            timeout=timeout
         ):
             yield event
 
@@ -996,16 +928,15 @@ class KarmadaK8sOperator(K8sOperator):
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
         timeout=120,
     ) -> V1PodList:
-        response = self._search(SEARCH_PODS_PATH)
-        pod_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1PodList")
+        resources = self._redis.get_resources(resource_type=ResourceType.POD)
 
-        pod_list.items[:] = [
+        pod_list = [
             pod
-            for pod in pod_list.items
+            for pod in resources.pods
             if self._matches_filters(pod, namespace, label_selector, field_selector)
         ]
 
-        return pod_list
+        return V1PodList(items=pod_list)
 
     def get_deployments(
         self,
@@ -1014,72 +945,53 @@ class KarmadaK8sOperator(K8sOperator):
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
         timeout=120,
     ):
-        response = self._search(SEARCH_DEPLOYMENTS_PATH)
-        deploy_list = self.karmada_api_client.deserialize(ApiResponse(response), "V1DeploymentList")
+        resources = self._redis.get_resources(resource_type=ResourceType.DEPLOYMENT)
 
-        deploy_list.items[:] = [
+        deploy_list = [
             deployment
-            for deployment in deploy_list.items
+            for deployment in resources.deployments
             if self._matches_filters(deployment, namespace, label_selector, field_selector)
         ]
 
-        return deploy_list
+        return V1DeploymentList(items=deploy_list)
 
     def watch_deployments(
         self, namespace=None, label_selector=None, field_selector=None, timeout=120
     ):
         for event in self._watch_resources(
-            timeout,
-            self.get_deployments,
+            ResourceType.DEPLOYMENT,
             namespace=namespace,
             label_selector=label_selector,
             field_selector=field_selector,
+            timeout=timeout
         ):
             yield event
 
-    def _watch_resources(self, timeout, search_func, *search_args, **search_kwargs):
-        previous_state = {}
+    def _watch_resources(
+        self, resource_type: ResourceType, 
+        namespace: Optional[str] = None,
+        label_selector: Optional[Union[str | Dict[str, str]]] = None,
+        field_selector: Optional[Union[str | Dict[str, str]]] = None,
+        timeout=120
+    ):
 
-        start_time = time.time()
+        pubsub = self._redis.subscribe_to_resource_type(resource_type)
 
-        while True:
-            try:
-                # Get current deployments from search API
-                current_list = search_func(*search_args, **search_kwargs)
-
-                current_state = {resource.metadata.uid: resource for resource in current_list.items}
-
-                # Find added deployments
-                for uid, resource in current_state.items():
-                    if uid not in previous_state:
-                        yield WatchEvent(type=WatchEventType.ADDED, object=resource)
-                    elif (
-                        previous_state[uid].metadata.resource_version
-                        != resource.metadata.resource_version
-                    ):
-                        yield WatchEvent(type=WatchEventType.MODIFIED, object=resource)
-
-                # Find deleted deployments
-                for uid, resource in previous_state.items():
-                    if uid not in current_state:
-                        yield WatchEvent(type=WatchEventType.DELETED, object=resource)
-
-                # Update previous state
-                previous_state = current_state
-
-                # Check timeout
-                if time.time() - start_time >= timeout:
-                    break
-
-                time.sleep(2)
-
-            except Exception as e:
-                logger.error(f"Error in watch_deployments: {e}")
-                break
+        for message in pubsub.listen():
+            if message['type'] == 'message':
+                data = json.loads(message['data'])
+                _message = ResourceChangeMessage.from_dict(data)
+                if self._matches_filters(
+                    _message.event.object, 
+                    namespace=namespace,
+                    label_selector=label_selector,
+                    field_selector=field_selector
+                ):
+                    yield _message.event
 
     def _matches_filters(
         self,
-        deployment: Union[V1Pod | V1Deployment],
+        resource: Union[V1Pod, V1Deployment, V1Node, V1Service],
         namespace: Optional[str] = None,
         label_selector: Optional[Union[str | Dict[str, str]]] = None,
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
@@ -1087,12 +999,12 @@ class KarmadaK8sOperator(K8sOperator):
         """Check if deployment matches all specified filters."""
 
         # Namespace filter
-        if namespace and deployment.metadata.namespace != namespace:
+        if namespace and resource.metadata.namespace != namespace:
             return False
 
         # Label selector filter
         if label_selector:
-            deployment_labels = deployment.metadata.labels or {}
+            deployment_labels = resource.metadata.labels or {}
 
             if isinstance(label_selector, str):
                 # Parse string label selector (e.g., "app=nginx,version=1.0")
@@ -1113,7 +1025,7 @@ class KarmadaK8sOperator(K8sOperator):
                 field_dict = field_selector
 
             for field_path, expected_value in field_dict.items():
-                actual_value = self._get_field_value(deployment, field_path)
+                actual_value = self._get_field_value(resource, field_path)
                 if actual_value != expected_value:
                     return False
 
@@ -1149,27 +1061,12 @@ class KarmadaK8sOperator(K8sOperator):
                 return None
         return obj
 
-    def _search(self, api_path, query_params={}):
-        """
-        Search using the Karamada Search API
-        """
-
-        response = self.karmada_api_client.call_api(
-            api_path,
-            "GET",
-            query_params=query_params,
-            response_type="object",
-            _return_http_data_only=True,
-        )
-
-        return response
-
     async def deploy_graval(self, node: V1Node, deployment: V1Deployment, service: V1Service):
         try:
-            created_service = self.karmada_core_client.create_namespaced_service(
+            created_service = self.core_client.create_namespaced_service(
                 namespace=settings.namespace, body=service
             )
-            created_deployment = self.karmada_app_client.create_namespaced_deployment(
+            created_deployment = self.app_client.create_namespaced_deployment(
                 namespace=settings.namespace, body=deployment
             )
 
@@ -1215,11 +1112,6 @@ class KarmadaK8sOperator(K8sOperator):
         except Exception:
             ...
 
-        try:
-            self._delete_propagation_policy(f"{GRAVAL_PP_PREFIX}-{nice_name}")
-        except Exception:
-            ...
-
     def _cleanup_graval_deployment(
         self, node: V1Node, service: V1Service, deployment: V1Deployment
     ):
@@ -1229,11 +1121,5 @@ class KarmadaK8sOperator(K8sOperator):
             ...
         try:
             self.delete_deployment(deployment.metadata.name)
-        except Exception:
-            ...
-        try:
-            self._delete_propagation_policy(
-                f"{GRAVAL_PP_PREFIX}-{node.metadata.name.replace('.', '-')}"
-            )
         except Exception:
             ...

@@ -14,6 +14,7 @@ import aiohttp
 import asyncio
 import hashlib
 import backoff
+from chutes_miner.api.k8s.operator import K8sOperator
 from loguru import logger
 from sqlalchemy import text
 from datetime import UTC, datetime, timedelta
@@ -78,7 +79,7 @@ def get_prometheus_uptime() -> float:
     """
     Get the prometheus-server deployment uptime in seconds.
     """
-    pods = k8s_core_client().list_namespaced_pod(
+    pods = K8sOperator().list_namespaced_pod(
         namespace=settings.monitoring_namespace,
         label_selector="app.kubernetes.io/name=prometheus,app.kubernetes.io/component=server",
     )

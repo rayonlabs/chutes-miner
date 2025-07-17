@@ -5,6 +5,13 @@ from pydantic import BaseModel, ConfigDict
 from enum import Enum
 from kubernetes_asyncio.client import V1Deployment, V1Service, V1Pod, V1Node
 
+class ResourceType(str, Enum):
+
+    ALL = "*"
+    NODE = "node"
+    DEPLOYMENT = "deployment"
+    SERVICE = "service"
+    POD = "pod"
 
 class MonitoringState(str, Enum):
     """Monitoring status enumeration"""
@@ -61,10 +68,10 @@ class ClusterResources(BaseModel):
     @classmethod
     def from_dict(cls, v: dict) -> "ClusterResources":
         return cls(
-            deployments=serializer.deserialize(v.get("deployments", []), "list[V1Deployment]"),
-            services=serializer.deserialize(v.get("services", []), "list[V1Service]"),
-            pods=serializer.deserialize(v.get("pods", []), "list[V1Pod]"),
-            nodes=serializer.deserialize(v.get("nodes", []), "list[V1Node]"),
+            deployments=serializer.deserialize(v.get("deployment", []), "list[V1Deployment]"),
+            services=serializer.deserialize(v.get("service", []), "list[V1Service]"),
+            pods=serializer.deserialize(v.get("pod", []), "list[V1Pod]"),
+            nodes=serializer.deserialize(v.get("node", []), "list[V1Node]"),
         )
 
     def to_dict(self) -> dict:
@@ -82,11 +89,11 @@ class ClusterResources(BaseModel):
 
     def items(
         self,
-    ) -> Generator[Tuple[str, list[Union[V1Deployment, V1Service, V1Pod, V1Node]]], None, None]:
-        yield "deployment", self.deployments
-        yield "service", self.services
-        yield "pod", self.pods
-        yield "node", self.nodes
+    ) -> Generator[Tuple[ResourceType, list[Union[V1Deployment, V1Service, V1Pod, V1Node]]], None, None]:
+        yield ResourceType.DEPLOYMENT, self.deployments
+        yield ResourceType.SERVICE, self.services
+        yield ResourceType.POD, self.pods
+        yield ResourceType.NODE, self.nodes
 
 
 class HeartbeatData(BaseModel):

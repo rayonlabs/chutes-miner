@@ -1,4 +1,5 @@
 # Fixtures for commonly used objects
+from re import L
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -61,52 +62,65 @@ def mock_k8s_app_client():
     for patcher in patches:
         patcher.stop()
 
-
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def mock_k8s_api_client():
-    import_paths = ["chutes_miner.api.k8s.operator.k8s_api_client"]
+    mock_client = MagicMock()
+    yield mock_client
 
-    # Create a single mock object
-    client = ApiClient()
-    client.call_api = MagicMock(wraps=client.call_api)
-    # mock_client.list_node.return_value = MagicMock(items=None)
+@pytest.fixture
+def mock_k8s_client_manager(mock_k8s_api_client, mock_k8s_core_client, mock_k8s_app_client):
+    with patch("chutes_miner.api.k8s.operator.KubernetesMultiClusterClientManager") as mock_manager_class:
+        mock_manager = MagicMock()
+        mock_manager.get_api_client.return_value = mock_k8s_api_client
+        mock_manager.get_app_client.return_value = mock_k8s_app_client
+        mock_manager.get_core_client.return_value = mock_k8s_core_client
+        mock_manager_class.return_value = mock_manager
+        yield mock_manager
+# @pytest.fixture(autouse=True)
+# def mock_k8s_api_client():
+#     import_paths = ["chutes_miner.api.k8s.operator.k8s_api_client"]
 
-    # Create and start patches for each import path, all returning the same mock
-    patches = []
-    for path in import_paths:
-        patcher = patch(path, return_value=client)
-        patcher.start()
-        patches.append(patcher)
+#     # Create a single mock object
+#     client = ApiClient()
+#     client.call_api = MagicMock(wraps=client.call_api)
+#     # mock_client.list_node.return_value = MagicMock(items=None)
 
-    # Yield the shared mock for use in tests
-    yield client
+#     # Create and start patches for each import path, all returning the same mock
+#     patches = []
+#     for path in import_paths:
+#         patcher = patch(path, return_value=client)
+#         patcher.start()
+#         patches.append(patcher)
 
-    # Stop all patches when done
-    for patcher in patches:
-        patcher.stop()
+#     # Yield the shared mock for use in tests
+#     yield client
+
+#     # Stop all patches when done
+#     for patcher in patches:
+#         patcher.stop()
 
 
-@pytest.fixture(autouse=True)
-def mock_k8s_custom_objects_client():
-    import_paths = ["chutes_miner.api.k8s.operator.k8s_custom_objects_client"]
+# @pytest.fixture(autouse=True)
+# def mock_k8s_custom_objects_client():
+#     import_paths = ["chutes_miner.api.k8s.operator.k8s_custom_objects_client"]
 
-    # Create a single mock object
-    client = MagicMock()
-    # mock_client.list_node.return_value = MagicMock(items=None)
+#     # Create a single mock object
+#     client = MagicMock()
+#     # mock_client.list_node.return_value = MagicMock(items=None)
 
-    # Create and start patches for each import path, all returning the same mock
-    patches = []
-    for path in import_paths:
-        patcher = patch(path, return_value=client)
-        patcher.start()
-        patches.append(patcher)
+#     # Create and start patches for each import path, all returning the same mock
+#     patches = []
+#     for path in import_paths:
+#         patcher = patch(path, return_value=client)
+#         patcher.start()
+#         patches.append(patcher)
 
-    # Yield the shared mock for use in tests
-    yield client
+#     # Yield the shared mock for use in tests
+#     yield client
 
-    # Stop all patches when done
-    for patcher in patches:
-        patcher.stop()
+#     # Stop all patches when done
+#     for patcher in patches:
+#         patcher.stop()
 
 
 @pytest.fixture

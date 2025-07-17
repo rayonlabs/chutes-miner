@@ -140,3 +140,21 @@ auditExporter:
   image: parachutes/miner:karmada
   nodeSelector:
     kubernetes.io/hostname: chutes-miner-cpu-0
+
+monitor:
+  image: parachutes/chutes-monitor:0.1.0
+  imagePullPolicy: Always
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "1Gi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+  service:
+    type: NodePort
+    nodePort: 32001
+    port: 8000
+    targetPort: 8000
+  nodeSelector: {}
+  affinity: {}

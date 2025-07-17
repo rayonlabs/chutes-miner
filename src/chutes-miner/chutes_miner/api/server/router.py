@@ -3,7 +3,9 @@ Routes for server management.
 """
 
 import asyncio
+from typing import Optional
 import aiohttp
+from chutes_miner.api.k8s.config import KubeConfig
 from loguru import logger
 import orjson as json
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,7 +18,7 @@ from chutes_common.auth import authorize
 from chutes_miner.api.deployment.schemas import Deployment
 from chutes_miner.api.k8s.operator import K8sOperator
 from chutes_miner.api.server.schemas import Server, ServerArgs
-from chutes_miner.api.server.util import bootstrap_server
+from chutes_miner.api.server.util import bootstrap_server, get_server_kubeconfig
 from chutes_miner.gepetto import Gepetto
 
 router = APIRouter()
@@ -61,7 +63,11 @@ async def create_server(
     Add a new server/kubernetes node to our inventory.  This is a very
     slow/long-running response via SSE, since it needs to do a lot of things.
     """
-    node = K8sOperator().get_node(server_args.name)
+    server_kubeconfig: Optional[KubeConfig] = None
+    if server_args.ip_address:
+        server_kubeconfig = get_server_kubeconfig(server_args.ip_address)
+
+    node = K8sOperator().get_node(server_args.name, server_kubeconfig)
     if not node:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -93,7 +99,7 @@ async def create_server(
 
     # Stream creation/provisioning details back as they occur.
     async def _stream_provisioning_status():
-        async for chunk in bootstrap_server(node, server_args):
+        async for chunk in bootstrap_server(node, server_args, server_kubeconfig):
             yield chunk
 
     return StreamingResponse(_stream_provisioning_status())

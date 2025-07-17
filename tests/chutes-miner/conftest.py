@@ -27,3 +27,4 @@ pytest_configure(None)
 
 from fixtures.db_fixtures import *  # noqa
 from fixtures.k8s_fixtures import *  # noqa
+from fixtures.redis_fixutres import * # noqa

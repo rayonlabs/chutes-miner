@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitor
+  labels:
+    {{- include "monitor.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  ports:
+    - port: {{ .Values.monitor.service.port }}
+      targetPort: {{ .Values.monitor.service.targetPort }}
+      protocol: TCP
+      nodePort: {{ .Values.monitor.service.nodePort }}
+      name: http
+  selector:
+    {{- include "monitor.labels" . | nindent 4 }}
