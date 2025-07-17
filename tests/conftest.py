@@ -23,9 +23,6 @@ def pytest_configure(config):
     print("Environment variables set up for testing!")
 
 
-pytest_configure(None)
+# pytest_configure(None)
 
-from fixtures.api_fixtures import *  # noqa
-from fixtures.cli_fixtures import *  # noqa
-from fixtures.db_fixtures import *  # noqa
-from fixtures.k8s_fixtures import *  # noqa
+from constants import *

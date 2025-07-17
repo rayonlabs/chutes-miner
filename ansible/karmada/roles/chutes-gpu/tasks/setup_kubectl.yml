@@ -111,16 +111,16 @@
           - cluster:
               certificate-authority-data: {{ cluster_ca_data.stdout }}
               server: {{ api_server_url.stdout }}
-            name: default
+            name: {{ inventory_hostname }}
           contexts:
           - context:
-              cluster: default
+              cluster: {{ inventory_hostname }}
               user: {{ cert_name }}
               namespace: {{ namespace }}
-            name: {{ cert_name }}-context
-          current-context: {{ cert_name }}-context
+            name: {{ inventory_hostname }}
+          current-context: {{ cert_name }}
           users:
-          - name: {{ cert_name }}
+          - name: {{ inventory_hostname }}
             user:
               client-certificate-data: {{ cert_file_content.content }}
               client-key-data: {{ key_file_content.content }}

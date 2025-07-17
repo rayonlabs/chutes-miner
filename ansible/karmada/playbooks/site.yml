@@ -95,7 +95,7 @@
         chutes_setup: true
       when: "not skip_configuration | default(false)"
 
-- name: Setup Chutes Control Plane
+- name: Setup Chutes GPU Clusters
   hosts: workers
   become: true
   tags:

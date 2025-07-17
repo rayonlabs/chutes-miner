@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.12,<4.0"
 aiohttp = "^3.10.10"
 backoff = "^2.2.1"
 requests = "^2.32.3"
@@ -27,8 +27,8 @@ kubernetes = "^31.0.0"
 prometheus-api-client = "^0.5.5"
 typer = "^0.14.0"
 click = ">8.1.0,<8.2.0"
-chutes-common = {path = "../chutes-common"}
 httpx = "^0.28.1"
+chutes-common = {path = "../chutes-common", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.12.2"

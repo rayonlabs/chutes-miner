@@ -1,15 +1,8 @@
 .PHONY: venv
 venv: ##@development Set up virtual environment
 venv:
-	@echo "Creating environment for: $(TARGET_NAMES)"; \
-	# Set up root venv to avoid managing multiple venvs for now; \
-	python -m venv .venv; \
-	. .venv/bin/activate; \
-	for target in $(TARGETS); do \
-		pkg_name=$$(basename $$target); \
-		echo "Setting up venv for for $$pkg_name"; \
-		${POETRY} install -P $$target; \
-	done
+	@echo "Setting up environment";
+	${POETRY} install --no-root
 	
 
 .PHONY: build

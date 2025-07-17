@@ -1,15 +1,14 @@
-[project]
+[tool.poetry]
 name = "chutes-registry"
 version = "0.1.0"
 description = "Local registry for Chutes Miner nodes"
-authors = [
-    {name = "Kyle Widmann",email = "kyle.widmann@gmail.com"}
-]
+authors = ["Kyle Widmann <kyle.widmann@gmail.com>"]
 readme = "README.md"
-requires-python = ">=3.12"
 
 [tool.poetry.dependencies]
-chutes-common = {path = "../chutes-common"}
+python = ">=3.12,<4.0"
+chutes-common = {path = "../chutes-common", develop = true}
+fastapi = "^0.115.4"
 
 
 [build-system]

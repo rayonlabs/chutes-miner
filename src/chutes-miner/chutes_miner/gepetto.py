@@ -13,9 +13,10 @@ from typing import Dict, Any, Optional
 from sqlalchemy import select, func, case, text, or_, update
 from sqlalchemy.orm import selectinload
 from prometheus_api_client import PrometheusConnect
-from chutes_miner.api.config import settings, validator_by_hotkey, Validator
+from chutes_miner.api.config import settings, validator_by_hotkey
 from chutes_miner.api.redis_pubsub import RedisListener
 from chutes_common.auth import sign_request
+from chutes_common.settings import Validator
 from chutes_miner.api.database import get_session, engine, Base
 from chutes_miner.api.chute.schemas import Chute
 from chutes_miner.api.server.schemas import Server

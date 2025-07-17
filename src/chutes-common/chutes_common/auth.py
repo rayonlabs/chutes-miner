@@ -17,7 +17,7 @@ from chutes_common.constants import (
     SIGNATURE_HEADER,
     NONCE_HEADER,
 )
-from chutes_miner.api.config import settings
+from chutes_common.settings import settings
 
 
 @lru_cache(maxsize=32)
