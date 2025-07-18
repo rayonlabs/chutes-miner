@@ -23,15 +23,15 @@ validators:
       socket: wss://ws.chutes.ai
 
 minerApi:
-  image: parachutes/miner:
+  image: 52.90.127.45:5000/miner
   imagePullPolicy: Always
   resources:
     requests:
-      cpu: "500m"
-      memory: "2Gi"
+      cpu: "250m"
+      memory: "1Gi"
     limits:
       cpu: "1"
-      memory: "4Gi"
+      memory: "2Gi"
   service:
     type: NodePort
     nodePort: 32000
@@ -50,15 +50,15 @@ minerApi:
 
 
 gepetto:
-  image: parachutes/miner:karmada
+  image: 52.90.127.45:5000/chutes-miner:0.1.0
   imagePullPolicy: Always
   resources:
     requests:
-      cpu: "1"
+      cpu: "500m"
       memory: "2Gi"
     limits:
       cpu: "1"
-      memory: "4Gi"
+      memory: "2Gi"
   nodeSelector: {}
   affinity:
     nodeAffinity:
@@ -77,11 +77,11 @@ postgres:
     enabled: true
   resources:
     requests:
-      cpu: "1"
-      memory: "4Gi"
+      cpu: "500m"
+      memory: "1Gi"
     limits:
       cpu: "1"
-      memory: "4Gi"
+      memory: "2Gi"
   database:
     name: chutes
     user: chutes
@@ -137,13 +137,14 @@ registry:
     nodePort: 30500
 
 auditExporter:
-  image: parachutes/miner:karmada
+  image: 52.90.127.45:5000/miner
   nodeSelector:
     kubernetes.io/hostname: chutes-miner-cpu-0
 
 monitor:
-  image: parachutes/chutes-monitor:0.1.0
+  image: 52.90.127.45:5000/chutes-monitor
   imagePullPolicy: Always
+  externalUrl: "http://52.90.127.45:32001"
   resources:
     requests:
       cpu: "250m"

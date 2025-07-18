@@ -94,7 +94,7 @@ class Settings(CommonSettings):
 
     migrations_dir: str = os.getenv("MIGRATIONS_DIR", "chutes-miner/chutes_miner/api/migrations")
 
-    gpu_node_api_port: int = int(os.getenv("GPU_NODE_API_PORT", "32001"))
+    monitor_api: str = str(os.getenv("MONITOR_API"))
 
 
 settings = Settings()

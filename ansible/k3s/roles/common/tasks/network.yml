@@ -31,7 +31,7 @@
         proto: tcp
         comment: Kubernetes API Server
 
-    - name: Allow for Karmada control plane (only for Karmada host)
+    - name: Allow for control plane 
       when:
         - ufw_status['stdout'] == "Status':' active"
         - inventory_hostname in groups['control'] | default([])
@@ -41,7 +41,6 @@
         proto: "{{ item.proto }}"
         comment: "{{ item.comment }}"
       loop:
-        - { port: "{{ karmada_api_server_node_port | default('32443') }}", proto: tcp, comment: Karmada API Server }
         - { port: "2379", proto: tcp, comment: etcd client }
         - { port: "30080", proto: tcp, comment: Grafana UI }
 

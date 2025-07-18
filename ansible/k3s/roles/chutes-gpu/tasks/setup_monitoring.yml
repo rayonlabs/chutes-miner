@@ -16,7 +16,6 @@
       register: copy_charts_result
       changed_when: copy_charts_result.changed
 
-    # Install monitoring on Karmada API Server context
     - name: Generate Monitoring Helm values
       ansible.builtin.template:
         src: monitoring-values.yaml.j2

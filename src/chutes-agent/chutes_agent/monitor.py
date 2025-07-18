@@ -136,8 +136,12 @@ class ResourceMonitor:
         if self._restart_task and not self._restart_task.done():
             self._restart_task.cancel()
 
-        logger.info("Scheduling restart.")
-        self._restart_task = asyncio.create_task(self._async_restart())
+        # Only restart if we are still in a running state
+        if self._status.state == MonitoringState.RUNNING:
+            logger.info("Scheduling restart.")
+            self._restart_task = asyncio.create_task(self._async_restart())
+        else:
+            logger.info(f"Skipping restart, monitoring status {self._status.state=}")
 
     @retry(
         stop=stop_after_attempt(10),

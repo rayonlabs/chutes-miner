@@ -74,6 +74,8 @@ spec:
             - name: NVIDIA_RUNTIME
               value: nvidia-container-runtime
             {{- end }}
+            - name: MONITOR_API
+              value: "{{ .Values.monitor.externalUrl }}"
           ports:
             - name: http
               containerPort: {{ .Values.minerApi.service.targetPort }}

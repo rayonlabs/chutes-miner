@@ -78,6 +78,15 @@ class ClusterRouter:
         try:
             logger.debug(f"Received heartbeat from cluster {cluster_name}")
             current_status = await self.redis_client.get_cluster_status(cluster_name)
+
+            if not current_status:
+                logger.debug(
+                    f"Cluster {cluster_name} not in cache, rejecting heartbeat."
+                )
+                raise HTTPException(
+                    status_code=404, detail="Cluster not in cache.  Resync resources."
+                )
+
             if not current_status.is_healthy:
                 logger.debug(
                     f"Cluster {cluster_name} is in an unhealthy state in cache, rejecting heartbeat."

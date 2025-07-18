@@ -16,7 +16,7 @@ class ServerArgs(BaseModel):
     validator: str
     hourly_cost: float
     gpu_short_ref: str
-    ip_address: Optional[str] = None
+    agent_api: Optional[str] = None
 
 
 class Server(Base):

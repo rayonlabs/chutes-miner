@@ -3,7 +3,7 @@ import yaml
 from typing import Dict, List, Optional
 
 
-@dataclass
+@dataclass(frozen=True)
 class KubeCluster:
     """Represents a Kubernetes cluster configuration"""
 
@@ -30,7 +30,7 @@ class KubeCluster:
         return cluster_dict
 
 
-@dataclass
+@dataclass(frozen=True)
 class KubeUser:
     """Represents a Kubernetes user configuration"""
 
@@ -67,7 +67,7 @@ class KubeUser:
         return user_dict
 
 
-@dataclass
+@dataclass(frozen=True)
 class KubeContext:
     """Represents a Kubernetes context configuration"""
 
@@ -114,6 +114,16 @@ class KubeConfig:
     clusters: list[KubeCluster] = field(default_factory=list)
     contexts: list[KubeContext] = field(default_factory=list)
     users: list[KubeUser] = field(default_factory=list)
+
+    def __hash__(self):
+        # Hash based on immutable content
+        return hash((
+            self.apiVersion,
+            self.kind,
+            tuple([c.name for c in self.clusters]),  # Convert lists to tuples
+            tuple([c.name for c in self.contexts]),
+            tuple([c.name for c in self.users])
+        ))
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "KubeConfig":
@@ -294,7 +304,7 @@ class MultiClusterKubeConfig:
         if context_name not in self.context_names:
             raise ValueError(f"Context {context_name} not found")
 
-        return next([ctx for ctx in self.contexts if ctx.name == context_name])
+        return next((ctx for ctx in self.contexts if ctx.name == context_name))
 
     def add_config(self, other_config: KubeConfig):
         """Add a cluster configuration from database to the consolidated config"""

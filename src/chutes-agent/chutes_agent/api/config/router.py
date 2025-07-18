@@ -42,7 +42,7 @@ async def get_kubeconfig_from_secret(
         v1 = client.CoreV1Api()
 
         # Get the secret
-        secret = v1.read_namespaced_secret(name=secret_name, namespace=namespace)
+        secret = await v1.read_namespaced_secret(name=secret_name, namespace=namespace)
 
         # Extract and decode the kubeconfig
         if "kubeconfig" not in secret.data:

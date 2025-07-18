@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "chutes-miner-cli"
-version = "0.0.14"
+version = "1.0.0"
 description = "Chutes miner CLI"
 readme = "README.md"
 license = "MIT"

@@ -1,6 +1,9 @@
+import asyncio
+from datetime import datetime
 from functools import lru_cache
 import json
 import math
+import time
 import uuid
 import traceback
 import abc
@@ -45,9 +48,7 @@ from chutes_miner.api.server.schemas import Server
 from chutes_miner.api.chute.schemas import Chute
 from chutes_miner.api.deployment.schemas import Deployment
 from chutes_miner.api.config import k8s_core_client, k8s_app_client
-from chutes_common.settings import RedisSettings
-
-redis_settings = RedisSettings()
+from redis.client import PubSub
 
 
 # Abstract base class for all Kubernetes operations
@@ -73,12 +74,12 @@ class K8sOperator(abc.ABC):
         # Otherwise, determine which implementation to use
         try:
             # Detection logic
-            nodes = k8s_core_client().list_node(label_selector="karmada-control-plane=true")
+            nodes = k8s_core_client().list_node(label_selector="node.kubernetes.io/instance-type=k3s")
             if nodes.items:
-                logger.debug("Creating K8S Operator for Karmada")
+                logger.debug("Creating K8S Operator for Multi-Cluster")
                 cls._instance = super().__new__(MultiClusterK8sOperator)
             else:
-                logger.debug("Creating K8S Operator for K3S")
+                logger.debug("Creating K8S Operator for Single Cluster")
                 cls._instance = super().__new__(SingleClusterK8sOperator)
         except Exception:
             cls._instance = super().__new__(SingleClusterK8sOperator)
@@ -781,13 +782,13 @@ class MultiClusterK8sOperator(K8sOperator):
     # to work with Karmada's multi-cluster orchestration
     def __init__(self):
         self._manager = KubernetesMultiClusterClientManager()
-        self._redis = MonitoringRedisClient(redis_settings)
+        self._redis = MonitoringRedisClient()
 
     def get_node(self, name: str, kubeconfig: Optional[KubeConfig] = None) -> V1Node:
         """
         Retrieve a node from the cluster by name.
         """
-        _client: CoreV1Api = self._manager.get_core_client(context=name, kubeconfig=kubeconfig)
+        _client: CoreV1Api = self._manager.get_core_client(context_name=name, kubeconfig=kubeconfig)
 
         return _client.read_node(name=name)
 
@@ -974,10 +975,17 @@ class MultiClusterK8sOperator(K8sOperator):
         field_selector: Optional[Union[str | Dict[str, str]]] = None,
         timeout=120,
     ):
-        pubsub = self._redis.subscribe_to_resource_type(resource_type)
+        pubsub: PubSub = self._redis.subscribe_to_resource_type(resource_type)
+        start_time = time.time()
+
         try:
-            for message in pubsub.listen():
-                if message["type"] == "message":
+            while True:
+                if time.time() - start_time > timeout:
+                    logger.warning(f"Watch timeout waiting for updates on {resource_type.value} after {timeout}s.")
+                    break
+                
+                message = pubsub.get_message(timeout=1)
+                if message and message["type"] == "message":
                     data = json.loads(message["data"])
                     _message = ResourceChangeMessage.from_dict(data)
                     if self._matches_filters(
@@ -987,6 +995,8 @@ class MultiClusterK8sOperator(K8sOperator):
                         field_selector=field_selector,
                     ):
                         yield _message.event
+                else:
+                    time.sleep(1)
         finally:
             pubsub.close()
 

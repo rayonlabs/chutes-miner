@@ -110,12 +110,12 @@
           clusters:
           - cluster:
               certificate-authority-data: {{ cluster_ca_data.stdout }}
-              server: {{ api_server_url.stdout }}
+              server: https://{{ ansible_host }}:{{ api_server_url.stdout.split(':')[-1] }}
             name: {{ inventory_hostname }}
           contexts:
           - context:
               cluster: {{ inventory_hostname }}
-              user: {{ cert_name }}
+              user: {{ inventory_hostname }}
               namespace: {{ namespace }}
             name: {{ inventory_hostname }}
           current-context: {{ cert_name }}

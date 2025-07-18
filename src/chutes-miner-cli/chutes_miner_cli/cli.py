@@ -210,6 +210,7 @@ def add_node(
     hourly_cost: float = typer.Option(..., help="Hourly cost, used in optimizing autoscaling"),
     gpu_short_ref: str = typer.Option(..., help="GPU short reference"),
     hotkey: str = typer.Option(..., help="Path to the hotkey file for your miner"),
+    agent_api: str = typer.Option(..., help="Agent API base URL"),
     miner_api: str = typer.Option("http://127.0.0.1:32000", help="Miner API base URL"),
 ):
     """
@@ -224,6 +225,7 @@ def add_node(
                 "validator": validator,
                 "hourly_cost": hourly_cost,
                 "gpu_short_ref": gpu_short_ref,
+                "agent_api": agent_api
             }
             headers, payload_string = sign_request(hotkey, payload=payload)
             async with session.post(

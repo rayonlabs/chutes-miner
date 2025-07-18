@@ -16,14 +16,13 @@
       register: copy_charts_result
       changed_when: copy_charts_result.changed
 
-    # Install monitoring on Karmada host
     - name: Generate Monitoring Host Helm values
       ansible.builtin.template:
         src: monitoring-values.yaml.j2
         dest: /tmp/monitoring-values.yaml
         mode: "0644"
 
-    - name: Install or upgrade Monitoring on Karmada host
+    - name: Install or upgrade Monitoring
       ansible.builtin.command: >
         helm upgrade --install monitoring /tmp/chutes-monitoring
         --namespace {{ monitoring_namespace }}

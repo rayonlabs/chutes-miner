@@ -23,7 +23,8 @@ class MonitoringRedisClient:
 
     _instance: Optional["MonitoringRedisClient"] = None
 
-    def __init__(self, settings: RedisSettings):
+    def __init__(self):
+        settings = RedisSettings()
         self.url = settings.redis_url
         self._initialize()
 
@@ -93,7 +94,7 @@ class MonitoringRedisClient:
 
             # Create the message payload
             message = ResourceChangeMessage(
-                cluster_name=cluster_name, event=event, timestamp=datetime.now(timezone.utc)
+                cluster=cluster_name, event=event, timestamp=datetime.now(timezone.utc)
             )
 
             message_json = json.dumps(message.to_dict())
@@ -119,15 +120,15 @@ class MonitoringRedisClient:
         return pubsub
 
     def subscribe_to_resource_type(
-        self, resource_type: str, cluster_name: Optional[str] = None
+        self, resource_type: ResourceType, cluster_name: Optional[str] = None,
     ) -> PubSub:
         """Subscribe to specific resource type changes"""
         pubsub = self.redis.pubsub()
 
         if cluster_name:
-            channel = f"cluster:{cluster_name}:resources:{resource_type}"
+            channel = f"cluster:{cluster_name}:resources:{resource_type.value}"
         else:
-            channel = f"resources:{resource_type}"
+            channel = f"resources:{resource_type.value}"
 
         pubsub.subscribe(channel)
         logger.info(f"Subscribed to channel: {channel}")
@@ -149,7 +150,7 @@ class MonitoringRedisClient:
 
         for resource_type, items in resources.items():
             if items:
-                key = f"clusters:{cluster_name}:resources:{resource_type}"
+                key = f"clusters:{cluster_name}:resources:{resource_type.value}"
                 # Store each resource with its name as the hash field
                 resource_map = {}
                 for item in items:
@@ -343,8 +344,10 @@ class MonitoringRedisClient:
     def get_resource_counts(self, cluster_name: str) -> Dict[str, int]:
         """Get resource counts for a cluster"""
         counts = {}
-        for resource_type in ["deployments", "pods", "services"]:
-            key = f"clusters:{cluster_name}:resources:{resource_type}"
+        for resource_type in ResourceType:
+            if resource_type == ResourceType.ALL:
+                continue
+            key = f"clusters:{cluster_name}:resources:{resource_type.value}"
             count = self.redis.hlen(key)
-            counts[resource_type] = count
+            counts[resource_type.value] = count
         return counts

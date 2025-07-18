@@ -76,30 +76,41 @@ async def _fetch_devices(url):
             return (await response.json())["devices"]
 
 
-async def get_server_kubeconfig(ip_address: str):
+async def get_server_kubeconfig(agent_url: str):
     async with aiohttp.ClientSession() as session:
-        headers, payload_string = sign_request(purpose="management")
+        headers, _ = sign_request(purpose="registration", management=True)
         async with session.get(
-            f"{ip_address}:{settings.gpu_node_api_port}/config/kubeconfig",
-            data=payload_string,
+            f"{agent_url}/config/kubeconfig",
             headers=headers,
         ) as response:
-            return KubeConfig.from_dict(yaml.safe_load(response.json()["kubeconfig"]))
+            data = await response.json()
+            return KubeConfig.from_dict(yaml.safe_load(data["kubeconfig"]))
         
-async def start_server_monitoring(ip_address: str):
+async def start_server_monitoring(agent_url: str):
     request = StartMonitoringRequest(
-        control_plane_url=settings.control_plane_ip
+        control_plane_url=settings.monitor_api
     )
     payload = request.model_dump()
     async with aiohttp.ClientSession() as session:
-        headers, payload_string = sign_request(payload, purpose="monitoring")
-        async with session.get(
-            f"{ip_address}:{settings.gpu_node_api_port}/monitor/start",
+        headers, payload_string = sign_request(payload, purpose="monitoring", management=True)
+        async with session.post(
+            f"{agent_url}/monitor/start",
             data=payload_string,
             headers=headers,
         ) as response:
             if response.status != 200:
-                raise Exception("Failed to start monitoring for cluster.")
+                raise Exception(f"Failed to start monitoring for cluster: {await response.text()}")
+
+
+async def stop_server_monitoring(agent_url: str):
+    async with aiohttp.ClientSession() as session:
+        headers, _ = sign_request(purpose="monitoring", management=True)
+        async with session.get(
+            f"{agent_url}/monitor/stop",
+            headers=headers,
+        ) as response:
+            if response.status != 200:
+                raise Exception(f"Failed to stop monitoring for cluster: {await response.text()}")
 
 
 async def gather_gpu_info(
@@ -480,11 +491,24 @@ async def bootstrap_server(
             if kubeconfig:
                 MultiClusterKubeConfig().remove_config(server_args.name)
 
+            if server_args.agent_api:
+                # If adding a standalone cluster, need to start monitoring
+                await stop_server_monitoring(server_args.agent_api)
+
     yield sse_message(
         f"attempting to add node server_id={node_object.metadata.uid} to inventory...",
     )
     seed = None
     try:
+
+        if kubeconfig:
+            # Make sure this is available for deploying
+            MultiClusterKubeConfig().add_config(kubeconfig)
+
+        if server_args.agent_api:
+            # If adding a standalone cluster, need to start monitoring
+            await start_server_monitoring(server_args.agent_api)
+
         node, server = await track_server(
             server_args.validator,
             server_args.hourly_cost,
@@ -496,10 +520,6 @@ async def bootstrap_server(
             },
             kubeconfig=kubeconfig
         )
-
-        if kubeconfig:
-            # Make sure this is available for deploying
-            MultiClusterKubeConfig().add_config(kubeconfig)
 
         # Great, now it's in our database, but we need to startup graval so the validator can check the GPUs.
         yield sse_message(
@@ -567,10 +587,6 @@ async def bootstrap_server(
             error_message = f"GPU verification failed for {validator.hotkey}, aborting!"
             yield sse_message(error_message)
             raise GraValBootstrapFailure(error_message)
-        
-        if server_args.ip_address:
-            # If adding a standalone cluster, need to start monitoring
-            await start_server_monitoring(server_args.ip_address)
 
     except Exception as exc:
         error_message = (

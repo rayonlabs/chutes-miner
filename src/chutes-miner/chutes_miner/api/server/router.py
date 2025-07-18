@@ -64,8 +64,8 @@ async def create_server(
     slow/long-running response via SSE, since it needs to do a lot of things.
     """
     server_kubeconfig: Optional[KubeConfig] = None
-    if server_args.ip_address:
-        server_kubeconfig = get_server_kubeconfig(server_args.ip_address)
+    if server_args.agent_api:
+        server_kubeconfig = await get_server_kubeconfig(server_args.agent_api)
 
     node = K8sOperator().get_node(server_args.name, server_kubeconfig)
     if not node:

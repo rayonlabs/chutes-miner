@@ -85,11 +85,11 @@ def get_redis_responses(deployments, pods):
     responses = {}
     if deployments:
         responses[ResourceType.DEPLOYMENT] = ClusterResources.from_dict({
-            "deployment": deployments
+            "deployments": deployments
         })
     if pods:
         responses[ResourceType.POD] = ClusterResources.from_dict({
-            "pod": pods
+            "pods": pods
         })
     return responses
 
@@ -122,7 +122,7 @@ async def test_get_kubernetes_nodes_success(mock_redis_client):
     """Test successful retrieval of kubernetes nodes."""
     # Setup mock response
     resources = {
-        "node": [
+        "nodes": [
             {
                 "metadata": {
                     "name": "node1",
@@ -232,7 +232,7 @@ async def test_extract_deployment_info(mock_redis_client, create_api_test_pods, 
     # deployment = deployments[0]
 
     resources = {
-        "pod": pods
+        "pods": pods
     }
 
     mock_redis_client.get_resources.return_value = ClusterResources.from_dict(resources)
@@ -490,7 +490,7 @@ async def test_wait_for_deletion_with_pods(mock_redis_client, mock_k8s_api_clien
     # Setup mock to return pods initially, then empty
     pods = create_api_test_pods(1)
     cluster_resources = ClusterResources.from_dict({
-        "pod": pods
+        "pods": pods
     })
 
     mock_redis_client.get_resources.return_value = cluster_resources

@@ -1,5 +1,5 @@
 ---
-- name: Add node to karmada/k3s
+- name: Add node to k3s
   block:
     - name: Verify node info is present before adding
       ansible.builtin.assert:

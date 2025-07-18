@@ -8,6 +8,9 @@ rules:
   - apiGroups: ["*"]
     resources: ["*"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["patch"]
 
 ---
 # ClusterRoleBinding for read-only access
@@ -35,6 +38,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "services", "configmaps"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
 ---
 # RoleBinding for write access in chutes namespace
@@ -46,7 +52,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: miner-chutes-writer
+  name: miner
 subjects:
   - kind: User
     name: miner

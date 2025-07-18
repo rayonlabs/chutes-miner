@@ -112,12 +112,13 @@
       register: host_secret_check
       failed_when: host_secret_check.resources | length == 0
 
-    - name: Verify miner credentials exist in api server context
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Secret
-        name: miner-credentials
-        namespace: chutes
-        context: karmada-apiserver
-      register: api_secret_check
-      failed_when: api_secret_check.resources | length == 0
+    # ToDo: Probably want to verify one ach GPU node for migration
+    # - name: Verify miner credentials exist in api server context
+    #   kubernetes.core.k8s_info:
+    #     api_version: v1
+    #     kind: Secret
+    #     name: miner-credentials
+    #     namespace: chutes
+    #     context: karmada-apiserver
+    #   register: api_secret_check
+    #   failed_when: api_secret_check.resources | length == 0
