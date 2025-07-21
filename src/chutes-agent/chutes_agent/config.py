@@ -42,7 +42,7 @@ class AgentSettings(BaseSettings):
 
     control_plane_url_file: str = Field(
         default="/app/state/control_plane_url",
-        descrption="File to store control plane URL for auto restarts.",
+        description="File to store control plane URL for auto restarts.",
     )
 
     def setup_logging(self) -> None:
