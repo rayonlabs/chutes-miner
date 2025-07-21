@@ -21,6 +21,10 @@ class KubernetesMultiClusterClientManager:
     ) -> client.CoreV1Api:
         api_client = self._get_client_for_context(context_name, kubeconfig)
         return client.CoreV1Api(api_client)
+    
+    def get_batch_client(self, context_name: str) -> client.BatchV1Api:
+        api_client = self._get_client_for_context(context_name)
+        return client.BatchV1Api(api_client)
 
     @lru_cache(maxsize=10)
     def _get_client_for_context(self, context: str, kubeconfig: Optional[KubeConfig] = None) -> client.ApiClient:

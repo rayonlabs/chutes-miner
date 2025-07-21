@@ -2,6 +2,7 @@
 Miner API entrypoint.
 """
 
+import os
 import asyncio
 import hashlib
 from contextlib import asynccontextmanager
@@ -24,6 +25,26 @@ async def lifespan(_: FastAPI):
     # SQLAlchemy init.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Lock to just one worker.
+    worker_pid_file = "/tmp/api.pid"
+    is_migration_process = False
+    try:
+        if not os.path.exists(worker_pid_file):
+            with open(worker_pid_file, "x") as outfile:
+                outfile.write(str(os.getpid()))
+            is_migration_process = True
+        else:
+            with open(worker_pid_file, "r") as infile:
+                designated_pid = int(infile.read().strip())
+            is_migration_process = os.getpid() == designated_pid
+    except FileExistsError:
+        with open(worker_pid_file, "r") as infile:
+            designated_pid = int(infile.read().strip())
+        is_migration_process = os.getpid() == designated_pid
+    if not is_migration_process:
+        yield
+        return
 
     # Manual DB migrations.
     process = await asyncio.create_subprocess_exec(

@@ -1,6 +1,8 @@
 # Set this value to true if oeprating a mutli cluster karmada environment
 multiCluster: true
 
+calico: true
+
 cache:
   max_age_days: 30
   max_size_gb: 500

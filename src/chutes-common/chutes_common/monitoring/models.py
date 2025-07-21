@@ -3,7 +3,7 @@ from typing import Generator, Optional, Tuple, Union
 from chutes_common.k8s import serializer
 from pydantic import BaseModel, ConfigDict
 from enum import Enum
-from kubernetes_asyncio.client import V1Deployment, V1Service, V1Pod, V1Node
+from kubernetes_asyncio.client import V1Deployment, V1Service, V1Pod, V1Node, V1Job
 
 
 class ResourceType(str, Enum):
@@ -12,6 +12,7 @@ class ResourceType(str, Enum):
     DEPLOYMENT = "deployment"
     SERVICE = "service"
     POD = "pod"
+    JOB = "job"
 
 
 class MonitoringState(str, Enum):
@@ -65,6 +66,7 @@ class ClusterResources(BaseModel):
     services: list[V1Service] = []
     pods: list[V1Pod] = []
     nodes: list[V1Node] = []
+    jobs: list[V1Job] = []
 
     @classmethod
     def from_dict(cls, v: dict) -> "ClusterResources":
@@ -73,6 +75,7 @@ class ClusterResources(BaseModel):
             services=serializer.deserialize(v.get("services", []), "list[V1Service]"),
             pods=serializer.deserialize(v.get("pods", []), "list[V1Pod]"),
             nodes=serializer.deserialize(v.get("nodes", []), "list[V1Node]"),
+            jobs=serializer.deserialize(v.get("jobs", []), "list[V1Job]"),
         )
 
     def to_dict(self) -> dict:
@@ -97,6 +100,7 @@ class ClusterResources(BaseModel):
         yield ResourceType.SERVICE, self.services
         yield ResourceType.POD, self.pods
         yield ResourceType.NODE, self.nodes
+        yield ResourceType.JOB, self.jobs
 
 
 class HeartbeatData(BaseModel):

@@ -30,6 +30,7 @@ click = ">8.1.0,<8.2.0"
 httpx = "^0.28.1"
 chutes-common = {path = "../chutes-common", develop = true}
 kubernetes-asyncio = "^32.3.2"
+semver = "^3.0.4"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.12.2"

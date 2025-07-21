@@ -248,6 +248,39 @@
           ln -sf $i /dev/char/$MAJ:$MIN
         done
 
+    - name: InfiniBand Setup Tasks
+      when: infiniband | default(false) | bool
+      block:
+        - name: Install InfiniBand diagnostics and NVLSM
+          apt:
+            name:
+              - infiniband-diags
+              - nvlsm
+            state: present
+
+        - name: Load ib_umad kernel module
+          modprobe:
+            name: ib_umad
+            state: present
+
+        - name: Make ib_umad module persistent
+          lineinfile:
+            path: /etc/modules
+            line: "ib_umad"
+            create: yes
+
+        - name: Create NVLSM directory
+          file:
+            path: /usr/share/nvidia/nvlsm
+            state: directory
+            mode: '0755'
+
+        - name: Create NVLSM configuration file
+          file:
+            path: /usr/share/nvidia/nvlsm/nvlsm.conf
+            state: touch
+            mode: '0644'
+
     - name: Configure file limits
       blockinfile:
         path: /etc/security/limits.conf

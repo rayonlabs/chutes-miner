@@ -231,7 +231,8 @@ def test_purge_deployment_cli_integration(monkeypatch):
 
     # Run the CLI command
     result = runner.invoke(
-        app, ["purge-deployment", "-d", DEPLOYMENT_ID, "--hotkey", "/path/to/hotkey.json"]
+        app,
+        ["purge-deployment", "-d", DEPLOYMENT_ID, "--hotkey", "/path/to/hotkey.json"],
     )
 
     # Check the command executed successfully

@@ -191,7 +191,10 @@ def commit(sha256) -> int:
     call = substrate.compose_call(
         call_module="Commitments",
         call_function="set_commitment",
-        call_params={"netuid": settings.netuid, "info": {"fields": [[{"Sha256": f"0x{sha256}"}]]}},
+        call_params={
+            "netuid": settings.netuid,
+            "info": {"fields": [[{"Sha256": f"0x{sha256}"}]]},
+        },
     )
     extrinsic = substrate.create_signed_extrinsic(
         call=call,

@@ -40,5 +40,8 @@ class Server(Base):
 
     gpus = relationship("GPU", back_populates="server", lazy="joined", cascade="all, delete-orphan")
     deployments = relationship(
-        "Deployment", back_populates="server", lazy="joined", cascade="all, delete-orphan"
+        "Deployment",
+        back_populates="server",
+        lazy="joined",
+        cascade="all, delete-orphan",
     )

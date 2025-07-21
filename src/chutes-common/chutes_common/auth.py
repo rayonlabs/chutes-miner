@@ -93,7 +93,9 @@ def get_signing_message(
 
 
 def sign_request(
-    payload: Dict[str, Any] | str | None = None, purpose: str = None, management: bool = False
+    payload: Dict[str, Any] | str | None = None,
+    purpose: str = None,
+    management: bool = False,
 ):
     """
     Generate a signed request (for miner requests to validators).

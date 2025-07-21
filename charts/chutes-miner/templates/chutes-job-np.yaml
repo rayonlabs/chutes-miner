@@ -1,25 +1,17 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: chutes-network-policy
+  name: chutes-job-network-policy
 spec:
   podSelector:
     matchLabels:
       chutes/chute: "true"
-    matchExpressions:
-      - key: chutes/job
-        operator: NotIn
-        values:
-          - "true"
+      chutes/job: "true"
   policyTypes:
     - Ingress
     - Egress
   ingress:
-    - ports:
-        - protocol: TCP
-          port: 8000
-        - protocol: TCP
-          port: 8001
+    - {}
   egress:
     # DNS resolution
     - ports:
@@ -27,8 +19,8 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-
-    # External HTTPS traffic (excluding private networks)
+    
+    # Allow any egress to non-private IP ranges
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -38,19 +30,7 @@ spec:
               - 192.168.0.0/16
               - 169.254.0.0/16
               - 100.64.0.0/10
-      ports:
-        - protocol: TCP
-          port: 443
-
-    # Squid proxy access
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: chutes-squid
-      ports:
-        - protocol: TCP
-          port: 3128
-
+    
     # Kubernetes API server access (default namespace, any TCP port)
     - to:
         - namespaceSelector:

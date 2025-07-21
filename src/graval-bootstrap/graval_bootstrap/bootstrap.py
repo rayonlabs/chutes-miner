@@ -10,10 +10,18 @@ import asyncio
 import json
 import base64
 import aiohttp
+from typing import Optional
+from pydantic import BaseModel, Field
 from graval.miner import Miner
 from substrateinterface import Keypair, KeypairType
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.responses import PlainTextResponse
+
+
+class Challenge(BaseModel):
+    seed: int = Field(..., ge=0)
+    iterations: int = Field(1, ge=1, le=10)
+    ciphertext: Optional[dict[str, str]] = {}
 
 
 def main():
@@ -34,12 +42,13 @@ def main():
     args = parser.parse_args()
 
     miner = Miner()
+    miner._uuids = [miner.get_device_info(i)["uuid"] for i in range(miner._device_count)]
     miner._init_seed = None
     miner._init_iter = None
     app = FastAPI(
         title="GraVal bootstrap",
         description="GPU info plz",
-        version="0.1.2",
+        version="0.2.5",
     )
     gpu_lock = asyncio.Lock()
 
@@ -93,34 +102,51 @@ def main():
             "devices": [miner.get_device_info(idx) for idx in range(miner._device_count)],
         }
 
-    @app.post("/decrypt")
-    async def decryption_challenge(request: Request):
+    @app.post("/prove")
+    async def generate_proof(challenge: Challenge, request: Request):
         """
-        Perform a decryption challenge.
+        Generate a proof for the incoming challenge, along with decrypting the payload.
         """
         request_body = await request.body()
+        print(f"Received proof request: {request_body=}")
         sha2 = hashlib.sha256(request_body).hexdigest()
         verify_request(request, (args.validator_whitelist or "").split(","), extra_key=sha2)
-        body = json.loads(request_body.decode())
-        seed = body.get("seed", 42)
-        bytes_ = base64.b64decode(body.get("ciphertext"))
-        iterations = body.get("iterations", 1)
-        iv = bytes_[:16]
-        ciphertext = bytes_[16:]
-        device_index = body.get("device_index", 0)
         async with gpu_lock:
-            if miner._init_seed != seed or miner._init_iter != iterations:
-                miner.initialize(seed, iterations=iterations)
-                miner._init_seed = seed
-                miner._init_iter = iterations
-            return {
-                "plaintext": miner.decrypt(
-                    ciphertext,
-                    iv,
-                    len(ciphertext),
-                    device_index,
-                )
+            proofs = miner.prove(challenge.seed, iterations=challenge.iterations)
+            return_value = {
+                "devices": [
+                    {k: v for k, v in miner.get_device_info(idx).items() if k != "work_product"}
+                    for idx in range(miner._device_count)
+                ],
+                "seed": challenge.seed,
+                "proof": proofs,
+                "plaintext": {},
             }
+
+            # Decrypt all ciphertexts, if provided.
+            for device_uuid, data in challenge.ciphertext.items():
+                try:
+                    device_index = miner._uuids.index(device_uuid)
+                    print(
+                        f"Decrypting {data=} for GPU {device_uuid} {device_index=} from seed {challenge.seed}"
+                    )
+                    bytes_ = base64.b64decode(data)
+                    iv = bytes_[:16]
+                    ciphertext = bytes_[16:]
+                    return_value["plaintext"][device_uuid] = miner.decrypt(
+                        challenge.seed,
+                        ciphertext,
+                        iv,
+                        len(ciphertext),
+                        device_index,
+                    )
+                except Exception as exc:
+                    print(
+                        f"Failed to decrypt on GPU {device_uuid} from seed {challenge.seed}: {exc=}"
+                    )
+                    raise
+
+            return return_value
 
     @app.get("/info", response_class=PlainTextResponse)
     async def info_challenge(request: Request, challenge: str):

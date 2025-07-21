@@ -20,7 +20,9 @@ class GPU(Base):
     validator = Column(String)
     server_id = Column(String, ForeignKey("servers.server_id", ondelete="CASCADE"), nullable=False)
     deployment_id = Column(
-        String, ForeignKey("deployments.deployment_id", ondelete="SET NULL"), nullable=True
+        String,
+        ForeignKey("deployments.deployment_id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     device_info = Column(JSONB, nullable=False)
@@ -29,5 +31,8 @@ class GPU(Base):
 
     server = relationship("Server", back_populates="gpus", lazy="joined")
     deployment = relationship(
-        "Deployment", back_populates="gpus", cascade="all, delete-orphan", single_parent=True
+        "Deployment",
+        back_populates="gpus",
+        cascade="all, delete-orphan",
+        single_parent=True,
     )

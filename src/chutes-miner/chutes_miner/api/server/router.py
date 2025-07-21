@@ -121,6 +121,32 @@ async def lock_server(
     return server
 
 
+@router.get("/{id_or_name}/delete_preflight")
+async def preflight_delete_check(
+    id_or_name: str,
+    db: AsyncSession = Depends(get_db_session),
+    _: None = Depends(authorize(allow_miner=True, allow_validator=False, purpose="management")),
+):
+    """
+    Check if a server has any jobs before deleting.
+    """
+    server = await _get_server(db, id_or_name)
+    jobs = (
+        (
+            await db.execute(
+                select(Deployment).where(
+                    Deployment.server_id == server.server_id,
+                    Deployment.job_id.isnot(None),
+                )
+            )
+        )
+        .unique()
+        .scalars()
+        .all()
+    )
+    return {"jobs": jobs}
+
+
 @router.get("/{id_or_name}/unlock")
 async def unlock_server(
     id_or_name: str,
@@ -185,6 +211,7 @@ async def purge_server(
                         Deployment.server_id == id_or_name,
                         Server.name == id_or_name,
                     ),
+                    Deployment.job_id.is_(None),
                 )
             )
         )

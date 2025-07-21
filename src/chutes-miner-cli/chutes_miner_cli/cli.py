@@ -7,6 +7,7 @@ from rich.table import Table
 from rich import box
 import datetime
 from chutes_miner_cli.util import sign_request
+from loguru import logger
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -35,6 +36,30 @@ def format_verification(error, verified_at):
     elif error:
         return f"[red]Error: {error}[/red]"
     return "[yellow]Pending[/yellow]"
+
+
+async def delete_preflight(server, hotkey, miner_api):
+    """
+    Check if a node has any jobs running and confirm the miner wants
+    to crush their incentives if they terminate regardless.
+    """
+
+    async with aiohttp.ClientSession(raise_for_status=True) as session:
+        headers, payload_string = sign_request(hotkey, purpose="management")
+        async with session.get(
+            f"{miner_api.rstrip('/')}/servers/{server}/delete_preflight",
+            headers=headers,
+        ) as resp:
+            data = await resp.json()
+            if data.get("jobs"):
+                logger.warning(
+                    f"There are {len(data['jobs'])} jobs running on server {server}, "
+                    "deleting this node will be highly detrimental to your score."
+                )
+                user_input = input("Continue (y/n)? ").strip().lower()
+                if user_input != "y":
+                    return False
+    return True
 
 
 def display_local_inventory(inventory):
@@ -256,12 +281,23 @@ def delete_node(
 
     async def _delete_node():
         nonlocal name, hotkey, miner_api
-        async with aiohttp.ClientSession(raise_for_status=True) as session:
+
+        # Before we do anything, check if the server has any jobs running. Deleting
+        # a job is very, very bad.
+        if not await delete_preflight(name, hotkey, miner_api):
+            return
+
+        # Proceed with deletion.
+        async with aiohttp.ClientSession(raise_for_status=False) as session:
             headers, payload_string = sign_request(hotkey, purpose="management")
             async with session.delete(
                 f"{miner_api.rstrip('/')}/servers/{name}",
                 headers=headers,
             ) as resp:
+                if resp.status == 404:
+                    logger.warning(f"Node not found: {name}")
+                    return
+                resp.raise_for_status()
                 print(json.dumps(await resp.json(), indent=2))
 
     asyncio.run(_delete_node())
@@ -273,6 +309,7 @@ def purge_deployments(
 ):
     """
     Rebalance all chutes - this just deletes all current instances and let's gepetto re-scale for max $$$
+    This does not purge jobs!
     """
 
     async def _purge_deployments():
@@ -313,6 +350,11 @@ def purge_deployment(
 
     async def _purge_deployment():
         nonlocal target_id, hotkey, miner_api, endpoint
+
+        # Make sure there aren't jobs and or miner wants to delete anyways.
+        if node_id and not await delete_preflight(node_id, hotkey, miner_api):
+            return
+
         async with aiohttp.ClientSession(raise_for_status=True) as session:
             headers, payload_string = sign_request(hotkey, purpose="management")
             async with session.delete(
@@ -424,7 +466,8 @@ def unlock_server(
 app.command(name="add-node", help="Add a new kubernetes node to your cluster")(add_node)
 app.command(name="delete-node", help="Delete a kubernetes node from your cluster")(delete_node)
 app.command(
-    name="purge-deployments", help="Purge all deployments, allowing autoscale from scratch"
+    name="purge-deployments",
+    help="Purge all deployments, allowing autoscale from scratch",
 )(purge_deployments)
 app.command(name="purge-deployment", help="Purge the target deployment")(purge_deployment)
 app.command(name="local-inventory", help="Show local inventory")(local_inventory)
