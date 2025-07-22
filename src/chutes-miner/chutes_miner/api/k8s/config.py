@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from chutes_miner.api.database import get_session
 import yaml
 from typing import Dict, List, Optional
 
@@ -275,6 +276,10 @@ class MultiClusterKubeConfig:
             cls._instance = super().__new__(MultiClusterKubeConfig)
 
         return cls._instance
+    
+    async def _load_kubeconfig(self):
+        async with get_session() as session:
+            pass
 
     @property
     def kubeconfig(self) -> KubeConfig:

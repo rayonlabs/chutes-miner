@@ -1,13 +1,11 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import os
 from chutes_agent.config import AgentSettings, settings
-from loguru import logger
 
 def test_agent_settings_default_values():
     """Test that default values are set correctly"""
     test_settings = AgentSettings(cluster_name="test-cluster")
-    
+
     assert test_settings.cluster_name == "test-cluster"
     assert test_settings.control_plane_timeout == 30
     assert test_settings.control_plane_retry_attempts == 3
@@ -50,7 +48,7 @@ def test_setup_logging(mock_info, mock_add, mock_remove):
     """Test logging setup"""
     test_settings = AgentSettings(cluster_name="test")
     test_settings.setup_logging()
-    
+
     mock_remove.assert_called_once()
     mock_add.assert_called_once()
     mock_info.assert_called_once()

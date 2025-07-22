@@ -43,9 +43,7 @@ from chutes_miner.api.k8s.constants import (
     GRAVAL_DEPLOY_PREFIX,
     GRAVAL_SVC_PREFIX,
 )
-from chutes_miner.api.k8s.karmada.models import (
-    WatchEvent,
-)
+from chutes_common.k8s import WatchEvent
 from chutes_miner.api.k8s.util import build_chute_job, build_chute_service
 from chutes_miner.api.server.schemas import Server
 from chutes_miner.api.chute.schemas import Chute
@@ -161,7 +159,7 @@ class K8sOperator(abc.ABC):
         """
         # Get pods for this job
         pod_label_selector = f"chutes/deployment-id={job.metadata.labels.get('chutes/deployment-id')}"
-        pods = self.get_pods(namesapce=job.metadata.namespace, label_selector=pod_label_selector)
+        pods = self.get_pods(namespace=job.metadata.namespace, label_selector=pod_label_selector)
 
         for pod in pods.items:
             if pod.status.phase == "Running":
@@ -579,8 +577,6 @@ class K8sOperator(abc.ABC):
         self, 
         chute_id: Union[str | Chute], 
         server_id: Union[str | Server],
-        deployment_id: str,
-        service: V1Service,
         token: str = None,
         job_id: str = None,
         config_id: str = None,
@@ -596,6 +592,7 @@ class K8sOperator(abc.ABC):
             if isinstance(server_id, Server):
                 server_id = server_id.server_id
 
+            deployment_id = None
             async with get_session() as session:
                 chute = await self._get_chute(session, chute_id)
                 server = await self._get_server(session, server_id)
@@ -606,7 +603,7 @@ class K8sOperator(abc.ABC):
                 )
 
             # Build the service that exposes it.
-            service = self._create_service_for_deployment(chute, deployment_id, extra_service_ports)
+            service = self._create_service_for_deployment(chute, server, deployment_id, extra_service_ports)
 
             # Create the deployment.
             job = self._create_job_for_deployment(
@@ -615,10 +612,10 @@ class K8sOperator(abc.ABC):
             )
 
             # Deploy the chute
-            deployment = self._update_deployment(deployment_id, server, service)
+            deployment = await self._update_deployment(deployment_id, server, service)
 
             self.invalidate_node_disk_cache(server.name)
-            return deployment, job
+            return deployment, job, service
         except Exception as exc:
 
             try:
@@ -671,7 +668,7 @@ class K8sOperator(abc.ABC):
         for deployment in server.deployments:
             gpus_allocated += len(deployment.gpus)
             available_gpus -= {gpu.gpu_id for gpu in deployment.gpus}
-        if len(server.gpus) - gpus_allocated - chute.gpu_count < 0:
+        if len(available_gpus) - chute.gpu_count < 0:
             raise DeploymentFailure(
                 f"Server {server.server_id} name={server.name} cannot allocate {chute.gpu_count} GPUs, already using {gpus_allocated} of {len(server.gpus)}"
             )
@@ -786,7 +783,7 @@ class K8sOperator(abc.ABC):
 
             logger.info(f"Fetching fresh disk info for node {node_name}")
             try:
-                pods = k8s_core_client().list_pod_for_all_namespaces(
+                pods = self.get_pods(
                     field_selector=f"spec.nodeName={node_name}"
                 )
                 used_disk_gb = 0
@@ -841,7 +838,7 @@ class K8sOperator(abc.ABC):
                                         )
 
                 # Get node capacity
-                node = k8s_core_client().read_node(name=node_name)
+                node = self.get_node(name=node_name)
 
                 # Try to get ephemeral storage capacity
                 ephemeral_storage = node.status.capacity.get("ephemeral-storage", "0")
@@ -897,7 +894,7 @@ class K8sOperator(abc.ABC):
         service = build_chute_service(chute, deployment_id, extra_service_ports)
 
         try:
-            created_service = self._deploy_service(service)
+            created_service = self._deploy_service(server, service)
         except Exception:
             raise DeploymentFailure(
                 f"Failed to create service for {chute.chute_id=} and {deployment_id=}"
@@ -917,13 +914,13 @@ class K8sOperator(abc.ABC):
             )        
 
         try:
-            creaed_job = self._deploy_job(job)
+            created_job = self._deploy_job(server, job)
         except Exception:
             raise DeploymentFailure(
                 f"Failed to create job for {chute.chute_id=} and {deployment_id=}"
             )
         
-        return creaed_job
+        return created_job
 
 
 # Legacy single-cluster implementation
@@ -1008,7 +1005,7 @@ class SingleClusterK8sOperator(K8sOperator):
         """
         Get a single deployment by ID.
         """
-        job = k8s_batch_client().read_namesapced_job(
+        job = k8s_batch_client().read_namespaced_job(
             namespace=settings.namespace,
             name=f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}",
         )
@@ -1106,7 +1103,7 @@ class SingleClusterK8sOperator(K8sOperator):
                 else ",".join(f"{k}={v}" for k, v in field_selector.items())
             )
 
-        jobs_list = k8s_batch_client().list_namespaced_jobs(
+        jobs_list = k8s_batch_client().list_namespaced_job(
             namespace=namespace,
             label_selector=label_selector,
             field_selector=field_selector,
@@ -1116,7 +1113,7 @@ class SingleClusterK8sOperator(K8sOperator):
         return jobs_list
 
     def _deploy_service(self, server, service, namespace=settings.namespace):
-        k8s_core_client().create_namespaced_service(
+        return k8s_core_client().create_namespaced_service(
             namespace=namespace,
             body=service
         )
@@ -1128,7 +1125,7 @@ class SingleClusterK8sOperator(K8sOperator):
         )
 
     def _deploy_job(self, server, job, namespace=settings.namespace):
-        k8s_batch_client().create_namespaced_job(
+        return k8s_batch_client().create_namespaced_job(
             namespace=namespace,
             body=job
         )
@@ -1262,7 +1259,7 @@ class MultiClusterK8sOperator(K8sOperator):
 
     def _deploy_service(self, server, service, namespace=settings.namespace):
         client = self._manager.get_core_client(server.name)
-        client.create_namespaced_service(
+        return client.create_namespaced_service(
             namespace=namespace,
             body=service
         )
@@ -1296,7 +1293,7 @@ class MultiClusterK8sOperator(K8sOperator):
 
     def _deploy_job(self, server, job, namespace=settings.namespace):
         client = self._manager.get_batch_client(server.name)
-        client.delete_namespaced_job(
+        return client.create_namespaced_job(
             namespace=namespace,
             body=job
         )
@@ -1426,7 +1423,7 @@ class MultiClusterK8sOperator(K8sOperator):
 
         # Label selector filter
         if label_selector:
-            deployment_labels = resource.metadata.labels or {}
+            resource_labels = resource.metadata.labels or {}
 
             if isinstance(label_selector, str):
                 # Parse string label selector (e.g., "app=nginx,version=1.0")
@@ -1436,7 +1433,7 @@ class MultiClusterK8sOperator(K8sOperator):
 
             # Check if all required labels match
             for key, value in label_dict.items():
-                if deployment_labels.get(key) != value:
+                if resource_labels.get(key) != value:
                     return False
 
         # Field selector filter (example implementation for common fields)
@@ -1477,6 +1474,10 @@ class MultiClusterK8sOperator(K8sOperator):
         """Get field value from deployment using dot notation."""
         obj = deployment
         for part in field_path.split("."):
+            if hasattr(obj, 'attribute_map'):
+                attribute_lookup = { v: k for k, v in obj.attribute_map.items() }
+                if part in attribute_lookup:
+                    part = attribute_lookup[part]
             if hasattr(obj, part):
                 obj = getattr(obj, part)
             else:

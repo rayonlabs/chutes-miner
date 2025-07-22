@@ -81,7 +81,7 @@ def get_api_responses(deployments, pods):
         responses[SEARCH_PODS_PATH] = {"kind": "PodList", "apiVersion": "v1", "items": pods}
     return responses
 
-def get_redis_responses(deployments, pods):
+def get_redis_responses(deployments, pods, jobs):
     responses = {}
     if deployments:
         responses[ResourceType.DEPLOYMENT] = ClusterResources.from_dict({
@@ -91,11 +91,15 @@ def get_redis_responses(deployments, pods):
         responses[ResourceType.POD] = ClusterResources.from_dict({
             "pods": pods
         })
+    if jobs:
+        responses[ResourceType.JOB] = ClusterResources.from_dict({
+            "jobs": jobs
+        })
     return responses
 
 
 @pytest.fixture(autouse=True, scope="function")
-def mock_karmada_k8s_operator():
+def mock_multicluster_k8s_operator():
     # Save the original __new__ method
     original_new = K8sOperator.__new__
 
@@ -115,39 +119,34 @@ def mock_karmada_k8s_operator():
     K8sOperator.__new__ = original_new
     K8sOperator._instance = None
 
+@pytest.fixture(autouse=True)
+def multicluster_setup(
+    mock_k8s_client_manager, mock_redis_client, mock_watch
+):    
+    pass
 
 # Tests for get_kubernetes_nodes
 @pytest.mark.asyncio
-async def test_get_kubernetes_nodes_success(mock_redis_client):
+async def test_get_kubernetes_nodes_success(mock_redis_client, mock_k8s_core_client, create_api_test_nodes):
     """Test successful retrieval of kubernetes nodes."""
     # Setup mock response
+    nodes = create_api_test_nodes(1)
     resources = {
-        "nodes": [
-            {
-                "metadata": {
-                    "name": "node1",
-                    "labels": {
-                        "chutes/validator": "TEST123",
-                        "chutes/external-ip": "192.168.1.100",
-                        "nvidia.com/gpu.memory": "16384",
-                    },
-                    "uid": "node1-uid",
-                },
-                "status": {
-                    "phase": "Ready",
-                    "capacity": {"cpu": "8", "memory": "32Gi", "nvidia.com/gpu": "2"},
-                },
-            }
-        ]
+        "nodes": nodes
     }
     mock_redis_client.get_resources.return_value = ClusterResources.from_dict(resources)
+    mock_k8s_core_client.read_node.return_value = serializer.deserialize(nodes[0], "V1Node")
 
     # Call the function
     # k8s_core_client.cache_clear()
+    calls = [
+        call(resource_type=ResourceType.NODE),
+        call(resource_type=ResourceType.POD)
+    ]
     result = await k8s.get_kubernetes_nodes()
 
     # Assertions
-    mock_redis_client.get_resources.assert_called_once_with(resource_type=ResourceType.NODE)
+    mock_redis_client.get_resources.assert_has_calls(calls)
 
     assert len(result) == 1
     assert result[0]["name"] == "node1"
@@ -294,7 +293,7 @@ async def test_get_deployment(
     """Test getting a single deployment by ID."""
     deployments = create_api_test_deployments(1, name=f"{CHUTE_DEPLOY_PREFIX}-test")
     pods = create_api_test_pods(1, base_name=deployments[0]["metadata"]["name"])
-    responses = get_redis_responses(deployments, pods)
+    responses = get_redis_responses(deployments, pods, None)
     deployment_name = deployments[0]["metadata"]["name"].replace(f"{CHUTE_DEPLOY_PREFIX}-", "")
 
     mock_redis_client.get_resources.side_effect = get_mock_get_resources_side_effect(responses)
@@ -358,13 +357,13 @@ async def test_get_deployment(
 # Tests for get_deployed_chutes
 @pytest.mark.asyncio
 async def test_get_deployed_chutes(
-    mock_redis_client, create_api_test_deployments, create_api_test_pods
+    mock_redis_client, create_api_test_jobs, create_api_test_pods
 ):
     """Test getting all deployed chutes."""
     # Setup mock
-    deployments = create_api_test_deployments(1, name=f"{CHUTE_DEPLOY_PREFIX}-test")
-    pods = create_api_test_pods(1, base_name=deployments[0]["metadata"]["name"])
-    responses = get_redis_responses(deployments, pods)
+    jobs = create_api_test_jobs(1, name=f"{CHUTE_DEPLOY_PREFIX}-test")
+    pods = create_api_test_pods(1, base_name=jobs[0]["metadata"]["name"], job=jobs[0])
+    responses = get_redis_responses(None, pods, jobs)
 
     mock_redis_client.get_resources.side_effect = get_mock_get_resources_side_effect(responses)
 
@@ -373,22 +372,22 @@ async def test_get_deployed_chutes(
 
     # Assertions
     api_calls = [
-        call(resource_type=ResourceType.DEPLOYMENT),
+        call(resource_type=ResourceType.JOB),
         call(resource_type=ResourceType.POD),
     ]
 
     mock_redis_client.get_resources.assert_has_calls(api_calls)
 
     result = results[0]
-    deployment = deployments[0]
+    job = jobs[0]
     pod = pods[0]
 
-    assert result["uuid"] == deployment["metadata"]["uid"]
-    assert result["deployment_id"] == deployment["metadata"]["labels"].get("chutes/deployment-id")
-    assert result["name"] == deployment["metadata"]["name"]
-    assert result["namespace"] == deployment["metadata"]["namespace"]
-    assert result["chute_id"] == deployment["metadata"]["labels"].get("chutes/chute-id")
-    assert result["version"] == deployment["metadata"]["labels"].get("chutes/version")
+    assert result["uuid"] == job["metadata"]["uid"]
+    assert result["deployment_id"] == job["metadata"]["labels"].get("chutes/deployment-id")
+    assert result["name"] == job["metadata"]["name"]
+    assert result["namespace"] == job["metadata"]["namespace"]
+    assert result["chute_id"] == job["metadata"]["labels"].get("chutes/chute-id")
+    assert result["version"] == job["metadata"]["labels"].get("chutes/version")
     assert result["ready"] is True
     assert result["node"] == pod["spec"]["nodeName"]
 
@@ -428,7 +427,7 @@ async def test_get_deployed_chutes(
 
 # Tests for delete_code
 @pytest.mark.asyncio
-async def test_delete_code_success(mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client):
+async def test_delete_code_success(mock_redis_client, mock_k8s_core_client):
     """Test successful deletion of code configmap."""
 
     mock_redis_client.get_resource_cluster.return_value = "test-cluster"
@@ -443,7 +442,7 @@ async def test_delete_code_success(mock_k8s_client_manager, mock_redis_client, m
 
 
 @pytest.mark.asyncio
-async def test_delete_code_not_found(mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client):
+async def test_delete_code_not_found(mock_k8s_core_client):
     """Test handling of 404 error when deleting configmap."""
     # Setup mock to raise ApiException with 404
     error = ApiException(status=404)
@@ -457,7 +456,7 @@ async def test_delete_code_not_found(mock_k8s_client_manager, mock_redis_client,
 
 
 @pytest.mark.asyncio
-async def test_delete_code_other_error(mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client):
+async def test_delete_code_other_error(mock_k8s_core_client):
     """Test handling of non-404 error when deleting configmap."""
     # Setup mock to raise ApiException with 500
     error = ApiException(status=500)
@@ -470,7 +469,7 @@ async def test_delete_code_other_error(mock_k8s_client_manager, mock_redis_clien
 
 # Tests for wait_for_deletion
 @pytest.mark.asyncio
-async def test_wait_for_deletion_no_pods(mock_k8s_client_manager, mock_redis_client, mock_k8s_api_client):
+async def test_wait_for_deletion_no_pods(mock_redis_client):
     """Test wait_for_deletion when no pods match the label."""
     # Setup mock to return empty list
     pod_list = MagicMock()
@@ -485,7 +484,7 @@ async def test_wait_for_deletion_no_pods(mock_k8s_client_manager, mock_redis_cli
 
 
 @pytest.mark.asyncio
-async def test_wait_for_deletion_with_pods(mock_redis_client, mock_k8s_api_client, create_api_test_pods):
+async def test_wait_for_deletion_with_pods(mock_redis_client, create_api_test_pods):
     """Test wait_for_deletion when pods exist and then get deleted."""
     # Setup mock to return pods initially, then empty
     pods = create_api_test_pods(1)
@@ -497,7 +496,7 @@ async def test_wait_for_deletion_with_pods(mock_redis_client, mock_k8s_api_clien
 
     mock_pubsub = MagicMock()
     mock_redis_client.subscribe_to_resource_type.return_value = mock_pubsub
-    mock_pubsub.listen.return_value = [
+    mock_pubsub.get_message.side_effect = [
         {
             "type": "message",
             "data": json.dumps(ResourceChangeMessage(
@@ -528,7 +527,7 @@ async def test_wait_for_deletion_with_pods(mock_redis_client, mock_k8s_api_clien
 # Tests for undeploy
 @pytest.mark.asyncio
 async def test_undeploy_success(
-    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client, mock_k8s_app_client
+    mock_k8s_core_client, mock_k8s_app_client
 ):
     """Test successful undeployment of a chute."""
     # Setup mocks
@@ -543,7 +542,7 @@ async def test_undeploy_success(
 
 @pytest.mark.asyncio
 async def test_undeploy_with_service_error(
-    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client, mock_k8s_app_client
+    mock_k8s_core_client, mock_k8s_app_client
 ):
     """Test undeployment when service deletion fails."""
     # Setup service deletion to fail
@@ -563,7 +562,7 @@ async def test_undeploy_with_service_error(
 # Tests for create_code_config_map
 @pytest.mark.asyncio
 async def test_create_code_config_map_success(
-    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client
+    mock_redis_client, mock_k8s_core_client
 ):
     """Test successful creation of code configmap."""
     # Setup mock chute
@@ -588,7 +587,7 @@ async def test_create_code_config_map_success(
 
 @pytest.mark.asyncio
 async def test_create_code_config_map_conflict(
-    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client
+    mock_redis_client, mock_k8s_core_client
 ):
     """Test handling of 409 conflict when creating configmap."""
     # Setup mock to raise ApiException with 409
@@ -618,7 +617,7 @@ async def test_create_code_config_map_conflict(
 
 @pytest.mark.asyncio
 async def test_create_code_config_map_other_error(
-    mock_k8s_client_manager, mock_redis_client, mock_k8s_core_client
+    mock_redis_client, mock_k8s_core_client
 ):
     """Test handling of non-409 error when creating configmap."""
     # Setup mock to raise ApiException with 500
@@ -646,21 +645,22 @@ async def test_create_code_config_map_other_error(
 # Tests for deploy_chute
 @pytest.mark.asyncio
 async def test_deploy_chute_success(
-    mock_k8s_client_manager, 
     mock_redis_client,
+    create_api_test_pods,
     mock_k8s_core_client,
-    mock_k8s_app_client,
+    mock_k8s_batch_client,
     mock_db_session,
     sample_server,
     sample_chute,
+    create_api_test_nodes
 ):
     """Test successful deployment of a chute."""
     # Setup mocks for kubernetes deployment and service creation
     mock_deployment = MagicMock()
     mock_service = MagicMock()
-    mock_service.spec.ports = [MagicMock(node_port=30000)]
+    mock_service.spec.ports = [MagicMock(node_port=30000), MagicMock(port=8000), MagicMock(port=8001)]
 
-    mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
+    mock_k8s_batch_client.create_namespaced_job.return_value = mock_deployment
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
 
     # Setup session mock for deployment retrieval
@@ -672,11 +672,20 @@ async def test_deploy_chute_success(
     mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, mock_deployment_db]
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
+    nodes = create_api_test_nodes(1)
+    mock_k8s_core_client.read_node.return_value = serializer.deserialize(nodes[0], "V1Node")
+
+    pods = create_api_test_pods(1)
+    responses = get_redis_responses(None, pods, None)
+
+    mock_redis_client.get_resources.side_effect = get_mock_get_resources_side_effect(responses)
+
+
     # Call the function
     with patch(
         "chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id
     ):
-        result, created_deployment, created_service = await k8s.deploy_chute(
+        deployment, created_deployment, created_service = await k8s.deploy_chute(
             sample_chute, sample_server
         )
 
@@ -684,8 +693,8 @@ async def test_deploy_chute_success(
     assert mock_db_session.add.call_count == 1
     assert mock_db_session.commit.call_count == 2
     mock_k8s_core_client.create_namespaced_service.assert_called_once()
-    mock_k8s_app_client.create_namespaced_deployment.assert_called_once()
-    assert result == mock_deployment_db
+    mock_k8s_batch_client.create_namespaced_job.assert_called_once()
+    assert deployment == mock_deployment_db
     assert created_deployment == mock_deployment
     assert created_service == mock_service
     assert mock_deployment_db.host == sample_server.ip_address
@@ -694,7 +703,11 @@ async def test_deploy_chute_success(
 
 
 @pytest.mark.asyncio
-async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute, mock_db_session):
+async def test_deploy_chute_no_gpu_capacity(
+    sample_server, sample_chute, mock_db_session,
+    create_api_test_nodes, mock_k8s_core_client, create_api_test_pods,
+    mock_redis_client
+):
     """Test deployment failure when server doesn't have enough GPU capacity."""
     # Modify server to have no available GPUs
     for gpu in sample_server.gpus:
@@ -708,6 +721,14 @@ async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute, mock_db
     mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, mock_deployment_db]
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
+    nodes = create_api_test_nodes(1)
+    mock_k8s_core_client.read_node.return_value = serializer.deserialize(nodes[0], "V1Node")
+
+    pods = create_api_test_pods(1)
+    responses = get_redis_responses(None, pods, None)
+
+    mock_redis_client.get_resources.side_effect = get_mock_get_resources_side_effect(responses)
+
     # Call the function and expect exception
     with pytest.raises(DeploymentFailure, match="cannot allocate"):
         await k8s.deploy_chute(sample_chute, sample_server)
@@ -715,19 +736,20 @@ async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute, mock_db
 
 @pytest.mark.asyncio
 async def test_deploy_chute_deployment_disappeared(
-    mock_k8s_client_manager, 
     mock_redis_client,
     mock_k8s_core_client,
     mock_k8s_app_client,
     mock_db_session,
     sample_server,
     sample_chute,
+    create_api_test_nodes,
+    create_api_test_pods
 ):
     """Test handling when deployment disappears mid-flight."""
     # Setup mocks for kubernetes deployment and service creation
     mock_deployment = MagicMock()
     mock_service = MagicMock()
-    mock_service.spec.ports = [MagicMock(node_port=30000)]
+    mock_service.spec.ports = [MagicMock(node_port=30000), MagicMock(port=8000), MagicMock(port=8001)]
 
     mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
@@ -739,6 +761,14 @@ async def test_deploy_chute_deployment_disappeared(
     mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, None]
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
+    nodes = create_api_test_nodes(1)
+    mock_k8s_core_client.read_node.return_value = serializer.deserialize(nodes[0], "V1Node")
+
+    pods = create_api_test_pods(1)
+    responses = get_redis_responses(None, pods, None)
+
+    mock_redis_client.get_resources.side_effect = get_mock_get_resources_side_effect(responses)
+
     # Call the function and expect exception
     with pytest.raises(DeploymentFailure, match="Deployment disappeared mid-flight"):
         await k8s.deploy_chute(sample_chute, sample_server)
@@ -748,18 +778,19 @@ async def test_deploy_chute_deployment_disappeared(
 
 @pytest.mark.asyncio
 async def test_deploy_chute_api_exception(
-    mock_k8s_client_manager, 
     mock_redis_client,
     mock_k8s_core_client,
-    mock_k8s_app_client,
+    mock_k8s_batch_client,
     mock_db_session,
     sample_server,
     sample_chute,
+    create_api_test_nodes,
+    create_api_test_pods
 ):
     """Test handling of API exception during deployment."""
     # Setup mock to raise ApiException
     error = ApiException(status=500, reason="Internal error")
-    mock_k8s_app_client.create_namespaced_deployment.side_effect = error
+    mock_k8s_batch_client.create_namespaced_job.side_effect = error
 
     # Setup session mock for deployment retrieval
     mock_deployment_db = MagicMock(spec=Deployment)
@@ -771,8 +802,16 @@ async def test_deploy_chute_api_exception(
 
     # Setup service creation to succeed
     mock_service = MagicMock()
-    mock_service.spec.ports = [MagicMock(node_port=30000)]
+    mock_service.spec.ports = [MagicMock(node_port=30000), MagicMock(port=8000), MagicMock(port=8001)]
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
+
+    nodes = create_api_test_nodes(1)
+    mock_k8s_core_client.read_node.return_value = serializer.deserialize(nodes[0], "V1Node")
+
+    pods = create_api_test_pods(1)
+    responses = get_redis_responses(None, pods, None)
+
+    mock_redis_client.get_resources.side_effect = get_mock_get_resources_side_effect(responses)
 
     # Call the function and expect exception
     with pytest.raises(DeploymentFailure, match="Failed to deploy chute"):

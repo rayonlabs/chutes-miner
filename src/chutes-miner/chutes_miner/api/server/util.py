@@ -135,10 +135,10 @@ async def gather_gpu_info(
     start_time = time.time()
     pod_ready = False
     try:
-        for event in K8sOperator().watch_deployments(
+        for event in K8sOperator().watch_pods(
             namespace=namespace,
             label_selector=f"job-name={job_name}",
-            timeout_seconds=settings.graval_bootstrap_timeout,
+            timeout=settings.graval_bootstrap_timeout,
         ):
             pod = event.object
             if event.type == WatchEventType.DELETED:
