@@ -53,7 +53,7 @@ ENV \
 USER ${APP_USER}
 WORKDIR /app
 
-COPY --from=base /app .
+COPY --from=base-cuda /app .
 
 ENTRYPOINT ["python", "bootstrap.py"]
 
@@ -73,7 +73,7 @@ ENV \
 USER ${APP_USER}
 WORKDIR /app
 
-COPY --from=base /app .
+COPY --from=base-rocm /app .
 
 ENTRYPOINT ["python", "bootstrap.py"]
 
