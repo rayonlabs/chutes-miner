@@ -545,7 +545,7 @@ class K8sOperator(abc.ABC):
         """Create a ConfigMap to store the chute code."""
         try:
             config_map = self._build_code_config_map(chute)
-            self.deploy_config_map(config_map)
+            self._deploy_config_map(config_map)
         except ApiException as e:
             if e.status != 409:
                 raise
@@ -566,7 +566,7 @@ class K8sOperator(abc.ABC):
         return config_map
 
     @abc.abstractmethod
-    def deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
+    def _deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         raise NotImplementedError()
 
     async def deploy_chute(
@@ -1198,7 +1198,7 @@ class SingleClusterK8sOperator(K8sOperator):
     def delete_config_map(self, name, namespace=settings.namespace):
         k8s_core_client().delete_namespaced_config_map(name=name, namespace=namespace)
 
-    def deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
+    def _deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         k8s_core_client().create_namespaced_config_map(namespace=namespace, body=config_map)
 
 
@@ -1283,7 +1283,7 @@ class MultiClusterK8sOperator(K8sOperator):
             namespace=namespace,
         )
 
-    def deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
+    def _deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         # Create CM on all clusters
         clusters = self._redis.get_all_cluster_names()
         for cluster in clusters:

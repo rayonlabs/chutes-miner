@@ -12,6 +12,7 @@ import traceback
 import chutes_common.constants as cst
 from chutes_common.k8s import WatchEventType
 from chutes_common.monitoring.requests import StartMonitoringRequest
+from chutes_miner.api.chute.schemas import Chute
 from chutes_miner.api.k8s.config import KubeConfig, MultiClusterKubeConfig
 from loguru import logger
 from kubernetes.client import (
@@ -620,6 +621,13 @@ async def bootstrap_server(
             error_message = f"GPU verification failed for {validator.hotkey}, aborting!"
             yield sse_message(error_message)
             raise GraValBootstrapFailure(error_message)
+        
+        if kubeconfig:
+            # If this is a mutli cluster setup, need to propagate existing Chute CMs to the cluster
+            async with get_session() as session:
+                chutes = session.execute(select(Chute)).unique()
+                for chute in chutes:
+                    await K8sOperator().create_code_config_map(chute)
 
     except Exception as exc:
         error_message = (
