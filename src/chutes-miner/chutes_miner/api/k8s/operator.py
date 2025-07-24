@@ -589,8 +589,10 @@ class K8sOperator(abc.ABC):
                 server_id = server_id.server_id
 
             deployment_id = None
+            chute_version = None
             async with get_session() as session:
                 chute = await self._get_chute(session, chute_id)
+                chute_version = chute.version
                 server = await self._get_server(session, server_id)
                 available_gpus = self._verify_gpus(chute, server)
                 await self._verify_disk_space(server, disk_gb)
@@ -631,7 +633,7 @@ class K8sOperator(abc.ABC):
             )
 
             raise DeploymentFailure(
-                f"Failed to deploy chute {chute.chute_id} with version {chute.version}: {exc}\n{traceback.format_exc()}"
+                f"Failed to deploy chute {chute_id=} with version {chute_version}: {exc}\n{traceback.format_exc()}"
             )
 
     async def _get_chute(self, session: AsyncSession, chute_id: str):
