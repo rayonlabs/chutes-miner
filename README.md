@@ -295,7 +295,7 @@ kubectl create configmap gepetto-code --from-file=gepetto.py -n chutes
 
 Any time you wish to make further changes to gepetto, you need to re-create the configmap:
 ```bash
-kubectl create configmap gepetto-code --from-file=gepetto.py -o yaml --dry-run=client | kubectl apply -n chutes -f -
+kubectl create configmap gepetto-code --from-file=gepetto.py -n chutes -o yaml --dry-run=client | kubectl apply -n chutes -f -
 ```
 
 You must also restart the gepetto deployment after you make changes, but this will only work AFTER you have completed the rest of the setup guide (no need to run when you initially setup your miner):
