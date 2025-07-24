@@ -15,16 +15,36 @@ tag:
 		echo "--------------------------------------------------------"; \
 		echo "Tagging $$pkg_name (version: $$pkg_version)"; \
 		echo "--------------------------------------------------------"; \
-		if [ -f "docker/$$pkg_name/image.conf" ]; then \
-			image_conf=$$(cat $$image_dir/image.conf); \
-			registry=$$(echo "$$image_conf" | cut -d'/' -f1); \
-			image_name=$$(echo "$$image_conf" | cut -d'/' -f2); \
-			echo "docker tag $$pkg_name:$$pkg_version $$registry/$$image_name:$$pkg_version"; \
-			docker tag $$pkg_name:$$pkg_version $$registry/$$image_name:$$pkg_version; \
-			echo "docker tag $$pkg_name:$$pkg_version $$registry/$$image_name:latest"; \
-			docker tag $$pkg_name:$$pkg_version $$registry/$$image_name:latest; \
+		if [ -d "docker/$$pkg_name" ]; then \
+			if [ -f "docker/$$pkg_name/Dockerfile" ]; then \
+				if [ -f "docker/$$pkg_name/image.conf" ]; then \
+					dockerfile="docker/$$pkg_name/Dockerfile"; \
+					available_targets=$$(grep -i "^FROM.*AS" $$dockerfile | sed 's/.*AS[[:space:]]*\([^[:space:]]*\).*/\1/' | tr '[:upper:]' '[:lower:]' || echo "production development"); \
+					image_conf=$$(cat $$image_dir/image.conf); \
+					registry=$$(echo "$$image_conf" | cut -d'/' -f1); \
+					image_name=$$(echo "$$image_conf" | cut -d'/' -f2); \
+					for stage_target in $$available_targets; do \
+						if [[ "$$stage_target" == production* ]]; then \
+							if [[ "$$stage_target" == *-* ]]; then \
+								suffix=$$(echo $$stage_target | sed 's/production-//'); \
+								image_tag="$$pkg_version-$$suffix"; \
+							else \
+								image_tag="$$pkg_version"; \
+							fi; \
+							echo "docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$image_tag"; \
+							docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$image_tag; \
+							echo "docker tag $$pkg_name:$$image_tag $$registry/$$image_name:latest"; \
+							docker tag $$pkg_name:$$image_tag $$registry/$$image_name:latest; \
+						fi; \
+					done; \
+				else \
+					echo "Skipping $$pkg_name: docker/$$pkg_name/image.conf not found"; \
+				fi; \
+			else \
+				echo "Skipping $$pkg_name: docker/$$pkg_name/Dockerfile not found"; \
+			fi; \
 		else \
-			echo "Skipping $$pkg_name: docker/$$pkg_name/image.conf not found"; \
+			echo "Skipping $$pkg_name: docker/$$pkg_name directory not found"; \
 		fi; \
 		echo ; \
 	done
@@ -46,16 +66,36 @@ push:
 		echo "--------------------------------------------------------"; \
 		echo "Pushing $$pkg_name (version: $$pkg_version)"; \
 		echo "--------------------------------------------------------"; \
-		if [ -f "docker/$$pkg_name/image.conf" ]; then \
-			image_conf=$$(cat $$image_dir/image.conf); \
-			registry=$$(echo "$$image_conf" | cut -d'/' -f1); \
-			image_name=$$(echo "$$image_conf" | cut -d'/' -f2); \
-			echo "docker push $$registry/$$image_name:$$pkg_version"; \
-			docker push $$registry/$$image_name:$$pkg_version; \
-			echo "docker push $$registry/$$image_name:latest"; \
-			docker push $$registry/$$image_name:latest; \
+		if [ -d "docker/$$pkg_name" ]; then \
+			if [ -f "docker/$$pkg_name/Dockerfile" ]; then \
+				if [ -f "docker/$$pkg_name/image.conf" ]; then \
+					dockerfile="docker/$$pkg_name/Dockerfile"; \
+					available_targets=$$(grep -i "^FROM.*AS" $$dockerfile | sed 's/.*AS[[:space:]]*\([^[:space:]]*\).*/\1/' | tr '[:upper:]' '[:lower:]' || echo "production development"); \
+					image_conf=$$(cat $$image_dir/image.conf); \
+					registry=$$(echo "$$image_conf" | cut -d'/' -f1); \
+					image_name=$$(echo "$$image_conf" | cut -d'/' -f2); \
+					for stage_target in $$available_targets; do \
+						if [[ "$$stage_target" == production* ]]; then \
+							if [[ "$$stage_target" == *-* ]]; then \
+								suffix=$$(echo $$stage_target | sed 's/production-//'); \
+								image_tag="$$pkg_version-$$suffix"; \
+							else \
+								image_tag="$$pkg_version"; \
+							fi; \
+							echo "docker push $$registry/$$image_name:$$image_tag"; \
+							docker push $$registry/$$image_name:$$image_tag; \
+							echo "docker push $$registry/$$image_name:latest"; \
+							docker push $$registry/$$image_name:latest; \
+						fi; \
+					done; \
+				else \
+					echo "Skipping $$pkg_name: docker/$$pkg_name/image.conf not found"; \
+				fi; \
+			else \
+				echo "Skipping $$pkg_name: docker/$$pkg_name/Dockerfile not found"; \
+			fi; \
 		else \
-			echo "Skipping $$pkg_name: docker/$$pkg_name/image.conf not found"; \
+			echo "Skipping $$pkg_name: docker/$$pkg_name directory not found"; \
 		fi; \
 		echo ; \
 	done

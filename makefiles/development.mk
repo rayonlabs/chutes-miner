@@ -43,10 +43,10 @@ build:
 						if [[ "$$stage_target" == *-* ]]; then \
 							gpu_suffix=$$(echo $$stage_target | sed 's/development-//'); \
 							image_tag="$$pkg_version-$$gpu_suffix"; \
-							image_name="$${pkg_name}_development"; \
+							image_name="$${pkg_name}_dev"; \
 						else \
 							image_tag="$$pkg_version"; \
-							image_name="$${pkg_name}_development"; \
+							image_name="$${pkg_name}_dev"; \
 						fi; \
 						echo "Building development target: $$stage_target -> $$image_name:$$image_tag"; \
 						DOCKER_BUILDKIT=1 docker build --progress=plain --target $$stage_target \
