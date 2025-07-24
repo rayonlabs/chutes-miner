@@ -4,8 +4,8 @@ import logging
 import aiohttp
 from chutes_common.auth import sign_request
 from chutes_common.constants import CLUSTER_ENDPOINT, RESOURCE_PURPOSE
-from chutes_common.k8s import WatchEvent
-from chutes_common.monitoring.models import ClusterResources, ClusterState, HeartbeatData
+from chutes_common.k8s import WatchEvent, ClusterResources
+from chutes_common.monitoring.models import ClusterState, HeartbeatData
 from chutes_common.monitoring.requests import RegisterClusterRequest, ResourceUpdateRequest
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 from loguru import logger

@@ -7,7 +7,7 @@ import json
 from typing import Any, Dict
 import uuid
 from chutes_common.monitoring.messages import ResourceChangeMessage
-from chutes_common.monitoring.models import ClusterResources, ResourceType
+from chutes_common.k8s import ClusterResources, ResourceType
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from kubernetes.client.rest import ApiException
@@ -288,13 +288,13 @@ async def test_extract_deployment_info(mock_redis_client, create_api_test_pods, 
 # Tests for get_deployment
 @pytest.mark.asyncio
 async def test_get_deployment(
-    mock_redis_client, create_api_test_deployments, create_api_test_pods
+    mock_redis_client, create_api_test_jobs, create_api_test_pods
 ):
     """Test getting a single deployment by ID."""
-    deployments = create_api_test_deployments(1, name=f"{CHUTE_DEPLOY_PREFIX}-test")
-    pods = create_api_test_pods(1, base_name=deployments[0]["metadata"]["name"])
-    responses = get_redis_responses(deployments, pods, None)
-    deployment_name = deployments[0]["metadata"]["name"].replace(f"{CHUTE_DEPLOY_PREFIX}-", "")
+    jobs = create_api_test_jobs(1, name=f"{CHUTE_DEPLOY_PREFIX}-test")
+    pods = create_api_test_pods(1, base_name=jobs[0]["metadata"]["name"], job=jobs[0])
+    responses = get_redis_responses(None, pods, jobs)
+    deployment_name = jobs[0]["metadata"]["name"].replace(f"{CHUTE_DEPLOY_PREFIX}-", "")
 
     mock_redis_client.get_resources.side_effect = get_mock_get_resources_side_effect(responses)
 
@@ -303,21 +303,21 @@ async def test_get_deployment(
 
     # Assertions
     api_calls = [
-        call(resource_type=ResourceType.DEPLOYMENT, resource_name=deployments[0]["metadata"]["name"]),
+        call(resource_type=ResourceType.JOB, resource_name=jobs[0]["metadata"]["name"]),
         call(resource_type=ResourceType.POD),
     ]
     mock_redis_client.get_resources.assert_has_calls(api_calls)
 
-    deployment = deployments[0]
+    job = jobs[0]
     pod = pods[0]
 
-    assert result["uuid"] == deployment["metadata"]["uid"]
-    assert result["deployment_id"] == deployment["metadata"]["labels"].get("chutes/deployment-id")
-    assert result["name"] == deployment["metadata"]["name"]
-    assert result["namespace"] == deployment["metadata"]["namespace"]
-    assert result["chute_id"] == deployment["metadata"]["labels"].get("chutes/chute-id")
-    assert result["version"] == deployment["metadata"]["labels"].get("chutes/version")
-    assert result["ready"] is True
+    assert result["uuid"] == job["metadata"]["uid"]
+    assert result["deployment_id"] == job["metadata"]["labels"].get("chutes/deployment-id")
+    assert result["name"] == job["metadata"]["name"]
+    assert result["namespace"] == job["metadata"]["namespace"]
+    assert result["chute_id"] == job["metadata"]["labels"].get("chutes/chute-id")
+    assert result["version"] == job["metadata"]["labels"].get("chutes/version")
+    assert result["status"]["active"] == 1
     assert result["node"] == pod["spec"]["nodeName"]
 
     assert len(result["pods"]) == len(pods)
@@ -388,7 +388,7 @@ async def test_get_deployed_chutes(
     assert result["namespace"] == job["metadata"]["namespace"]
     assert result["chute_id"] == job["metadata"]["labels"].get("chutes/chute-id")
     assert result["version"] == job["metadata"]["labels"].get("chutes/version")
-    assert result["ready"] is True
+    assert result["status"]["active"] == 1
     assert result["node"] == pod["spec"]["nodeName"]
 
     assert len(result["pods"]) == len(pods)
@@ -685,7 +685,7 @@ async def test_deploy_chute_success(
     with patch(
         "chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id
     ):
-        deployment, created_deployment, created_service = await k8s.deploy_chute(
+        deployment, created_deployment = await k8s.deploy_chute(
             sample_chute, sample_server
         )
 
@@ -696,7 +696,6 @@ async def test_deploy_chute_success(
     mock_k8s_batch_client.create_namespaced_job.assert_called_once()
     assert deployment == mock_deployment_db
     assert created_deployment == mock_deployment
-    assert created_service == mock_service
     assert mock_deployment_db.host == sample_server.ip_address
     assert mock_deployment_db.port == 30000
     assert mock_deployment_db.stub is False
@@ -824,10 +823,8 @@ async def test_deploy_chute_api_exception(
 # Tests for deploy_chute
 @pytest.mark.asyncio
 async def test_deploy_graval_success(
-    mock_k8s_client_manager, 
-    mock_redis_client,
     mock_k8s_core_client, 
-    mock_k8s_app_client, 
+    mock_k8s_batch_client, 
     mock_db_session
 ):
     """Test successful deployment of a chute."""
@@ -840,7 +837,7 @@ async def test_deploy_graval_success(
     mock_service = MagicMock()
     mock_service.spec.ports = [MagicMock(node_port=30000)]
 
-    mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
+    mock_k8s_batch_client.create_namespaced_job.return_value = mock_deployment
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
 
     # Setup session mock for deployment retrieval
@@ -863,7 +860,7 @@ async def test_deploy_graval_success(
     # Assertions
     assert mock_db_session.commit.call_count == 1
     mock_k8s_core_client.create_namespaced_service.assert_called_once()
-    mock_k8s_app_client.create_namespaced_deployment.assert_called_once()
+    mock_k8s_batch_client.create_namespaced_job.assert_called_once()
     assert created_deployment == mock_deployment
     assert created_service == mock_service
 
@@ -906,18 +903,14 @@ async def test_deploy_graval_port_mismatch(
 
 @pytest.mark.asyncio
 async def test_deploy_graval_api_exception(
-    mock_k8s_client_manager, 
-    mock_redis_client,
     mock_k8s_core_client,
-    mock_k8s_app_client,
-    mock_db_session,
-    sample_server,
-    sample_chute,
+    mock_k8s_batch_client,
+    mock_db_session
 ):
     """Test handling of API exception during deployment."""
     # Setup mock to raise ApiException
     error = ApiException(status=500, reason="Internal error")
-    mock_k8s_app_client.create_namespaced_deployment.side_effect = error
+    mock_k8s_batch_client.create_namespaced_job.side_effect = error
 
     mock_node = MagicMock()
     mock_node.metdata.name = "test-server"

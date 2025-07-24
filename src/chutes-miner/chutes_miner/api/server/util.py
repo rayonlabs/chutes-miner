@@ -36,7 +36,7 @@ from typing import Optional, Tuple, Dict, List
 from chutes_common.auth import sign_request
 from chutes_common.settings import Validator
 from chutes_miner.api.config import settings, validator_by_hotkey
-from chutes_miner.api.k8s.constants import GRAVAL_DEPLOY_PREFIX, GRAVAL_SVC_PREFIX
+from chutes_miner.api.k8s.constants import GRAVAL_JOB_PREFIX, GRAVAL_SVC_PREFIX
 from chutes_miner.api.k8s.operator import K8sOperator
 from chutes_miner.api.util import sse_message
 from chutes_miner.api.database import get_session
@@ -209,7 +209,7 @@ async def deploy_graval(
     node_labels = node_object.metadata.labels or {}
 
     # Double check that we don't already have chute deployments.
-    existing_jobs = K8sOperator().get_deployments(
+    existing_jobs = K8sOperator().get_jobs(
         label_selector="chute/chute=true,app=graval"
     )
     if any([job for job in existing_jobs.items if job.spec.template.spec.node_name == node_name]):
@@ -228,7 +228,7 @@ async def deploy_graval(
     nice_name = node_name.replace(".", "-")
     job = V1Job(
         metadata=V1ObjectMeta(
-            name=f"{GRAVAL_DEPLOY_PREFIX}-{nice_name}",
+            name=f"{GRAVAL_JOB_PREFIX}-{nice_name}",
             labels={
                 "app": "graval",
                 "chute/chute": "false",
@@ -483,25 +483,7 @@ async def bootstrap_server(
         node_uid = node_object.metadata.uid
         node_name = node_object.metadata.name
         nice_name = node_name.replace(".", "-")
-        try:
-            K8sOperator().delete_namespaced_service(
-                name=f"graval-service-{nice_name}", namespace=settings.namespace
-            )
-        except Exception:
-            ...
-        try:
-            K8sOperator().delete_namespaced_job(
-                name=f"graval-{nice_name}",
-                namespace=settings.namespace,
-                propagation_policy="Foreground",
-            )
-            label_selector = f"job-name=graval-{nice_name}"
 
-            from api.k8s import wait_for_deletion
-
-            await wait_for_deletion(label_selector)
-        except Exception:
-            ...
         if delete_node:
             logger.info(f"Purging failed server: {node_name=} {node_uid=}")
             gpu_ids = []

@@ -1,6 +1,6 @@
-from chutes_common.monitoring.models import ClusterResources, ClusterState
+from chutes_common.monitoring.models import ClusterState
+from chutes_common.k8s import ClusterResources
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from chutes_agent.config import settings
 

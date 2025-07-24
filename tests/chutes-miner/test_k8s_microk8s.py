@@ -353,7 +353,7 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
 
 # Tests for undeploy
 @pytest.mark.asyncio
-async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
+async def test_undeploy_success(mock_k8s_core_client, mock_k8s_batch_client):
     """Test successful undeployment of a chute."""
     # Setup mocks
     with patch("chutes_miner.api.k8s.operator.K8sOperator.wait_for_deletion") as mock_wait:
@@ -362,12 +362,12 @@ async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
 
         # Assertions
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
-        mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
+        mock_k8s_batch_client.delete_namespaced_job.assert_called_once()
         mock_wait.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_client):
+async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_batch_client):
     """Test undeployment when service deletion fails."""
     # Setup service deletion to fail
     mock_k8s_core_client.delete_namespaced_service.side_effect = Exception("Service error")
@@ -379,7 +379,7 @@ async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_cl
 
         # Assertions
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
-        mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
+        mock_k8s_batch_client.delete_namespaced_job.assert_called_once()
         mock_wait.assert_called_once()
 
 
@@ -478,7 +478,7 @@ async def test_deploy_chute_success(
     with patch(
         "chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id
     ):
-        result, created_deployment, created_service = await k8s.deploy_chute(
+        result, created_deployment = await k8s.deploy_chute(
             sample_chute, sample_server
         )
 
@@ -489,7 +489,6 @@ async def test_deploy_chute_success(
     mock_k8s_batch_client.create_namespaced_job.assert_called_once()
     assert result == mock_deployment_db
     assert created_deployment == mock_deployment
-    assert created_service == mock_service
     assert mock_deployment_db.host == sample_server.ip_address
     assert mock_deployment_db.port == 30000
     assert mock_deployment_db.stub is False

@@ -853,6 +853,7 @@ def create_api_test_jobs():
                             "labels": {"app": app_name}
                         },
                         "spec": {
+                            "nodeName": "test-node",
                             "containers": [
                                 {
                                     "image": f"docker.io/test/{app_name}:latest",

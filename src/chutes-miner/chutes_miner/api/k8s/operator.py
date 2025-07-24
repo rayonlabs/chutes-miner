@@ -40,7 +40,7 @@ from chutes_miner.api.k8s.constants import (
     CHUTE_CODE_CM_PREFIX,
     CHUTE_DEPLOY_PREFIX,
     CHUTE_SVC_PREFIX,
-    GRAVAL_DEPLOY_PREFIX,
+    GRAVAL_JOB_PREFIX,
     GRAVAL_SVC_PREFIX,
 )
 from chutes_common.k8s import WatchEvent
@@ -184,6 +184,7 @@ class K8sOperator(abc.ABC):
             "chute_id": job.metadata.labels.get("chutes/chute-id"),
             "version": job.metadata.labels.get("chutes/version"),
             "node_selector": job.spec.template.spec.node_selector,
+            "node": job.spec.template.spec.node_name
         }
 
         # Job status information
@@ -232,7 +233,6 @@ class K8sOperator(abc.ABC):
                 else None,
             }
             job_info["pods"].append(pod_info)
-            job_info["node"] = pod.spec.node_name
         return job_info
 
     @abc.abstractmethod
@@ -491,32 +491,28 @@ class K8sOperator(abc.ABC):
         """
         node_name = None
         try:
-            job = self.get_job(
-                name=f"chute-{deployment_id}",
-                namespace=settings.namespace,
+            job = await self.get_deployment(
+                deployment_id=deployment_id
             )
-            node_name = job.spec.template.spec.node_name
+            node_name = job.get("node", None)
         except Exception:
             pass
 
         try:
-            self._delete_job(
-                name=f"chute-{deployment_id}",
-                namespace=settings.namespace
-            )
-        except Exception as exc:
-            logger.warning(f"Error deleting job from k8s: {exc}")
-
-        # Handle fallback to cleaning up old deployments, from instances
-        # Created before the 2025-07-17 upgrade.
-        if not node_name:
-            try:
+            if node_name:
+                self._delete_job(
+                    name=f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}",
+                    namespace=settings.namespace
+                )
+            else:
+                # Handle fallback to cleaning up old deployments, from instances
+                # Created before the 2025-07-17 upgrade.
                 self._delete_deployment(
                     name=f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}",
                     namespace=settings.namespace
                 )
-            except Exception:
-                logger.warning(f"Error deleting deployment {CHUTE_DEPLOY_PREFIX}-{deployment_id} from k8s: {exc}")
+        except Exception as exc:
+            logger.warning(f"Error deleting deployment from k8s: {exc}")
 
         try:
             self._delete_service(f"{CHUTE_SVC_PREFIX}-{deployment_id}")
@@ -530,7 +526,7 @@ class K8sOperator(abc.ABC):
         
 
     @abc.abstractmethod
-    def _deploy_service(self, server: Server, service: V1Service, namespace=settings.namespace):
+    def _deploy_service(self, service: V1Service, server_name: Optional[str] = None, namespace=settings.namespace):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -538,7 +534,7 @@ class K8sOperator(abc.ABC):
         raise NotImplementedError()
     
     @abc.abstractmethod
-    def _deploy_job(self, server: Server, job: V1Job, namespace=settings.namespace):
+    def _deploy_job(self, job: V1Job, server_name: Optional[str] = None, namespace=settings.namespace):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -548,13 +544,13 @@ class K8sOperator(abc.ABC):
     async def create_code_config_map(self, chute: Chute) -> None:
         """Create a ConfigMap to store the chute code."""
         try:
-            config_map = self._create_code_config_map(chute)
-            self.create_config_map(config_map)
+            config_map = self._build_code_config_map(chute)
+            self.deploy_config_map(config_map)
         except ApiException as e:
             if e.status != 409:
                 raise
 
-    def _create_code_config_map(self, chute: Chute) -> V1ConfigMap:
+    def _build_code_config_map(self, chute: Chute) -> V1ConfigMap:
         code_uuid = self._get_code_uuid(chute.chute_id, chute.version)
         config_map = V1ConfigMap(
             metadata=V1ObjectMeta(
@@ -570,7 +566,7 @@ class K8sOperator(abc.ABC):
         return config_map
 
     @abc.abstractmethod
-    def create_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
+    def deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         raise NotImplementedError()
 
     async def deploy_chute(
@@ -615,7 +611,7 @@ class K8sOperator(abc.ABC):
             deployment = await self._update_deployment(deployment_id, server, service)
 
             self.invalidate_node_disk_cache(server.name)
-            return deployment, job, service
+            return deployment, job
         except Exception as exc:
 
             try:
@@ -742,15 +738,57 @@ class K8sOperator(abc.ABC):
 
         return probe_port
 
-    @abc.abstractmethod
     async def deploy_graval(
-        node: V1Node, deployment: V1Deployment, service: V1Service
-    ) -> Tuple[V1Deployment, V1Service]:
-        raise NotImplementedError()
+        self, node: V1Node, job: V1Job, service: V1Service
+    ) -> Tuple[V1Job, V1Service]:
+        try:
+            created_service = self._deploy_service(service, server_name=node.metadata.name)
+            created_job = self._deploy_job(job, server_name=node.metadata.name)
 
-    @abc.abstractmethod
+            # Track the verification port.
+            expected_port = created_service.spec.ports[0].node_port
+            async with get_session() as session:
+                result = await session.execute(
+                    update(Server)
+                    .where(Server.server_id == node.metadata.uid)
+                    .values(verification_port=created_service.spec.ports[0].node_port)
+                    .returning(Server.verification_port)
+                )
+                port = result.scalar_one_or_none()
+                if port != expected_port:
+                    raise DeploymentFailure(
+                        f"Unable to track verification port for newly added node: {expected_port=} actual_{port=}"
+                    )
+                await session.commit()
+            return created_job, created_service
+        except ApiException as exc:
+            try:
+                self._delete_service(name=service.metadata.name)
+            except Exception:
+                ...
+            try:
+                self._delete_job(name=job.metadata.name)
+            except Exception:
+                ...
+            raise DeploymentFailure(
+                f"Failed to deploy GraVal: {str(exc)}:\n{traceback.format_exc()}"
+            )
+
     async def cleanup_graval(self, node: V1Node):
-        raise NotImplementedError()
+        node_name = node.metadata.name
+        nice_name = node_name.replace(".", "-")
+        try:
+            self._delete_service(f"{GRAVAL_SVC_PREFIX}-{nice_name}")
+        except Exception:
+            ...
+
+        try:
+            self._delete_job(f"{GRAVAL_JOB_PREFIX}-{nice_name}")
+            label_selector = f"graval-node={nice_name}"
+
+            await self.wait_for_deletion(label_selector)
+        except Exception:
+            ...
     
     def invalidate_node_disk_cache(self, node_name: str):
         """
@@ -894,7 +932,7 @@ class K8sOperator(abc.ABC):
         service = build_chute_service(chute, deployment_id, extra_service_ports)
 
         try:
-            created_service = self._deploy_service(server, service)
+            created_service = self._deploy_service(service, server_name=server.name)
         except Exception:
             raise DeploymentFailure(
                 f"Failed to create service for {chute.chute_id=} and {deployment_id=}"
@@ -914,7 +952,7 @@ class K8sOperator(abc.ABC):
             )        
 
         try:
-            created_job = self._deploy_job(server, job)
+            created_job = self._deploy_job(job, server_name=server.name)
         except Exception:
             raise DeploymentFailure(
                 f"Failed to create job for {chute.chute_id=} and {deployment_id=}"
@@ -1112,7 +1150,7 @@ class SingleClusterK8sOperator(K8sOperator):
 
         return jobs_list
 
-    def _deploy_service(self, server, service, namespace=settings.namespace):
+    def _deploy_service(self, service, server_name = None, namespace=settings.namespace):
         return k8s_core_client().create_namespaced_service(
             namespace=namespace,
             body=service
@@ -1124,7 +1162,7 @@ class SingleClusterK8sOperator(K8sOperator):
             namespace=namespace,
         )
 
-    def _deploy_job(self, server, job, namespace=settings.namespace):
+    def _deploy_job(self, job, server_name = None, namespace=settings.namespace):
         return k8s_batch_client().create_namespaced_job(
             namespace=namespace,
             body=job
@@ -1139,68 +1177,8 @@ class SingleClusterK8sOperator(K8sOperator):
     def delete_config_map(self, name, namespace=settings.namespace):
         k8s_core_client().delete_namespaced_config_map(name=name, namespace=namespace)
 
-    def create_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
+    def deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         k8s_core_client().create_namespaced_config_map(namespace=namespace, body=config_map)
-
-    async def deploy_graval(self, node: V1Node, deployment: V1Deployment, service: V1Service):
-        try:
-            created_service = k8s_core_client().create_namespaced_service(
-                namespace=settings.namespace, body=service
-            )
-            created_deployment = k8s_app_client().create_namespaced_deployment(
-                namespace=settings.namespace, body=deployment
-            )
-
-            # Track the verification port.
-            expected_port = created_service.spec.ports[0].node_port
-            async with get_session() as session:
-                result = await session.execute(
-                    update(Server)
-                    .where(Server.server_id == node.metadata.uid)
-                    .values(verification_port=created_service.spec.ports[0].node_port)
-                    .returning(Server.verification_port)
-                )
-                port = result.scalar_one_or_none()
-                if port != expected_port:
-                    raise DeploymentFailure(
-                        f"Unable to track verification port for newly added node: {expected_port=} actual_{port=}"
-                    )
-                await session.commit()
-            return created_deployment, created_service
-        except ApiException as exc:
-            try:
-                k8s_core_client().delete_namespaced_service(
-                    name=service.metadata.name,
-                    namespace=settings.namespace,
-                )
-            except Exception:
-                ...
-            try:
-                k8s_core_client().delete_namespaced_deployment(
-                    name=deployment.metadata.name,
-                    namespace=settings.namespace,
-                )
-            except Exception:
-                ...
-            raise DeploymentFailure(
-                f"Failed to deploy GraVal: {str(exc)}:\n{traceback.format_exc()}"
-            )
-
-    async def cleanup_graval(self, node: V1Node):
-        node_name = node.metadata.name
-        nice_name = node_name.replace(".", "-")
-        try:
-            self._delete_service(f"{GRAVAL_SVC_PREFIX}-{nice_name}")
-        except Exception:
-            ...
-
-        try:
-            self._delete_deployment(f"{GRAVAL_DEPLOY_PREFIX}-{nice_name}")
-            label_selector = f"graval-node={nice_name}"
-
-            await self.wait_for_deletion(label_selector)
-        except Exception:
-            ...
 
 
 class MultiClusterK8sOperator(K8sOperator):
@@ -1233,19 +1211,19 @@ class MultiClusterK8sOperator(K8sOperator):
         return self.get_node(name)
 
     async def get_deployment(self, deployment_id: str) -> Dict:
-        """Get a single deployment by ID."""
+        """Get a single Chute deployment by ID."""
         deployment_name = f"{CHUTE_DEPLOY_PREFIX}-{deployment_id}"
 
         resources = self._redis.get_resources(
-            resource_type=ResourceType.DEPLOYMENT, resource_name=deployment_name
+            resource_type=ResourceType.JOB, resource_name=deployment_name
         )
 
         # Handle case where no deployments found or more than one found
-        if len(resources.deployments) == 0:
+        if len(resources.jobs) == 0:
             logger.warning(f"Failed to find deployment {deployment_name}")
             raise ApiException(status=404, reason=f"Failed to find deployment {deployment_name}")
 
-        return self._extract_deployment_info(resources.deployments[0])
+        return self._extract_job_info(resources.jobs[0])
 
     def _delete_deployment(self, name, namespace=settings.namespace):
         context = self._redis.get_resource_cluster(
@@ -1257,8 +1235,8 @@ class MultiClusterK8sOperator(K8sOperator):
             namespace=namespace,
         )
 
-    def _deploy_service(self, server, service, namespace=settings.namespace):
-        client = self._manager.get_core_client(server.name)
+    def _deploy_service(self, service, server_name, namespace=settings.namespace):
+        client = self._manager.get_core_client(server_name)
         return client.create_namespaced_service(
             namespace=namespace,
             body=service
@@ -1284,15 +1262,15 @@ class MultiClusterK8sOperator(K8sOperator):
             namespace=namespace,
         )
 
-    def create_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
+    def deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         # Create CM on all clusters
         clusters = self._redis.get_all_cluster_names()
         for cluster in clusters:
             client = self._manager.get_core_client(cluster)
             client.create_namespaced_config_map(namespace=namespace, body=config_map)
 
-    def _deploy_job(self, server, job, namespace=settings.namespace):
-        client = self._manager.get_batch_client(server.name)
+    def _deploy_job(self, job, server_name, namespace=settings.namespace):
+        client = self._manager.get_batch_client(server_name)
         return client.create_namespaced_job(
             namespace=namespace,
             body=job
@@ -1433,7 +1411,9 @@ class MultiClusterK8sOperator(K8sOperator):
 
             # Check if all required labels match
             for key, value in label_dict.items():
-                if resource_labels.get(key) != value:
+                if value and resource_labels.get(key) != value:
+                    return False
+                elif key not in resource_labels.keys():
                     return False
 
         # Field selector filter (example implementation for common fields)
@@ -1458,6 +1438,8 @@ class MultiClusterK8sOperator(K8sOperator):
                 if "=" in pair:
                     key, value = pair.split("=", 1)
                     labels[key.strip()] = value.strip()
+                else:
+                    labels[selector.strip()] = None
         return labels
 
     def _parse_field_selector(self, selector: str) -> Dict[str, str]:
@@ -1483,65 +1465,3 @@ class MultiClusterK8sOperator(K8sOperator):
             else:
                 return None
         return obj
-
-    async def deploy_graval(self, node: V1Node, deployment: V1Deployment, service: V1Service):
-        core_client = self._manager.get_core_client(node.metadata.name)
-        app_client = self._manager.get_app_client(node.metadata.name)
-        try:
-            created_service = core_client.create_namespaced_service(
-                namespace=settings.namespace, body=service
-            )
-            created_deployment = app_client.create_namespaced_deployment(
-                namespace=settings.namespace, body=deployment
-            )
-
-            # Track the verification port.
-            # Need to get the service port from the search API
-            expected_port = created_service.spec.ports[0].node_port
-            async with get_session() as session:
-                result = await session.execute(
-                    update(Server)
-                    .where(Server.server_id == node.metadata.uid)
-                    .values(verification_port=created_service.spec.ports[0].node_port)
-                    .returning(Server.verification_port)
-                )
-                port = result.scalar_one_or_none()
-                if port != expected_port:
-                    raise DeploymentFailure(
-                        f"Unable to track verification port for newly added node: {expected_port=} actual_{port=}"
-                    )
-                await session.commit()
-            return created_deployment, created_service
-        except ApiException as exc:
-            self._cleanup_graval_deployment(node, service, deployment)
-            raise DeploymentFailure(
-                f"Failed to deploy GraVal: {str(exc)}:\n{traceback.format_exc()}"
-            )
-
-    async def cleanup_graval(self, node: V1Node):
-        node_name = node.metadata.name
-        nice_name = node_name.replace(".", "-")
-        try:
-            self._delete_service(f"{GRAVAL_SVC_PREFIX}-{nice_name}")
-        except Exception:
-            ...
-
-        try:
-            self._delete_deployment(f"{GRAVAL_DEPLOY_PREFIX}-{nice_name}")
-            label_selector = f"graval-node={nice_name}"
-
-            await self.wait_for_deletion(label_selector)
-        except Exception:
-            ...
-
-    def _cleanup_graval_deployment(
-        self, node: V1Node, service: V1Service, deployment: V1Deployment
-    ):
-        try:
-            self._delete_service(service.metadata.name)
-        except Exception:
-            ...
-        try:
-            self._delete_deployment(deployment.metadata.name)
-        except Exception:
-            ...

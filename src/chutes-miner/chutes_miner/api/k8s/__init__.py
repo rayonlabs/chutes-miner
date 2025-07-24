@@ -57,12 +57,6 @@ async def undeploy(deployment_id: str):
     """
     return await K8sOperator().undeploy(deployment_id)
 
-async def get_pods_by_label(label_selector: str):
-    """
-    Get pods by a label selector
-    """
-    return K8sOperator().get_pods(label_selector=label_selector)
-
 async def create_code_config_map(chute: Chute):
     """
     Create a ConfigMap to store the chute code.
@@ -88,6 +82,6 @@ async def check_node_has_disk_available(node_name: str, required_disk_gb: int) -
     """
     Check if a node has sufficient disk space available for a deployment.
     """
-    return K8sOperator().get_node_disk_info(node_name)
+    return await K8sOperator().get_node_disk_info(node_name)
     # disk_info = await get_node_disk_info(node_name)
     # return disk_info.get("available_gb", 0) >= required_disk_gb

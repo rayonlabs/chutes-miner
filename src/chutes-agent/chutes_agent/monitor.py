@@ -25,6 +25,7 @@ class ResourceMonitor:
         self.collector = ResourceCollector()
         self.core_v1 = None
         self.apps_v1 = None
+        self.batch_v1 = None
         self._status = MonitoringStatus(state=MonitoringState.STOPPED)
         self._watcher_task: Optional[asyncio.Task] = None
         self._heartbeat_task: Optional[asyncio.Task] = None
@@ -243,6 +244,7 @@ class ResourceMonitor:
             # Initialize API clients
             self.core_v1 = client.CoreV1Api()
             self.apps_v1 = client.AppsV1Api()
+            self.batch_v1 = client.BatchV1Api()
 
             # Collect and send initial resources
             initial_resources = await self.collector.collect_all_resources()
@@ -263,6 +265,7 @@ class ResourceMonitor:
                     asyncio.create_task(self.watch_namespaced_deployments(namespace)),
                     asyncio.create_task(self.watch_namespaced_pods(namespace)),
                     asyncio.create_task(self.watch_namespaced_services(namespace)),
+                    asyncio.create_task(self.watch_namespaced_jobs(namespace)),
                 ]
                 tasks += namespace_tasks
 
@@ -290,6 +293,12 @@ class ResourceMonitor:
         """Watch services for changes"""
         await self._watch_resources(
             "services", self.core_v1.list_namespaced_service, namespace=namespace
+        )
+
+    async def watch_namespaced_jobs(self, namespace: str):
+        """Watch jobs for changes"""
+        await self._watch_resources(
+            "jobs", self.batch_v1.list_namespaced_job, namespace=namespace
         )
 
     async def watch_nodes(self):

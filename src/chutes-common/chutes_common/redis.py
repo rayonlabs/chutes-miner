@@ -1,9 +1,8 @@
 # app/cache/redis_client.py
 from datetime import datetime, timezone
-from chutes_common.k8s import WatchEvent, serializer
+from chutes_common.k8s import ClusterResources, WatchEvent, serializer
 from chutes_common.monitoring.messages import ResourceChangeMessage
 from chutes_common.monitoring.models import (
-    ClusterResources,
     ClusterState,
     ClusterStatus,
     ResourceType,
@@ -87,8 +86,8 @@ class MonitoringRedisClient:
             # Create different channel types for different use cases
             channels = [
                 f"cluster:{cluster_name}:resources",  # All resources for specific cluster
-                f"cluster:{cluster_name}:resources:{event.resource_type}",  # Specific resource type for cluster
-                f"resources:{event.resource_type}",  # All clusters for specific resource type
+                f"cluster:{cluster_name}:resources:{event.k8s_resource_type}",  # Specific resource type for cluster
+                f"resources:{event.k8s_resource_type}",  # All clusters for specific resource type
                 "resources:all",  # All resource changes across all clusters
             ]
 
@@ -104,7 +103,7 @@ class MonitoringRedisClient:
                 self.redis.publish(channel, message_json)
 
             logger.debug(
-                f"Published resource change to {len(channels)} channels: {event.resource_type} {event.obj_name}"
+                f"Published resource change to {len(channels)} channels: {event.k8s_resource_type} {event.obj_name}"
             )
 
         except Exception as e:
@@ -165,7 +164,7 @@ class MonitoringRedisClient:
 
     async def update_resource(self, cluster_name: str, event: WatchEvent):
         """Update a single resource"""
-        key = f"clusters:{cluster_name}:resources:{event.resource_type}"
+        key = f"clusters:{cluster_name}:resources:{event.k8s_resource_type}"
         resource_name = f"{event.obj_namespace}:{event.obj_name}"
 
         if event.is_deleted:
@@ -196,10 +195,10 @@ class MonitoringRedisClient:
             _resources = self._filter_resources(_resources, resource_name, namespace)
             # Initialize the resource type if it doesn't exist
             if _resource_type not in _results:
-                _results[_resource_type] = {}
+                _results[f"{_resource_type}s"] = []
 
             # Merge the new resources with existing ones
-            _results[_resource_type].update({k: json.loads(v) for k, v in _resources.items()})
+            _results[f"{_resource_type}s"] += [json.loads(v) for v in _resources.values()]
 
         return ClusterResources.from_dict(_results)
 

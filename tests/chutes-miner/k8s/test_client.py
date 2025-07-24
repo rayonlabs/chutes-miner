@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 from chutes_miner.api.k8s.client import KubernetesMultiClusterClientManager
 import pytest
 from chutes_miner.api.k8s.config import KubeConfig
@@ -13,12 +14,12 @@ def sample_kubeconfig():
 
 def test_get_core_client(sample_kubeconfig):
     
-    # json_data = json.loads(sample_kubeconfig)
-    kubeconfig_dict = yaml.safe_load(sample_kubeconfig["kubeconfig"])
-    kubeconfig = KubeConfig.from_dict(kubeconfig_dict)
+    with patch('chutes_miner.api.k8s.config.MultiClusterKubeConfig._load_async') as mock_load:
+        kubeconfig_dict = yaml.safe_load(sample_kubeconfig["kubeconfig"])
+        kubeconfig = KubeConfig.from_dict(kubeconfig_dict)
 
-    manager = KubernetesMultiClusterClientManager()
+        manager = KubernetesMultiClusterClientManager()
 
-    _client = manager.get_core_client("chutes-miner-gpu-0", kubeconfig)
+        _client = manager.get_core_client("chutes-miner-gpu-0", kubeconfig)
 
-    assert type(_client) == client.CoreV1Api
+        assert type(_client) == client.CoreV1Api

@@ -4,7 +4,8 @@ import time
 from unittest.mock import AsyncMock, patch
 from datetime import datetime, timezone, timedelta
 from chutes_monitor.cluster_monitor import ClusterMonitor, HealthChecker
-from chutes_common.monitoring.models import ClusterStatus, ClusterState, ClusterResources
+from chutes_common.monitoring.models import ClusterStatus, ClusterState
+from chutes_common.k8s import ClusterResources
 
 # @patch('chutes_monitor.cluster_monitor.MonitoringRedisClient')
 @patch('chutes_monitor.cluster_monitor.settings')

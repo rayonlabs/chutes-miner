@@ -80,6 +80,8 @@ spec:
             {{ if not .Values.multiCluster }}
             - name: NVIDIA_RUNTIME
               value: nvidia-container-runtime
+            - name: MONITORING_NAMESPACE
+              value: "monitoring" 
             {{- end }}
           resources:
             {{- toYaml .Values.gepetto.resources | nindent 12 }}

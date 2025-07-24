@@ -3,9 +3,11 @@ from types import SimpleNamespace
 from typing import Any, Optional, Union
 import json
 from unittest.mock import MagicMock
-from kubernetes_asyncio.client import V1Deployment, V1Pod, V1Service, V1Node
+from chutes_common.monitoring.models import ResourceType
+from kubernetes_asyncio.client import V1Deployment, V1Pod, V1Service, V1Node, V1Job
 from pydantic import BaseModel, ConfigDict
 from kubernetes_asyncio.client import ApiClient
+from typing import Generator, Optional, Tuple, Union
 
 
 class K8sSerializer:
@@ -41,6 +43,60 @@ class K8sSerializer:
 
 serializer = K8sSerializer()
 
+# ToDo: Update to use values from ResourceType after
+# resolving ciruclar dependency
+_resource_types = {
+    V1Deployment: "deployment", 
+    V1Service: "service", 
+    V1Pod: "pod", 
+    V1Node: "node",
+    V1Job: "job"
+}
+
+class ClusterResources(BaseModel):
+    """Cluster monitoring status"""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    deployments: list[V1Deployment] = []
+    services: list[V1Service] = []
+    pods: list[V1Pod] = []
+    nodes: list[V1Node] = []
+    jobs: list[V1Job] = []
+
+    @classmethod
+    def from_dict(cls, v: dict) -> "ClusterResources":
+        return cls(
+            deployments=serializer.deserialize(v.get("deployments", []), "list[V1Deployment]"),
+            services=serializer.deserialize(v.get("services", []), "list[V1Service]"),
+            pods=serializer.deserialize(v.get("pods", []), "list[V1Pod]"),
+            nodes=serializer.deserialize(v.get("nodes", []), "list[V1Node]"),
+            jobs=serializer.deserialize(v.get("jobs", []), "list[V1Job]"),
+        )
+
+    def to_dict(self) -> dict:
+        """Convert the cluster resources to a dictionary representation"""
+        result = {}
+
+        for field_name, field_value in self:
+            if isinstance(field_value, list):
+                # Convert each Kubernetes object to dict using its to_dict method
+                result[field_name] = [serializer.serialize(obj) for obj in field_value]
+            else:
+                result[field_name] = serializer.serialize(field_value)
+
+        return result
+
+    def items(
+        self,
+    ) -> Generator[
+        Tuple[ResourceType, list[Union[V1Deployment, V1Service, V1Pod, V1Node]]], None, None
+    ]:
+        yield ResourceType.DEPLOYMENT, self.deployments
+        yield ResourceType.SERVICE, self.services
+        yield ResourceType.POD, self.pods
+        yield ResourceType.NODE, self.nodes
+        yield ResourceType.JOB, self.jobs
 
 class WatchEventType(Enum):
     """Enumeration of watch event types."""
@@ -48,11 +104,6 @@ class WatchEventType(Enum):
     ADDED = "ADDED"
     MODIFIED = "MODIFIED"
     DELETED = "DELETED"
-
-
-# ToDo: Update to use values from ResourceType after
-# resolving ciruclar dependency
-_resource_types = {V1Deployment: "deployment", V1Service: "service", V1Pod: "pod", V1Node: "node"}
 
 
 class WatchEvent(BaseModel):
@@ -67,7 +118,7 @@ class WatchEvent(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     type: WatchEventType
-    object: Union[V1Deployment, V1Pod, V1Service, V1Node, MagicMock]  # Magic Mock for testing
+    object: Union[V1Deployment, V1Pod, V1Service, V1Node, V1Job, MagicMock]  # Magic Mock for testing
 
     @classmethod
     def from_dict(cls, event_dict: dict) -> "WatchEvent":
@@ -138,7 +189,7 @@ class WatchEvent(BaseModel):
         return self.object.metadata.uid if self.object.metadata else None
 
     @property
-    def resource_type(self) -> str:
+    def k8s_resource_type(self) -> str:
         return _resource_types.get(type(self.object), "unknown")
 
     @property

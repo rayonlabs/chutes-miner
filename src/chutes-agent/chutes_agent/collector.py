@@ -1,5 +1,5 @@
 # agent/controller/collector.py
-from chutes_common.monitoring.models import ClusterResources
+from chutes_common.k8s import ClusterResources
 from kubernetes_asyncio import client, config
 from loguru import logger
 from chutes_agent.config import settings
@@ -11,6 +11,7 @@ class ResourceCollector:
     def __init__(self):
         self.core_v1 = None
         self.apps_v1 = None
+        self.batch_v1 = None
         self.namespaces = settings.watch_namespaces
 
     def initialize_clients(self):
@@ -18,6 +19,7 @@ class ResourceCollector:
         config.load_incluster_config()
         self.core_v1 = client.CoreV1Api()
         self.apps_v1 = client.AppsV1Api()
+        self.batch_v1 = client.BatchV1Api()
 
     async def collect_all_resources(self) -> ClusterResources:
         """Collect all monitored resources from the cluster"""
@@ -44,8 +46,12 @@ class ResourceCollector:
                     services_response = await self.core_v1.list_namespaced_service(namespace)
                     resources.services.extend(services_response.items)
 
+                    # Collect services for this namespace
+                    jobs_response = await self.batch_v1.list_namespaced_job(namespace)
+                    resources.services.extend(jobs_response.items)
+
                     logger.debug(
-                        f"Collected from namespace {namespace}: {len(deployments_response.items)} deployments, {len(pods_response.items)} pods, {len(services_response.items)} services, {len(nodes_response.items)} nodes"
+                        f"Collected from namespace {namespace}: {len(deployments_response.items)} deployments, {len(jobs_response.items)} jobs, {len(pods_response.items)} pods, {len(services_response.items)} services, {len(nodes_response.items)} nodes"
                     )
 
                 except Exception as e:
@@ -53,7 +59,7 @@ class ResourceCollector:
                     continue
 
             logger.info(
-                f"Collected from {len(self.namespaces)} namespaces: {len(resources.deployments)} deployments, {len(resources.pods)} pods, {len(resources.services)} services"
+                f"Collected from {len(self.namespaces)} namespaces: {len(resources.deployments)} deployments, {len(resources.jobs)} jobs, {len(resources.pods)} pods, {len(resources.services)} services"
             )
 
         except Exception as e:

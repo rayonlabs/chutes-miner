@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 from loguru import logger
 from chutes_common.redis import MonitoringRedisClient
 from chutes_monitor.config import settings
-from chutes_common.monitoring.models import ClusterResources, ClusterState, ClusterStatus
+from chutes_common.monitoring.models import ClusterState, ClusterStatus
+from chutes_common.k8s import ClusterResources
 
 
 class HealthChecker:

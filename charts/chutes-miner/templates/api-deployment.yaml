@@ -73,6 +73,8 @@ spec:
             {{ if not .Values.multiCluster }}
             - name: NVIDIA_RUNTIME
               value: nvidia-container-runtime
+            - name: MONITORING_NAMESPACE
+              value: "monitoring"
             {{- end }}
             - name: MONITOR_API
               value: "{{ .Values.monitor.externalUrl }}"

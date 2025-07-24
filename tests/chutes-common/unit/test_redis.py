@@ -204,7 +204,7 @@ def test_get_resources_single_cluster(redis_client, mock_redis):
         "default:app2": json.dumps({"name": "app2"})
     }
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"deployments": {"default:app1": {"name": "app1"}}}
         
         result = redis_client.get_resources(cluster_name, resource_type)
@@ -222,7 +222,7 @@ def test_get_resources_all_clusters(redis_client, mock_redis):
     ]
     mock_redis.hgetall.return_value = {}
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {}
         
         result = redis_client.get_resources("*", ResourceType.ALL)
@@ -549,7 +549,7 @@ def test_get_resources_with_namespace_filter(redis_client, mock_redis):
         "default:app3": json.dumps({"name": "app3"})
     }
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"deployments": {"default:app1": {"name": "app1"}}}
         
         result = redis_client.get_resources(cluster_name, resource_type, namespace=namespace)
@@ -577,7 +577,7 @@ def test_get_resources_with_resource_name_filter(redis_client, mock_redis):
         "default:app2": json.dumps({"name": "app2"})
     }
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"deployments": {"default:app1": {"name": "app1"}}}
         
         result = redis_client.get_resources(cluster_name, resource_type, resource_name=resource_name)
@@ -606,7 +606,7 @@ def test_get_resources_with_both_filters(redis_client, mock_redis):
         "default:app2": json.dumps({"name": "app2"})
     }
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"deployments": {"default:app1": {"name": "app1"}}}
         
         result = redis_client.get_resources(cluster_name, resource_type, resource_name=resource_name, namespace=namespace)
@@ -633,7 +633,7 @@ def test_get_resources_with_filters_no_matches(redis_client, mock_redis):
         "kube-system:app2": json.dumps({"name": "app2"})
     }
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"deployments": {}}
         
         result = redis_client.get_resources(cluster_name, resource_type, resource_name=resource_name)
@@ -673,7 +673,7 @@ def test_get_resources_multiple_resource_types_with_filters(redis_client, mock_r
     
     mock_redis.hgetall.side_effect = mock_hgetall
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"deployment": {}, "pod": {}}
         
         result = redis_client.get_resources(cluster_name, resource_type, namespace=namespace)
@@ -705,7 +705,7 @@ def test_get_resources_with_filters_single_resource_type(redis_client, mock_redi
         "kube-system:pod1": json.dumps({"name": "pod1"})
     }
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"pods": {}}
         
         result = redis_client.get_resources(cluster_name, resource_type, resource_name=resource_name)
@@ -732,7 +732,7 @@ def test_get_resources_with_namespace_filter_empty_namespace(redis_client, mock_
         "kube-system:app2": json.dumps({"name": "app2"})
     }
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"deployments": {}}
         
         result = redis_client.get_resources(cluster_name, resource_type, namespace=namespace)
@@ -754,7 +754,7 @@ def test_get_resources_with_none_filters(redis_client, mock_redis):
         "kube-system:app2": json.dumps({"name": "app2"})
     }
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"deployments": {}}
         
         result = redis_client.get_resources(cluster_name, resource_type, resource_name=None, namespace=None)
@@ -858,7 +858,7 @@ def test_get_resources_with_wildcard_cluster_and_filters(redis_client, mock_redi
     
     mock_redis.hgetall.side_effect = mock_hgetall
     
-    with patch('chutes_common.monitoring.models.ClusterResources.from_dict') as mock_from_dict:
+    with patch('chutes_common.k8.ClusterResources.from_dict') as mock_from_dict:
         mock_from_dict.return_value = {"deployment": {}}
         
         result = redis_client.get_resources("*", resource_type, namespace=namespace)

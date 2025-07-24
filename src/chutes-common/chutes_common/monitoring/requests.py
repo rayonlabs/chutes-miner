@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Dict
 from chutes_common.k8s import WatchEvent
-from chutes_common.monitoring.models import ClusterResources
+from chutes_common.k8s import ClusterResources
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 

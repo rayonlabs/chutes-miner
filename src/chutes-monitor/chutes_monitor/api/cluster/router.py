@@ -65,7 +65,7 @@ class ClusterRouter:
             await self.redis_client.update_resource(cluster_name, update.event)
 
             logger.debug(
-                f"Updated {update.event.resource_type} for cluster {cluster_name}: {update.event.type}"
+                f"Updated {update.event.k8s_resource_type} for cluster {cluster_name}: {update.event.type}"
             )
             return {"status": "success", "cluster_name": cluster_name}
 
