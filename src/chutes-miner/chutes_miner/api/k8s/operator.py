@@ -616,6 +616,10 @@ class K8sOperator(abc.ABC):
             return deployment, job
         except Exception as exc:
 
+            if deployment_id:
+                await self._clear_deployment(deployment_id)
+
+
             try:
                 if service:
                     self._delete_service(service.metadata.name)
@@ -699,6 +703,21 @@ class K8sOperator(abc.ABC):
         await session.commit()
 
         return deployment_id, gpu_uuids
+    
+    async def _clear_deployment(self, deployment_id: str):
+        async with get_session() as session:
+            deployment = (
+                (
+                    await session.execute(
+                        select(Deployment).where(Deployment.deployment_id == deployment_id)
+                    )
+                )
+                .unique()
+                .scalar_one_or_none()
+            )
+            if deployment:
+                await session.delete(deployment)
+                await session.commit()
     
     async def _update_deployment(self, deployment_id: str, server: Server, service: V1Service):
         deployment_port = service.spec.ports[0].node_port
