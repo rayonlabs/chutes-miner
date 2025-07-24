@@ -14,12 +14,13 @@ import aiohttp
 import asyncio
 import hashlib
 import backoff
+from chutes_miner.api.k8s.operator import K8sOperator
 from loguru import logger
 from sqlalchemy import text
 from datetime import UTC, datetime, timedelta
 from prometheus_api_client import PrometheusConnect
 from substrateinterface import SubstrateInterface
-from chutes_miner.api.config import settings, k8s_core_client
+from chutes_miner.api.config import settings
 from chutes_miner.api.database import get_session
 from chutes_common.auth import sign_request
 import chutes_miner.api.database.orms  # noqa
@@ -78,7 +79,7 @@ def get_prometheus_uptime() -> float:
     """
     Get the prometheus-server deployment uptime in seconds.
     """
-    pods = k8s_core_client().list_namespaced_pod(
+    pods = K8sOperator().list_namespaced_pod(
         namespace=settings.monitoring_namespace,
         label_selector="app.kubernetes.io/name=prometheus,app.kubernetes.io/component=server",
     )
@@ -190,7 +191,10 @@ def commit(sha256) -> int:
     call = substrate.compose_call(
         call_module="Commitments",
         call_function="set_commitment",
-        call_params={"netuid": settings.netuid, "info": {"fields": [[{"Sha256": f"0x{sha256}"}]]}},
+        call_params={
+            "netuid": settings.netuid,
+            "info": {"fields": [[{"Sha256": f"0x{sha256}"}]]},
+        },
     )
     extrinsic = substrate.create_signed_extrinsic(
         call=call,

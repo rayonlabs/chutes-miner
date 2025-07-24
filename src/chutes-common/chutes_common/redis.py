@@ -1,12 +1,20 @@
 # app/cache/redis_client.py
 from datetime import datetime, timezone
-from chutes_common.k8s import WatchEvent, serializer
-from chutes_common.monitoring.models import ClusterResources, ClusterState, ClusterStatus
+from chutes_common.k8s import ClusterResources, WatchEvent, serializer
+from chutes_common.monitoring.messages import ResourceChangeMessage
+from chutes_common.monitoring.models import (
+    ClusterState,
+    ClusterStatus,
+    ResourceType,
+)
 import json
 from typing import Optional, Dict, Any, List
+from chutes_common.settings import RedisSettings
 from loguru import logger
-from chutes_monitor.config import settings
+
+# from chutes_monitor.config import settings
 from redis import Redis
+from redis.client import PubSub
 
 
 class MonitoringRedisClient:
@@ -15,6 +23,7 @@ class MonitoringRedisClient:
     _instance: Optional["MonitoringRedisClient"] = None
 
     def __init__(self):
+        settings = RedisSettings()
         self.url = settings.redis_url
         self._initialize()
 
@@ -69,6 +78,69 @@ class MonitoringRedisClient:
             logger.error(f"Failed to clear cluster {cluster_name}: {e}")
             raise
 
+        # Pub/Sub methods
+
+    def _publish_resource_change(self, cluster_name: str, event: WatchEvent):
+        """Publish resource change event to Redis pub/sub"""
+        try:
+            # Create different channel types for different use cases
+            channels = [
+                f"cluster:{cluster_name}:resources",  # All resources for specific cluster
+                f"cluster:{cluster_name}:resources:{event.k8s_resource_type}",  # Specific resource type for cluster
+                f"resources:{event.k8s_resource_type}",  # All clusters for specific resource type
+                "resources:all",  # All resource changes across all clusters
+            ]
+
+            # Create the message payload
+            message = ResourceChangeMessage(
+                cluster=cluster_name, event=event, timestamp=datetime.now(timezone.utc)
+            )
+
+            message_json = json.dumps(message.to_dict())
+
+            # Publish to all relevant channels
+            for channel in channels:
+                self.redis.publish(channel, message_json)
+
+            logger.debug(
+                f"Published resource change to {len(channels)} channels: {event.k8s_resource_type} {event.obj_name}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to publish resource change: {e}")
+            # Don't raise - pub/sub failures shouldn't break the main functionality
+
+    def subscribe_to_cluster_resources(self, cluster_name: str) -> PubSub:
+        """Subscribe to all resource changes for a specific cluster"""
+        pubsub = self.redis.pubsub()
+        channel = f"cluster:{cluster_name}:resources"
+        pubsub.subscribe(channel)
+        logger.info(f"Subscribed to channel: {channel}")
+        return pubsub
+
+    def subscribe_to_resource_type(
+        self, resource_type: ResourceType, cluster_name: Optional[str] = None,
+    ) -> PubSub:
+        """Subscribe to specific resource type changes"""
+        pubsub = self.redis.pubsub()
+
+        if cluster_name:
+            channel = f"cluster:{cluster_name}:resources:{resource_type.value}"
+        else:
+            channel = f"resources:{resource_type.value}"
+
+        pubsub.subscribe(channel)
+        logger.info(f"Subscribed to channel: {channel}")
+        return pubsub
+
+    def subscribe_to_all_resources(self) -> PubSub:
+        """Subscribe to all resource changes across all clusters"""
+        pubsub = self.redis.pubsub()
+        channel = "resources:all"
+        pubsub.subscribe(channel)
+        logger.info(f"Subscribed to channel: {channel}")
+        return pubsub
+
     # Resource storage methods
     async def store_initial_resources(self, cluster_name: str, resources: ClusterResources):
         """Store initial resource dump for a cluster"""
@@ -77,7 +149,7 @@ class MonitoringRedisClient:
 
         for resource_type, items in resources.items():
             if items:
-                key = f"clusters:{cluster_name}:resources:{resource_type}"
+                key = f"clusters:{cluster_name}:resources:{resource_type.value}"
                 # Store each resource with its name as the hash field
                 resource_map = {}
                 for item in items:
@@ -92,7 +164,7 @@ class MonitoringRedisClient:
 
     async def update_resource(self, cluster_name: str, event: WatchEvent):
         """Update a single resource"""
-        key = f"clusters:{cluster_name}:resources:{event.resource_type}"
+        key = f"clusters:{cluster_name}:resources:{event.k8s_resource_type}"
         resource_name = f"{event.obj_namespace}:{event.obj_name}"
 
         if event.is_deleted:
@@ -101,26 +173,81 @@ class MonitoringRedisClient:
             _item = serializer.serialize(event.object)
             self.redis.hset(key, resource_name, json.dumps(_item))
 
-    async def get_cluster_resources(
-        self, cluster_name: str, resource_type: Optional[str] = None
-    ) -> Dict[str, Any]:
+        # Publish the resource change event
+        self._publish_resource_change(cluster_name, event)
+
+    def get_resources(
+        self,
+        cluster_name: str = "*",
+        resource_type: ResourceType = ResourceType.ALL,
+        resource_name: Optional[str] = None,
+        namespace: Optional[str] = None,
+    ) -> ClusterResources:
         """Get resources for a cluster"""
-        if resource_type:
-            key = f"clusters:{cluster_name}:resources:{resource_type}"
-            resources = self.redis.hgetall(key)
-            return {k: json.loads(v) for k, v in resources.items()}
-        else:
-            # Get all resource types
-            pattern = f"clusters:{cluster_name}:resources:*"
-            keys = self.redis.keys(pattern)
-            all_resources = {}
+        # Get all resource types
+        pattern = f"clusters:{cluster_name}:resources:{resource_type.value}"
+        keys = self.redis.keys(pattern)
+        _results: dict[str, Any] = {}
 
-            for key in keys:
-                resource_type = key.split(":")[-1]
-                resources = self.redis.hgetall(key)
-                all_resources[resource_type] = {k: json.loads(v) for k, v in resources.items()}
+        for key in keys:
+            _resource_type = key.split(":")[-1]
+            _resources = self.redis.hgetall(key)
+            _resources = self._filter_resources(_resources, resource_name, namespace)
+            # Initialize the resource type if it doesn't exist
+            if _resource_type not in _results:
+                _results[f"{_resource_type}s"] = []
 
-            return all_resources
+            # Merge the new resources with existing ones
+            _results[f"{_resource_type}s"] += [json.loads(v) for v in _resources.values()]
+
+        return ClusterResources.from_dict(_results)
+
+    def _filter_resources(
+        self,
+        resources: dict[str, Any],
+        resource_name: Optional[str] = None,
+        namespace: Optional[str] = None,
+    ) -> dict[str, Any]:
+        results = {}
+        for k, v in resources.items():
+            _parts = k.split(":")
+            _resource_namespace = _parts[0]
+            _resource_name = _parts[1]
+
+            if resource_name and _resource_name != resource_name:
+                continue
+
+            if namespace and _resource_namespace != namespace:
+                continue
+
+            results[k] = v
+
+        return results
+
+    def get_resource_cluster(
+        self, resource_name: str, resource_type: ResourceType, namespace: str = None
+    ):
+        pattern = f"clusters:*:resources:{resource_type.value}"
+        keys = self.redis.keys(pattern)
+
+        _clusters = []
+        for key in keys:
+            _cluster = key.split(":")[1]
+            _cluster_resources = self.redis.hkeys(key)
+            for resource_key in _cluster_resources:
+                _parts = resource_key.split(":")
+                _resource_namespace = _parts[0]
+                _resource_name = _parts[1]
+                if _resource_name == resource_name and _resource_namespace == namespace:
+                    _clusters.append(_cluster)
+
+        if len(_clusters) > 1:
+            # logger.warning(f"Found multiple clusters with {resource_type.value} {resource_name} in namespace {namespace}, but execpted to only exist in 1 cluster.")
+            raise ValueError(
+                f"Found multiple clusters with {resource_type.value} {resource_name} in namespace {namespace}, but execpted to only exist in 1 cluster."
+            )
+
+        return _clusters[0] if len(_clusters) == 1 else None
 
     async def clear_cluster_resources(self, cluster_name: str):
         """Clear all resources for a cluster"""
@@ -207,17 +334,19 @@ class MonitoringRedisClient:
         return cluster_statuses
 
     # Utility methods
-    async def get_all_cluster_names(self) -> List[str]:
+    def get_all_cluster_names(self) -> List[str]:
         """Get all registered cluster names"""
         pattern = "clusters:*:health"
         keys = self.redis.keys(pattern)
         return [key.split(":")[1] for key in keys]
 
-    async def get_resource_counts(self, cluster_name: str) -> Dict[str, int]:
+    def get_resource_counts(self, cluster_name: str) -> Dict[str, int]:
         """Get resource counts for a cluster"""
         counts = {}
-        for resource_type in ["deployments", "pods", "services"]:
-            key = f"clusters:{cluster_name}:resources:{resource_type}"
+        for resource_type in ResourceType:
+            if resource_type == ResourceType.ALL:
+                continue
+            key = f"clusters:{cluster_name}:resources:{resource_type.value}"
             count = self.redis.hlen(key)
-            counts[resource_type] = count
+            counts[resource_type.value] = count
         return counts

@@ -1,5 +1,5 @@
 from unittest.mock import Mock
-from chutes_common.monitoring.models import ClusterResources
+from chutes_common.k8s import ClusterResources
 from kubernetes_asyncio.client import (
     V1Deployment, V1ObjectMeta, V1DeploymentSpec,
     V1Service, V1ServiceSpec, V1Pod, V1PodSpec,

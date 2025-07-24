@@ -44,7 +44,7 @@ spec:
         - name: agent
           image: "{{ .Values.agent.image }}"
           imagePullPolicy: {{ .Values.agent.imagePullPolicy }}
-          command: ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "chutes_agent.agent.main:app"]
+          command: ["python", "-m", "uvicorn", "--host", "0.0.0.0", "--port", "8000", "chutes_agent.api.main:app"]
           env:
             - name: MINER_SS58
               valueFrom:

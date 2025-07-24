@@ -1,0 +1,249 @@
+---
+- name: Setup control plane
+  hosts: control
+  become: true
+  any_errors_fatal: true
+  tags:
+    - setup-control-plane
+  tasks:
+    - name: Common Setup
+      ansible.builtin.include_role:
+        name: common
+
+    - name: K3s Setup
+      ansible.builtin.include_role:
+        name: k3s
+
+    - name: Create gepetto-cm on control cluster
+      kubernetes.core.k8s:
+        state: present # Ensures it exists and matches this definition. Updates if different.
+        context: "{{ inventory_hostname }}"
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gepetto-code
+            namespace: chutes
+          data:
+            gepetto.py: "{{ lookup('file', '{{ playbook_dir }}/../tasks/migration/files/gepetto.py') }}"
+
+    - name: Ensure ansible directory exists
+      ansible.builtin.file:
+        path: /etc/ansible
+        state: directory
+        mode: "0755"
+      when: "not skip_configuration | default(false)"
+
+    - name: Mark node as configured
+      ansible.builtin.file:
+        path: /etc/ansible/.configured
+        state: touch
+        mode: "0644"
+
+- name: Prepare control planes and nodes
+  hosts:
+    - microk8s
+    - control
+  become: true
+  any_errors_fatal: true
+  tags:
+    - migrate-prep
+  vars_files:
+    - "{{ playbook_dir }}/../vars/migrate.yml"
+  tasks:
+    - name: Verify chutes CLI
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/migration/verify-chutes-cli.yml"
+        apply:
+          tags: verify-cli
+      tags: verify-cli
+
+    - name: Verify chutes components are ready
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/migration/verify-chutes.yml"
+        apply:
+          tags: verify-chutes
+      tags: verify-chutes
+
+    - name: Get node info for migration
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/migration/get-node-info.yml"
+        apply:
+          tags: get-node-info
+      tags: get-node-info
+
+- name: Check for migrated nodes
+  hosts: workers
+  become: true
+  tags: always
+  tasks:
+    - name: Check if node has been migrated
+      ansible.builtin.stat:
+        path: /etc/ansible/.migrated
+      register: migrated_marker
+
+    - name: Group hosts by migration status
+      ansible.builtin.group_by:
+        key: "migration_{{ 'needed' if not migrated_marker.stat.exists else 'complete' }}"
+
+- name: Migrate Nodes
+  hosts: migration_needed
+  become: true
+  any_errors_fatal: true
+  serial: 1
+  tags:
+    - migrate-nodes
+  vars_files:
+    - "{{ playbook_dir }}/../vars/migrate.yml"
+    - "{{ playbook_dir }}/../vars/chutes_nodes.yml"
+  handlers:
+    - name: Global handlers
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../handlers/main.yml"
+  tasks:
+    - name: Ensure ansible directory exists
+      ansible.builtin.file:
+        path: /etc/ansible
+        state: directory
+        mode: "0755"
+
+    - name: Remove node from chutes
+      block:
+        - name: Check if node has been removed already
+          ansible.builtin.stat:
+            path: /etc/ansible/.removed
+          register: removed_marker
+
+        - name: Remove node from chutes
+          ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/migration/remove-chutes-node.yml"
+          when: not removed_marker.stat.exists
+          tags: remove-node
+
+        - name: Mark node as removed
+          ansible.builtin.file:
+            path: /etc/ansible/.removed
+            state: touch
+            mode: "0644"
+          when: not removed_marker.stat.exists
+
+    - name: Reset node system
+      block:
+        - name: Check if node has been reset
+          ansible.builtin.stat:
+            path: /etc/ansible/.reset
+          register: reset_marker
+
+        - name: Reset System
+          ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/migration/reset-system.yml"
+          when: not reset_marker.stat.exists
+          tags: reset-system
+
+        - name: Mark node as reset
+          ansible.builtin.file:
+            path: /etc/ansible/.reset
+            state: touch
+            mode: "0644"
+          when: not reset_marker.stat.exists
+
+    - name: Setup node
+      block:
+        - name: Check if node has been setup
+          ansible.builtin.stat:
+            path: /etc/ansible/.setup
+          register: setup_marker
+
+        - name: Common Setup
+          ansible.builtin.include_role:
+            name: common
+          when: not setup_marker.stat.exists
+
+        - name: Mark node as setup
+          ansible.builtin.file:
+            path: /etc/ansible/.setup
+            state: touch
+            mode: "0644"
+          when: not setup_marker.stat.exists
+
+    - name: Node k3s Setup
+      block:
+        - name: Check if k3s has been setup
+          ansible.builtin.stat:
+            path: /etc/ansible/.k3s
+          register: k3s_marker
+
+        - name: K3s Setup
+          ansible.builtin.include_role:
+            name: k3s
+          when: not k3s_marker.stat.exists
+
+        - name: Mark k3s as setup
+          ansible.builtin.file:
+            path: /etc/ansible/.k3s
+            state: touch
+            mode: "0644"
+          when: not k3s_marker.stat.exists
+
+    - name: Setup GPU
+      block:
+        - name: Check if GPU has been setup
+          ansible.builtin.stat:
+            path: /etc/ansible/.gpu
+          register: gpu_marker
+
+        - name: GPU Setup
+          ansible.builtin.include_tasks:
+            file: "{{ playbook_dir }}/../roles/gpu/tasks/k3s-setup.yml"
+            apply:
+              tags: gpu-setup
+          when: not gpu_marker.stat.exists
+
+        - name: Mark GPU as setup
+          ansible.builtin.file:
+            path: /etc/ansible/.gpu
+            state: touch
+            mode: "0644"
+          when: not gpu_marker.stat.exists
+
+    - name: Add node to chutes
+      block:
+        - name: Check if node has been added
+          ansible.builtin.stat:
+            path: /etc/ansible/.added
+          register: added_marker
+
+        - name: Add node to chutes
+          ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/migration/add-chutes-node.yml"
+          when: not added_marker.stat.exists
+
+        - name: Mark node as added
+          ansible.builtin.file:
+            path: /etc/ansible/.added
+            state: touch
+            mode: "0644"
+          when: not added_marker.stat.exists
+
+    - name: Mark node as migrated
+      ansible.builtin.file:
+        path: /etc/ansible/.migrated
+        state: touch
+        mode: "0644"
+      when:
+        - removed_marker.stat.exists
+        - reset_marker.stat.exists
+        - setup_marker.stat.exists
+        - k3s_marker.stat.exists
+        - gpu_marker.stat.exists
+        - added_marker.stat.exists
+
+    - name: Mark node as configured
+      ansible.builtin.file:
+        path: /etc/ansible/.configured
+        state: touch
+        mode: "0644"
+      register: marker_result
+      when:
+        - removed_marker.stat.exists
+        - reset_marker.stat.exists
+        - setup_marker.stat.exists
+        - k3s_marker.stat.exists
+        - gpu_marker.stat.exists
+        - added_marker.stat.exists

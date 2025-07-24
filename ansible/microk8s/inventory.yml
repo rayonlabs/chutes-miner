@@ -33,6 +33,8 @@ all:
     ipv6_enabled: true
     # Default MTU
     wireguard_mtu: 1380
+    # Infiniband bits, may be required for b200 (nvidia-fabricmanager won't start/complete without this if not already pre-installed).
+    infiniband: false
 
   hosts:
     # This would be the main node, which runs postgres, redis, gepetto, etc.

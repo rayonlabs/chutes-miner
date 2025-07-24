@@ -1,13 +1,9 @@
 
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any
-import os
+from unittest.mock import AsyncMock, patch
+from datetime import datetime, timezone
 
-from chutes_common.monitoring.models import ClusterStatus, ClusterState, ClusterResources, HeartbeatData
-from chutes_common.monitoring.requests import RegisterClusterRequest, ResourceUpdateRequest
+from chutes_common.monitoring.models import ClusterStatus, ClusterState, HeartbeatData
 from chutes_monitor.cluster_monitor import HealthChecker, ClusterMonitor
 from chutes_monitor.config import settings
 

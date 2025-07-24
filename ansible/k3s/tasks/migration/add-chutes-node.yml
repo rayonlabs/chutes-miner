@@ -1,0 +1,68 @@
+---
+- name: Add node to k3s
+  block:
+    - name: Verify node info is present before adding
+      ansible.builtin.assert:
+        that: inventory_hostname in chutes_nodes
+        fail_msg: >-
+          Node information for {{ inventory_hostname }} is not present.
+          Run the 'get-node-info' tag to resolve if this node still exists in microk8s,
+          otherwise add manually.
+        success_msg: Found information for {{ inventory_hostname }}
+
+    - name: Wait for nvidia.com/gpu capacity to be available on node
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+        name: "{{ inventory_hostname }}"
+      register: node_info
+      until: >
+        "status" in node_info.resources[0] and
+        node_info.resources[0]['status'] | length > 0 and
+        "capacity" in node_info.resources[0]['status'] and
+        "nvidia.com/gpu" in node_info.resources[0]['status']['capacity']
+      delay: "{{ check_delay | default(10) }}"
+      retries: "{{ max_retries | default(30) }}"
+      vars:
+        # Configure these variables as needed
+        check_delay: 30 # Seconds between checks
+        max_retries: 9 # Maximum number of retry attempts
+        initial_delay: 30 # Initial delay before first check
+
+    - name: Run add node command remotely
+      ansible.builtin.command: >
+        chutes-miner add-node --name {{ inventory_hostname }}  --hotkey {{ remote_hotkey_path }}
+        --validator 5Dt7HZ7Zpw4DppPxFM7Ke3Cm7sDAWhsZXmM5ZAmE7dSVJbcQ
+        --hourly-cost {{ chutes_nodes[inventory_hostname]['hourly_cost'] }}
+        --gpu-short-ref {{ chutes_nodes[inventory_hostname]['gpu_type'] }}
+      register: remote_add_output
+      delegate_to: "{{ groups['control'][0] }}"
+      failed_when: remote_add_output.rc != 0
+      changed_when: false
+      when: not run_cli_locally | default(true)
+
+    - name: Run add node command locally
+      ansible.builtin.command: >
+        chutes-miner add-node --name {{ inventory_hostname }}  --hotkey {{ hotkey_path }}
+        --miner-api http://{{ hostvars[groups['control'][0]]['ansible_host'] }}:{{ miner_api_port | default(32000) }}
+        --validator 5Dt7HZ7Zpw4DppPxFM7Ke3Cm7sDAWhsZXmM5ZAmE7dSVJbcQ
+        --hourly-cost {{ chutes_nodes[inventory_hostname]['hourly_cost'] }}
+        --gpu-short-ref {{ chutes_nodes[inventory_hostname]['gpu_type'] }}
+      register: local_add_output
+      failed_when: local_add_output.rc != 0
+      become: false
+      changed_when: false
+      delegate_to: localhost
+      when: run_cli_locally | default(false)
+
+    - name: Set add output variable
+      ansible.builtin.set_fact:
+        add_output: >-
+          {{ remote_add_output if (remote_add_output is defined and
+            remote_add_output.stdout is defined) else local_add_output }}
+
+    - name: Verify node added
+      ansible.builtin.assert:
+        that: add_output.rc == 0
+        fail_msg: "Failed to add node {{ inventory_hostname }}"
+        success_msg: "Successfully added {{ inventory_hostname }}"

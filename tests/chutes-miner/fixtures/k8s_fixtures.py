@@ -1,4 +1,5 @@
 # Fixtures for commonly used objects
+from re import L
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,15 +8,13 @@ from chutes_miner.api.chute.schemas import Chute
 from chutes_miner.api.gpu.schemas import GPU
 from chutes_miner.api.server.schemas import Server
 
-from kubernetes.client import ApiClient
 import uuid
 import random
 from datetime import datetime, timezone
 import json
 from dateutil.tz import tzutc
 
-
-@pytest.fixture(autouse=True)
+@pytest.fixture()
 def mock_k8s_core_client():
     # Create a list of paths where k8s_core_client is imported
     import_paths = ["chutes_miner.api.k8s.operator.k8s_core_client"]
@@ -39,7 +38,7 @@ def mock_k8s_core_client():
         patcher.stop()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture()
 def mock_k8s_app_client():
     import_paths = ["chutes_miner.api.k8s.operator.k8s_app_client"]
 
@@ -61,52 +60,66 @@ def mock_k8s_app_client():
     for patcher in patches:
         patcher.stop()
 
+@pytest.fixture()
+def mock_k8s_batch_client():
+    import_paths = ["chutes_miner.api.k8s.operator.k8s_batch_client"]
 
-@pytest.fixture(autouse=True)
+    # Create a single mock object
+    mock_client = MagicMock()
+    # mock_client.list_node.return_value = MagicMock(items=None)
+
+    # Create and start patches for each import path, all returning the same mock
+    patches = []
+    for path in import_paths:
+        patcher = patch(path, return_value=mock_client)
+        patcher.start()
+        patches.append(patcher)
+
+    # Yield the shared mock for use in tests
+    yield mock_client
+
+    # Stop all patches when done
+    for patcher in patches:
+        patcher.stop()
+
+@pytest.fixture()
 def mock_k8s_api_client():
-    import_paths = ["chutes_miner.api.k8s.operator.k8s_api_client"]
-
-    # Create a single mock object
-    client = ApiClient()
-    client.call_api = MagicMock(wraps=client.call_api)
-    # mock_client.list_node.return_value = MagicMock(items=None)
-
-    # Create and start patches for each import path, all returning the same mock
-    patches = []
-    for path in import_paths:
-        patcher = patch(path, return_value=client)
-        patcher.start()
-        patches.append(patcher)
-
-    # Yield the shared mock for use in tests
-    yield client
-
-    # Stop all patches when done
-    for patcher in patches:
-        patcher.stop()
-
-
-@pytest.fixture(autouse=True)
-def mock_k8s_custom_objects_client():
-    import_paths = ["chutes_miner.api.k8s.operator.k8s_custom_objects_client"]
-
-    # Create a single mock object
     client = MagicMock()
-    # mock_client.list_node.return_value = MagicMock(items=None)
-
-    # Create and start patches for each import path, all returning the same mock
-    patches = []
-    for path in import_paths:
-        patcher = patch(path, return_value=client)
-        patcher.start()
-        patches.append(patcher)
-
-    # Yield the shared mock for use in tests
     yield client
 
-    # Stop all patches when done
-    for patcher in patches:
-        patcher.stop()
+# @pytest.fixture(autouse=True)
+# def mock_k8s_api_client():
+#     import_paths = ["chutes_miner.api.k8s.operator.k8s_api_client"]
+
+#     # Create a single mock object
+#     client = MagicMock()
+#     # client.call_api = MagicMock(wraps=client.call_api)
+#     # mock_client.list_node.return_value = MagicMock(items=None)
+
+#     # Create and start patches for each import path, all returning the same mock
+#     patches = []
+#     for path in import_paths:
+#         patcher = patch(path, return_value=client)
+#         patcher.start()
+#         patches.append(patcher)
+
+#     # Yield the shared mock for use in tests
+#     yield client
+
+#     # Stop all patches when done
+#     for patcher in patches:
+#         patcher.stop()
+
+@pytest.fixture
+def mock_k8s_client_manager(mock_k8s_api_client, mock_k8s_core_client, mock_k8s_app_client, mock_k8s_batch_client):
+    with patch("chutes_miner.api.k8s.operator.KubernetesMultiClusterClientManager") as mock_manager_class:
+        mock_manager = MagicMock()
+        mock_manager.get_api_client.return_value = mock_k8s_api_client
+        mock_manager.get_app_client.return_value = mock_k8s_app_client
+        mock_manager.get_core_client.return_value = mock_k8s_core_client
+        mock_manager.get_batch_client.return_value = mock_k8s_batch_client
+        mock_manager_class.return_value = mock_manager
+        yield mock_manager
 
 
 @pytest.fixture
@@ -120,12 +133,11 @@ def sample_server():
         memory_per_gpu=16,
         seed=12345,
         deployments=[],
+        gpus=[
+            GPU(gpu_id=f"{uuid.uuid4()}", server_id="test-server-id", verified=True) for i in range(4)
+        ]
     )
 
-    # Add GPUs to the server
-    server.gpus = [
-        GPU(gpu_id=f"gpu-{i}", server_id="test-server-id", verified=True) for i in range(4)
-    ]
 
     return server
 
@@ -435,6 +447,32 @@ def mock_pod():
 
     return pod
 
+@pytest.fixture
+def create_api_test_nodes():
+
+    def _create_nodes(num_nodes):
+        nodes = []
+
+        for i in range(num_nodes):
+            nodes.append({
+                "metadata": {
+                    "name": "node1",
+                    "labels": {
+                        "chutes/validator": "TEST123",
+                        "chutes/external-ip": "192.168.1.100",
+                        "nvidia.com/gpu.memory": "16384",
+                    },
+                    "uid": "node1-uid",
+                },
+                "status": {
+                    "phase": "Ready",
+                    "capacity": {"cpu": "8", "memory": "32Gi", "nvidia.com/gpu": "2"},
+                },
+            })
+
+        return nodes
+    
+    return _create_nodes
 
 @pytest.fixture
 def create_api_test_pods():
@@ -452,7 +490,7 @@ def create_api_test_pods():
         list: List of pod dictionaries that are JSON serializable with Kubernetes naming convention
     """
 
-    def _create_pods(num_pods, namespace="chutes", base_name="chute", phase="Running"):
+    def _create_pods(num_pods, namespace="chutes", base_name="chute", phase="Running", job=None):
         pods = []
 
         for i in range(num_pods):
@@ -460,6 +498,7 @@ def create_api_test_pods():
             pod_name = f"{base_name}-{i}"
             pod_uid = str(uuid.uuid4())
             rs_uid = str(uuid.uuid4())
+            deployment_uuid = job["metadata"]["labels"]["chutes/deployment-id"] if job else f"deployment-{uuid.uuid4()}"
             container_id = f"containerd://{uuid.uuid4().hex}"
 
             # Format current time in ISO format for JSON compatibility
@@ -480,7 +519,11 @@ def create_api_test_pods():
                     "finalizers": None,
                     "generateName": f"{base_name}-",
                     "generation": None,
-                    "labels": {"app": base_name, "pod-template-hash": "5bf549858c"},
+                    "labels": {
+                        "app": base_name, 
+                        "pod-template-hash": "5bf549858c",
+                        "chutes/deployment-id": f"{deployment_uuid}"
+                    },
                     "name": pod_name,
                     "namespace": namespace,
                     "ownerReferences": [
@@ -525,7 +568,7 @@ def create_api_test_pods():
                             ],
                         }
                     ],
-                    "nodeName": f"node-{random.randint(1, 5)}",
+                    "nodeName": f"test-node",
                     "restartPolicy": "Always",
                     "serviceAccount": f"{base_name}-sa",
                     "serviceAccountName": f"{base_name}-sa",
@@ -760,3 +803,115 @@ def create_api_test_deployments():
         return deployments
 
     return _generate_deployments
+
+@pytest.fixture
+def create_api_test_jobs():
+    """
+    Create a specified number of test Kubernetes jobs as dictionaries with camel case keys.
+
+    Usage:
+        def test_something(test_jobs):
+            jobs = test_jobs(3)  # Creates 3 test jobs
+    """
+
+    def _generate_jobs(count=1, name="test-job", namespace="chutes"):
+        jobs = []
+
+        for i in range(count):
+            app_name = f"{name}-{i}"
+            current_timestamp = datetime.now(tzutc()).isoformat()
+            # Create job directly with camelCase keys
+            job = {
+                "apiVersion": "batch/v1",
+                "kind": "Job",
+                "metadata": {
+                    "annotations": {
+                        "kubectl.kubernetes.io/last-applied-configuration": f'{{"apiVersion":"batch/v1","kind":"Job","metadata":{{"name":"{app_name}","namespace":"default"}}}}',
+                    },
+                    "creationTimestamp": current_timestamp,
+                    "generation": 1,
+                    "name": app_name,
+                    "namespace": namespace,
+                    "resourceVersion": str(1000 + i),
+                    "uid": str(uuid.uuid4()),
+                    "labels": {
+                        "app": app_name,
+                        "chutes/job-id": f"chute-{app_name}",
+                        "chutes/chute-id": f"chute-{uuid.uuid4()}",
+                        "chutes/version": "1",
+                        "chutes/chute": "true",
+                        "chutes/deployment-id": f"deployment-{uuid.uuid4()}"
+                    },
+                },
+                "spec": {
+                    "activeDeadlineSeconds": 3600,
+                    "backoffLimit": 6,
+                    "completions": 1,
+                    "parallelism": 1,
+                    "template": {
+                        "metadata": {
+                            "labels": {"app": app_name}
+                        },
+                        "spec": {
+                            "nodeName": "test-node",
+                            "containers": [
+                                {
+                                    "image": f"docker.io/test/{app_name}:latest",
+                                    "imagePullPolicy": "IfNotPresent",
+                                    "name": app_name,
+                                    "resources": {},
+                                    "terminationMessagePath": "/dev/termination-log",
+                                    "terminationMessagePolicy": "File",
+                                    "volumeMounts": [
+                                        {"mountPath": "/etc/config/", "name": "config-volume"}
+                                    ],
+                                }
+                            ],
+                            "dnsPolicy": "ClusterFirst",
+                            "nodeSelector": {"kubernetes.io/os": "linux"},
+                            "restartPolicy": "Never",
+                            "schedulerName": "default-scheduler",
+                            "securityContext": {},
+                            "serviceAccount": f"{app_name}-service-account",
+                            "serviceAccountName": f"{app_name}-service-account",
+                            "terminationGracePeriodSeconds": 30,
+                            "tolerations": [
+                                {
+                                    "effect": "NoSchedule",
+                                    "key": "node-role.kubernetes.io/control-plane",
+                                    "operator": "Equal",
+                                }
+                            ],
+                            "volumes": [
+                                {
+                                    "configMap": {"defaultMode": 420, "name": f"{app_name}-config"},
+                                    "name": "config-volume",
+                                }
+                            ],
+                        },
+                    },
+                },
+                "status": {
+                    "active": 1 if i % 3 == 0 else None,  # Some jobs running
+                    "succeeded": 1 if i % 3 == 1 else None,  # Some jobs completed
+                    "failed": 1 if i % 3 == 2 else None,  # Some jobs failed
+                    "conditions": [
+                        {
+                            "lastProbeTime": current_timestamp,
+                            "lastTransitionTime": current_timestamp,
+                            "message": "Job completed successfully" if i % 3 == 1 else "Job is running",
+                            "reason": "Complete" if i % 3 == 1 else "Running",
+                            "status": "True" if i % 3 == 1 else "False",
+                            "type": "Complete",
+                        }
+                    ],
+                    "startTime": current_timestamp,
+                    "completionTime": current_timestamp if i % 3 == 1 else None,
+                },
+            }
+
+            jobs.append(job)
+
+        return jobs
+
+    return _generate_jobs

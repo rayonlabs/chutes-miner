@@ -1,0 +1,124 @@
+---
+- name: Verify python3-kubernetes package is present
+  ansible.builtin.apt:
+    name: python3-kubernetes
+    state: present
+  become: true
+
+- name: Setup kubeconfig on microk8s
+  when: inventory_hostname in groups['microk8s']
+  block:
+    - name: Ensure .kube directory exists
+      ansible.builtin.file:
+        path: ~/.kube
+        state: directory
+        mode: "0700"
+
+    - name: Check if 'default' context already exists
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          microk8s kubectl config get-contexts -o name | grep '^default$'
+        executable: /bin/bash
+      register: default_context_exists
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Check if 'microk8s' context exists
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          microk8s kubectl config get-contexts -o name | grep '^microk8s$'
+        executable: /bin/bash
+      register: microk8s_context_exists
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when: default_context_exists.rc != 0
+
+    - name: Rename kubectl context from 'microk8s' to 'default'
+      ansible.builtin.command:
+        cmd: microk8s kubectl config rename-context microk8s default
+      register: rename_context_result
+      changed_when: rename_context_result.rc == 0
+      failed_when: false
+      when:
+        - default_context_exists.rc != 0 # default context doesn't exist
+        - microk8s_context_exists.rc == 0 # microk8s context exists
+
+    - name: Get microk8s kubeconfig
+      ansible.builtin.command: microk8s config
+      register: microk8s_config
+      changed_when: false
+
+    - name: Save microk8s kubeconfig
+      ansible.builtin.copy:
+        content: "{{ microk8s_config.stdout }}"
+        dest: ~/.kube/config
+        mode: "0600"
+
+- name: Disable audit exporter
+  kubernetes.core.k8s:
+    state: patched
+    kind: CronJob
+    name: "{{ cronjob_name | default('audit-exporter') }}"
+    namespace: "{{ chutes_namespace | default('chutes') }}"
+    definition:
+      spec:
+        suspend: true
+
+- name: Verify the gepetto-code configmap
+  tags: verify-gepetto
+  block:
+    - name: Verify gepetto on micorK8s cluster
+      when: inventory_hostname in groups['microk8s']
+      kubernetes.core.k8s:
+        state: present # Ensures it exists and matches this definition. Updates if different.
+        context: default
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gepetto-code
+            namespace: chutes
+          data:
+            gepetto.py: "{{ lookup('file', 'files/gepetto.py') }}"
+
+    - name: Verify gepetto on k3s cluster
+      when: inventory_hostname in groups['control']
+      kubernetes.core.k8s:
+        state: present # Ensures it exists and matches this definition. Updates if different.
+        context: "{{ inventory_hostname }}"
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gepetto-code
+            namespace: chutes
+          data:
+            gepetto.py: "{{ lookup('file', 'files/gepetto.py') }}"
+
+- name: Verify miner secrets exist
+  when: inventory_hostname == groups['control'][0]
+  block:
+    - name: Verify miner credentials exist in host context
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: miner-credentials
+        namespace: chutes
+        context: "{{ groups['control'][0] }}"
+      register: host_secret_check
+      failed_when: host_secret_check.resources | length == 0
+
+    # ToDo: Probably want to verify one ach GPU node for migration
+    # - name: Verify miner credentials exist in api server context
+    #   kubernetes.core.k8s_info:
+    #     api_version: v1
+    #     kind: Secret
+    #     name: miner-credentials
+    #     namespace: chutes
+    #     context: karmada-apiserver
+    #   register: api_secret_check
+    #   failed_when: api_secret_check.resources | length == 0

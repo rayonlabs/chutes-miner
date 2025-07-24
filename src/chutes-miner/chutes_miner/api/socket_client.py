@@ -2,7 +2,6 @@
 Miner websockets.
 """
 
-import asyncio
 import orjson as json
 from socketio import AsyncClient
 from loguru import logger
@@ -67,14 +66,19 @@ class SocketClient:
             if reason not in (
                 "gpu_verified",
                 "chute_deleted",
-                "chute_updated",
                 "chute_created",
                 "bounty_change",
                 "image_created",
                 "image_deleted",
+                "image_updated",
+                "instance_created",
                 "instance_deleted",
                 "instance_verified",
+                "instance_activated",
                 "rolling_update",
+                "job_created",
+                "job_deleted",
+                "chute_updated",
             ):
                 logger.warning(f"Ignoring invalid broadcast: {data}")
                 return
@@ -107,17 +111,13 @@ class SocketClient:
         Connect to server and run the client
         """
         try:
-            await self.sio.connect(self.url, wait_timeout=10, wait=True, transports=["websocket"])
-            while True:
-                if not self.sio.connected:
-                    logger.warning("Connection lost, attempting to reconnect...")
-                    try:
-                        await self.sio.connect(self.url)
-                    except Exception as e:
-                        logger.error(f"Reconnection failed: {e}")
-                        await asyncio.sleep(5)
-                await asyncio.sleep(1)
-
+            await self.sio.connect(
+                self.url,
+                wait_timeout=10,
+                wait=True,
+                transports=["websocket"],
+            )
+            await self.sio.wait()
         except Exception as e:
             logger.error(f"Client error: {e}")
         finally:

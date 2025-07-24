@@ -1,5 +1,5 @@
 from chutes_common.k8s import WatchEvent, WatchEventType
-from chutes_common.monitoring.models import ClusterResources
+from chutes_common.k8s import ClusterResources
 from chutes_common.monitoring.requests import RegisterClusterRequest, ResourceUpdateRequest
 from kubernetes_asyncio.client import V1Deployment, V1ObjectMeta, V1DeploymentSpec
 import pytest

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "graval-bootstrap"
-version = "0.1.2"
+version = "0.2.5"
 description = "chutes.ai miner -- graval bootstrapper"
 authors = ["Jon Durbin <jon@jondurbin.com>", "namoray <namoray@rayonlabs.ai>"]
 license = "MIT"
@@ -12,7 +12,7 @@ fastapi = "^0.115.5"
 uvicorn = "^0.32.0"
 substrate-interface = "^1.7.11"
 py-bip39-bindings = "^0.1.11"
-graval = "0.1.2"
+graval = "0.2.5"
 aiohttp = "^3.12.0"
 
 [tool.poetry.group.dev.dependencies]

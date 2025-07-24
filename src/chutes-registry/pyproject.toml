@@ -9,6 +9,8 @@ readme = "README.md"
 python = ">=3.12,<4.0"
 chutes-common = {path = "../chutes-common", develop = true}
 fastapi = "^0.115.4"
+uvicorn = "^0.32.0"
+click = ">8.1.0,<8.2.0"
 
 
 [build-system]

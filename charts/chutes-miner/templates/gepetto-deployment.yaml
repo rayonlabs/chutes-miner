@@ -39,7 +39,7 @@ spec:
         - name: api
           image: "{{ .Values.gepetto.image }}"
           imagePullPolicy: {{ .Values.gepetto.imagePullPolicy }}
-          command: ["poetry", "run", "python", "gepetto.py"]
+          command: ["python", "gepetto.py"]
           env:
             - name: CACHE_MAX_AGE_DAYS
               value: "{{ .Values.cache.max_age_days }}"
@@ -80,6 +80,8 @@ spec:
             {{ if not .Values.multiCluster }}
             - name: NVIDIA_RUNTIME
               value: nvidia-container-runtime
+            - name: MONITORING_NAMESPACE
+              value: "monitoring" 
             {{- end }}
           resources:
             {{- toYaml .Values.gepetto.resources | nindent 12 }}
@@ -87,17 +89,7 @@ spec:
             - name: gepetto-code
               mountPath: /app/gepetto.py
               subPath: gepetto.py
-            {{ if .Values.multiCluster }}
-            - name: karmada-kubeconfig
-              mountPath: /etc/karmada
-              readOnly: true
-            {{- end }}
       volumes:
         - name: gepetto-code
           configMap:
             name: gepetto-code
-        {{ if .Values.multiCluster }}
-        - name: karmada-kubeconfig
-          secret:
-            secretName: karmada-kubeconfig
-        {{- end }}

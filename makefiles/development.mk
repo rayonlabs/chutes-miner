@@ -16,21 +16,49 @@ build:
 		if [ -d "docker/$$pkg_name" ]; then \
 			if [ -f "docker/$$pkg_name/Dockerfile" ]; then \
 				echo "Building images for $$pkg_name (version: $$pkg_version)"; \
-				DOCKER_BUILDKIT=1 docker build --progress=plain --target production \
-					-f docker/$$pkg_name/Dockerfile \
-					-t $$pkg_name:${BRANCH_NAME}-${BUILD_NUMBER} \
-					-t $$pkg_name:$$pkg_version \
-					--build-arg PROJECT_DIR=$$target \
-					--build-arg PROJECT=$$pkg_name \
-					${args} .; \
-				DOCKER_BUILDKIT=1 docker build --progress=plain --target development \
-					-f docker/$$pkg_name/Dockerfile \
-					-t $$pkg_name\_development:${BRANCH_NAME}-${BUILD_NUMBER} \
-					-t $$pkg_name\_development:$$pkg_version \
-					--build-arg PROJECT_DIR=$$target \
-					--build-arg PROJECT=$$pkg_name \
-					--cache-from $$pkg_name:${BRANCH_NAME}-${BUILD_NUMBER} \
-					${args} .; \
+				dockerfile="docker/$$pkg_name/Dockerfile"; \
+				available_targets=$$(docker build --progress=plain -f $$dockerfile --target help . 2>/dev/null | grep "^FROM" | sed 's/.*AS \([^[:space:]]*\).*/\1/' || echo ""); \
+				if [ -z "$$available_targets" ]; then \
+					available_targets=$$(grep -i "^FROM.*AS" $$dockerfile | sed 's/.*AS[[:space:]]*\([^[:space:]]*\).*/\1/' | tr '[:upper:]' '[:lower:]' || echo "production development"); \
+				fi; \
+				for stage_target in $$available_targets; do \
+					if [[ "$$stage_target" == production* ]]; then \
+						if [[ "$$stage_target" == *-* ]]; then \
+							gpu_suffix=$$(echo $$stage_target | sed 's/production-//'); \
+							image_tag="$$pkg_version-$$gpu_suffix"; \
+							image_name="$$pkg_name"; \
+						else \
+							image_tag="$$pkg_version"; \
+							image_name="$$pkg_name"; \
+						fi; \
+						echo "Building production target: $$stage_target -> $$image_name:$$image_tag"; \
+						DOCKER_BUILDKIT=1 docker build --progress=plain --target $$stage_target \
+							-f $$dockerfile \
+							-t $$image_name:${BRANCH_NAME}-${BUILD_NUMBER} \
+							-t $$image_name:$$image_tag \
+							--build-arg PROJECT_DIR=$$target \
+							--build-arg PROJECT=$$pkg_name \
+							${args} .; \
+					elif [[ "$$stage_target" == development* ]]; then \
+						if [[ "$$stage_target" == *-* ]]; then \
+							gpu_suffix=$$(echo $$stage_target | sed 's/development-//'); \
+							image_tag="$$pkg_version-$$gpu_suffix"; \
+							image_name="$${pkg_name}_development"; \
+						else \
+							image_tag="$$pkg_version"; \
+							image_name="$${pkg_name}_development"; \
+						fi; \
+						echo "Building development target: $$stage_target -> $$image_name:$$image_tag"; \
+						DOCKER_BUILDKIT=1 docker build --progress=plain --target $$stage_target \
+							-f $$dockerfile \
+							-t $$image_name:${BRANCH_NAME}-${BUILD_NUMBER} \
+							-t $$image_name:$$image_tag \
+							--build-arg PROJECT_DIR=$$target \
+							--build-arg PROJECT=$$pkg_name \
+							--cache-from $$pkg_name:${BRANCH_NAME}-${BUILD_NUMBER} \
+							${args} .; \
+					fi; \
+				done; \
 			else \
 				echo "Skipping $$pkg_name: docker/$$pkg_name/Dockerfile not found"; \
 			fi; \

@@ -3,14 +3,14 @@ kind: Service
 metadata:
   name: agent
   labels:
-    {{- include "api.labels" . | nindent 4 }}
+    {{- include "agent.labels" . | nindent 4 }}
 spec:
   type: NodePort
   ports:
-    - port: {{ .Values.api.service.port }}
-      targetPort: {{ .Values.api.service.targetPort }}
+    - port: {{ .Values.agent.service.port }}
+      targetPort: {{ .Values.agent.service.targetPort }}
       protocol: TCP
-      nodePort: {{ .Values.api.service.nodePort }}
+      nodePort: {{ .Values.agent.service.nodePort }}
       name: http
   selector:
-    {{- include "api.labels" . | nindent 4 }}
+    {{- include "agent.labels" . | nindent 4 }}

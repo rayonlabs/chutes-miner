@@ -1,6 +1,6 @@
 from datetime import datetime
-from chutes_common.k8s import WatchEvent, WatchEventType
-from chutes_common.monitoring.models import ClusterResources, ClusterState
+from chutes_common.k8s import WatchEvent, WatchEventType, ClusterResources
+from chutes_common.monitoring.models import ClusterState
 import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock, patch

@@ -1,0 +1,203 @@
+---
+- name: Populate service facts
+  ansible.builtin.service_facts:
+
+- name: Allow UFW Exceptions for Standalone K3s
+  when:
+    - ansible_facts.services['ufw'] is defined
+    - ansible_facts.services['ufw'].state == 'running'
+  block:
+    - name: Get ufw status
+      ansible.builtin.command:
+        cmd: ufw status
+      changed_when: false
+      register: ufw_status
+
+    - name: If ufw enabled, ensure SSH is allowed
+      when:
+        - ufw_status['stdout'] == "Status':' active"
+      community.general.ufw:
+        rule: allow
+        port: "{{ ansible_port | default('22') }}"
+        proto: tcp
+        comment: SSH for Ansible
+
+    - name: If ufw enabled, open Kubernetes API port
+      when:
+        - ufw_status['stdout'] == "Status':' active"
+      community.general.ufw:
+        rule: allow
+        port: "{{ k3s_api_port | default('6443') }}"
+        proto: tcp
+        comment: Kubernetes API Server
+
+    - name: Allow for control plane 
+      when:
+        - ufw_status['stdout'] == "Status':' active"
+        - inventory_hostname in groups['control'] | default([])
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        comment: "{{ item.comment }}"
+      loop:
+        - { port: "2379", proto: tcp, comment: etcd client }
+        - { port: "30080", proto: tcp, comment: Grafana UI }
+
+    - name: Allow Prometheus and Node Exporter on all hosts
+      when:
+        - ufw_status['stdout'] == "Status':' active"
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        comment: "{{ item.comment }}"
+      loop:
+        - { port: "30090", proto: tcp, comment: Prometheus UI }
+        - { port: "9100", proto: tcp, comment: Node Exporter metrics }
+        - { port: "10250", proto: tcp, comment: Metrics server }
+
+    - name: If ufw enabled, allow pod and service networks
+      when:
+        - ufw_status['stdout'] == "Status':' active"
+      community.general.ufw:
+        rule: allow
+        src: "{{ item }}"
+        comment: Kubernetes networks
+      loop: "{{ ((cluster_cidr | default('10.42.0.0/16')) + ',' + (service_cidr | default('10.43.0.0/16'))) | split(',') }}"
+
+# Configure sysctl for Kubernetes
+- name: Configure sysctl for Kubernetes
+  block:
+    - name: Set sysctl for kubernetes
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      with_items:
+        - { name: net.bridge.bridge-nf-call-iptables, value: "1" }
+        - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+        - { name: net.ipv4.ip_forward, value: "1" }
+      register: sysctl_result
+      failed_when:
+        - sysctl_result.failed is defined
+        - sysctl_result.failed
+        - "'Cannot set net.bridge.bridge-nf-call' not in sysctl_result.msg | default('')"
+        - "'Module br_netfilter not loaded' not in sysctl_result.msg | default('')"
+        - "'sysctl: cannot stat' not in sysctl_result.msg | default('')"
+
+    - name: Disable IPv6
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        sysctl_file: /etc/sysctl.d/99-disable-ipv6.conf
+        reload: true
+      with_items:
+        - { key: "net.ipv6.conf.all.disable_ipv6", value: "1" }
+        - { key: "net.ipv6.conf.default.disable_ipv6", value: "1" }
+        - { key: "net.ipv6.conf.lo.disable_ipv6", value: "1" }
+      register: ipv6_disabled
+      when: not ipv6_enabled | bool
+
+# Fix for 'br_netfilter not found' errors
+- name: Add br_netfilter to /etc/modules-load.d/
+  ansible.builtin.copy:
+    content: br_netfilter
+    dest: /etc/modules-load.d/br_netfilter.conf
+    mode: u=rw,g=,o=
+
+- name: Load br_netfilter module - first attempt
+  community.general.modprobe:
+    name: br_netfilter
+    state: present
+  ignore_errors: true
+  register: br_module_load
+
+- name: Force load br_netfilter with fallback method
+  when: br_module_load is failed
+  block:
+    - name: Attempt to load module using modprobe directly
+      ansible.builtin.command: modprobe br_netfilter
+      register: modprobe_result
+      failed_when:
+        - modprobe_result.rc != 0
+        - "'Module br_netfilter not found' not in modprobe_result.stderr"
+        - "'Module already loaded' not in modprobe_result.stderr"
+      changed_when: modprobe_result.rc == 0
+
+    - name: Verify br_netfilter status
+      ansible.builtin.command: lsmod | grep br_netfilter
+      register: br_module_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Display warning if module still not loaded
+      when: br_module_check is failed
+      ansible.builtin.debug:
+        msg: "WARNING: Could not load br_netfilter module. May need to enable bridge netfilter in kernel."
+
+# Load overlay module
+- name: Load overlay module
+  community.general.modprobe:
+    name: overlay
+    state: present
+  register: overlay_result
+  failed_when:
+    - overlay_result.failed is defined
+    - overlay_result.failed
+    - "'Not found in directory' not in overlay_result.msg"
+    - "'Dependency failed' not in overlay_result.msg"
+
+- name: Ensure modules load at boot
+  ansible.builtin.copy:
+    content: |
+      br_netfilter
+      overlay
+    dest: /etc/modules-load.d/kubernetes.conf
+    mode: "0644"
+
+# AppArmor configuration (Ubuntu-specific)
+- name: Check for Apparmor existence
+  ansible.builtin.stat:
+    path: /sys/module/apparmor/parameters/enabled
+  register: apparmor_enabled
+
+- name: Check if Apparmor is enabled
+  when: apparmor_enabled.stat.exists
+  ansible.builtin.command: cat /sys/module/apparmor/parameters/enabled
+  register: apparmor_status
+  changed_when: false
+
+- name: Install Apparmor for Ubuntu
+  when:
+    - apparmor_status is defined
+    - apparmor_status.stdout == "Y"
+  ansible.builtin.package:
+    name: apparmor
+    state: present
+
+# Gather package facts
+- name: Gather the package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+# Iptables check for K3s compatibility
+- name: Check iptables version for K3s compatibility
+  ansible.builtin.set_fact:
+    iptables_version: "{{ ansible_facts.packages['iptables'][0]['version'] }}"
+  when: ansible_facts.packages['iptables'] is defined
+  register: iptables_version_result
+
+- name: Warn about incompatible iptables version
+  when:
+    - ansible_facts.packages['iptables'] is defined
+    - ansible_facts.packages['iptables'][0]['version'] is version('1.8.5', '<')
+    - ansible_facts.packages['iptables'][0]['version'] is version('1.7.9', '>')
+    - iptables_version_result is defined
+  ansible.builtin.fail:
+    msg:
+      - "Warning: Iptables {{ ansible_facts.packages['iptables'][0]['version'] }} found."
+      - Add '--prefer-bundled-bin' to extra_server_args variable to use the bundled iptables binary.
+  failed_when: false

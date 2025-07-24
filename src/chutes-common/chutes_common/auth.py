@@ -17,7 +17,7 @@ from chutes_common.constants import (
     SIGNATURE_HEADER,
     NONCE_HEADER,
 )
-from chutes_common.settings import settings
+from chutes_common.settings import miner_settings
 
 
 @lru_cache(maxsize=32)
@@ -41,12 +41,12 @@ def authorize(allow_miner=False, allow_validator=False, purpose: str = None):
         """
         allowed_signers = []
         if allow_miner:
-            allowed_signers.append(settings.miner_ss58)
+            allowed_signers.append(miner_settings.miner_ss58)
         if allow_validator:
-            allowed_signers += [validator.hotkey for validator in settings.validators]
+            allowed_signers += [validator.hotkey for validator in miner_settings.validators]
         if (
             any(not v for v in [miner, validator, nonce, signature])
-            or miner != settings.miner_ss58
+            or miner != miner_settings.miner_ss58
             or validator not in allowed_signers
             or int(time.time()) - int(nonce) >= 30
         ):
@@ -93,14 +93,16 @@ def get_signing_message(
 
 
 def sign_request(
-    payload: Dict[str, Any] | str | None = None, purpose: str = None, management: bool = False
+    payload: Dict[str, Any] | str | None = None,
+    purpose: str = None,
+    management: bool = False,
 ):
     """
     Generate a signed request (for miner requests to validators).
     """
     nonce = str(int(time.time()))
     headers = {
-        HOTKEY_HEADER: settings.miner_ss58,
+        HOTKEY_HEADER: miner_settings.miner_ss58,
         NONCE_HEADER: nonce,
     }
     signature_string = None
@@ -112,19 +114,19 @@ def sign_request(
         else:
             payload_string = payload
         signature_string = get_signing_message(
-            settings.miner_ss58,
+            miner_settings.miner_ss58,
             nonce,
             payload_str=payload_string,
             purpose=None,
         )
     else:
         signature_string = get_signing_message(
-            settings.miner_ss58, nonce, payload_str=None, purpose=purpose
+            miner_settings.miner_ss58, nonce, payload_str=None, purpose=purpose
         )
     if management:
-        signature_string = settings.miner_ss58 + ":" + signature_string
+        signature_string = miner_settings.miner_ss58 + ":" + signature_string
         headers[MINER_HEADER] = headers.pop(HOTKEY_HEADER)
         headers[VALIDATOR_HEADER] = headers[MINER_HEADER]
     logger.debug(f"Signing message: {signature_string}")
-    headers[SIGNATURE_HEADER] = settings.miner_keypair.sign(signature_string.encode()).hex()
+    headers[SIGNATURE_HEADER] = miner_settings.miner_keypair.sign(signature_string.encode()).hex()
     return headers, payload_string

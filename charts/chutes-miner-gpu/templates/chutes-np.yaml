@@ -2,12 +2,15 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: chutes-network-policy
-  labels:
-    {{- include "chutes.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      {{- include "chutes.labels" . | nindent 6 }}
+      chutes/chute: "true"
+    matchExpressions:
+      - key: chutes/job
+        operator: NotIn
+        values:
+          - "true"
   policyTypes:
     - Ingress
     - Egress
@@ -15,12 +18,17 @@ spec:
     - ports:
         - protocol: TCP
           port: 8000
+        - protocol: TCP
+          port: 8001
   egress:
+    # DNS resolution
     - ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
           port: 53
+
+    # External HTTPS traffic (excluding private networks)
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -33,6 +41,8 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+
+    # Squid proxy access
     - to:
         - podSelector:
             matchLabels:
@@ -40,3 +50,11 @@ spec:
       ports:
         - protocol: TCP
           port: 3128
+
+    # Kubernetes API server access (default namespace, any TCP port)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: default
+      ports:
+        - protocol: TCP

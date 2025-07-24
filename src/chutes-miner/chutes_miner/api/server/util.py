@@ -1,7 +1,8 @@
 """
-Server uility functions.
+Server utility functions.
 """
 
+import json
 import time
 import math
 import backoff
@@ -9,13 +10,16 @@ import aiohttp
 import asyncio
 import traceback
 import chutes_common.constants as cst
+from chutes_common.k8s import WatchEventType
+from chutes_common.monitoring.requests import StartMonitoringRequest
+from chutes_miner.api.k8s.config import KubeConfig, MultiClusterKubeConfig
 from loguru import logger
 from kubernetes.client import (
     V1Node,
-    V1Deployment,
+    V1Job,
+    V1JobSpec,
     V1Service,
     V1ObjectMeta,
-    V1DeploymentSpec,
     V1PodTemplateSpec,
     V1PodSpec,
     V1Container,
@@ -28,11 +32,11 @@ from kubernetes.client import (
 )
 from sqlalchemy import update, select
 from sqlalchemy.exc import IntegrityError
-from typing import Tuple, Dict, List
+from typing import Optional, Tuple, Dict, List
 from chutes_common.auth import sign_request
 from chutes_common.settings import Validator
 from chutes_miner.api.config import settings, validator_by_hotkey
-from chutes_miner.api.k8s.constants import GRAVAL_DEPLOY_PREFIX, GRAVAL_SVC_PREFIX
+from chutes_miner.api.k8s.constants import GRAVAL_JOB_PREFIX, GRAVAL_SVC_PREFIX
 from chutes_miner.api.k8s.operator import K8sOperator
 from chutes_miner.api.util import sse_message
 from chutes_miner.api.database import get_session
@@ -44,6 +48,7 @@ from chutes_miner.api.exceptions import (
     GPUlessServer,
     GraValBootstrapFailure,
 )
+import yaml
 
 
 @backoff.on_exception(
@@ -72,47 +77,87 @@ async def _fetch_devices(url):
             return (await response.json())["devices"]
 
 
+async def get_server_kubeconfig(agent_url: str):
+    async with aiohttp.ClientSession() as session:
+        headers, _ = sign_request(purpose="registration", management=True)
+        async with session.get(
+            f"{agent_url}/config/kubeconfig",
+            headers=headers,
+        ) as response:
+            data = await response.json()
+            return KubeConfig.from_dict(yaml.safe_load(data["kubeconfig"]))
+        
+async def start_server_monitoring(agent_url: str):
+    request = StartMonitoringRequest(
+        control_plane_url=settings.monitor_api
+    )
+    payload = request.model_dump()
+    async with aiohttp.ClientSession() as session:
+        headers, payload_string = sign_request(payload, purpose="monitoring", management=True)
+        async with session.post(
+            f"{agent_url}/monitor/start",
+            data=payload_string,
+            headers=headers,
+        ) as response:
+            if response.status != 200:
+                raise Exception(f"Failed to start monitoring for cluster: {await response.text()}")
+
+
+async def stop_server_monitoring(agent_url: str):
+    async with aiohttp.ClientSession() as session:
+        headers, _ = sign_request(purpose="monitoring", management=True)
+        async with session.get(
+            f"{agent_url}/monitor/stop",
+            headers=headers,
+        ) as response:
+            if response.status != 200:
+                raise Exception(f"Failed to stop monitoring for cluster: {await response.text()}")
+
+
 async def gather_gpu_info(
     server_id: str,
     validator: str,
     node_object: V1Node,
-    graval_deployment: V1Deployment,
+    graval_job: V1Job,
     graval_service: V1Service,
 ) -> List[GPU]:
     """
-    Wait for the graval bootstrap deployments to be ready, then gather the device info.
+    Wait for the graval bootstrap job to be ready, then gather the device info.
     """
-    deployment_name = graval_deployment.metadata.name
-    namespace = graval_deployment.metadata.namespace or "chutes"
+    job_name = graval_job.metadata.name
+    namespace = graval_job.metadata.namespace or "chutes"
     expected_gpu_count = int(node_object.metadata.labels.get("nvidia.com/gpu.count", "0"))
     gpu_short_ref = node_object.metadata.labels.get("gpu-short-ref")
     if not gpu_short_ref:
         raise GraValBootstrapFailure("Node does not have required gpu-short-ref label!")
 
-    # Wait for the bootstrap deployment to be ready.
+    # Wait for the bootstrap job's pod to be ready.
     start_time = time.time()
-    deployment_ready = False
+    pod_ready = False
     try:
-        for event in K8sOperator().watch_deployments(
+        for event in K8sOperator().watch_pods(
             namespace=namespace,
-            field_selector=f"metadata.name={deployment_name}",
+            label_selector=f"job-name={job_name}",
             timeout=settings.graval_bootstrap_timeout,
         ):
-            deployment = event.object
-            if deployment.status.conditions:
-                for condition in deployment.status.conditions:
-                    if condition.type == "Failed" and condition.status == "True":
-                        raise GraValBootstrapFailure(f"Deployment failed: {condition.message}")
-            if (deployment.status.ready_replicas or 0) == deployment.spec.replicas:
-                deployment_ready = True
-                break
+            pod = event.object
+            if event.type == WatchEventType.DELETED:
+                continue
+            if pod.status.phase == "Failed":
+                raise GraValBootstrapFailure(f"Bootstrap pod failed: {pod.status.message}")
+            if pod.status.phase == "Running":
+                if pod.status.container_statuses:
+                    all_ready = all(cs.ready for cs in pod.status.container_statuses)
+                    if all_ready:
+                        pod_ready = True
+                        break
             if (delta := time.time() - start_time) >= settings.graval_bootstrap_timeout:
-                raise TimeoutError(f"GraVal bootstrap deployment not ready after {delta} seconds!")
+                raise TimeoutError(f"GraVal bootstrap job not ready after {delta} seconds!")
             await asyncio.sleep(1)
     except Exception as exc:
-        raise GraValBootstrapFailure(f"Error waiting for graval bootstrap deployment: {exc}")
-    if not deployment_ready:
-        raise GraValBootstrapFailure("GraVal bootstrap deployment never reached ready state.")
+        raise GraValBootstrapFailure(f"Error waiting for graval bootstrap job: {exc}")
+    if not pod_ready:
+        raise GraValBootstrapFailure("GraVal bootstrap job never reached ready state.")
 
     # Configure our validation host/port.
     node_port = None
@@ -155,23 +200,21 @@ async def gather_gpu_info(
 
 
 async def deploy_graval(
-    node_object: V1Node, validator_hotkey: str
-) -> Tuple[V1Deployment, V1Service]:
+    node_object: V1Node, validator_hotkey: str, cpu_per_gpu: int, memory_per_gpu: int
+) -> Tuple[V1Job, V1Service]:
     """
-    Create a deployment of the GraVal base validation service on a node.
+    Create a job of the GraVal base validation service on a node.
     """
     node_name = node_object.metadata.name
     node_labels = node_object.metadata.labels or {}
 
     # Double check that we don't already have chute deployments.
-    existing_deployments = K8sOperator().get_deployments(
+    existing_jobs = K8sOperator().get_jobs(
         label_selector="chute/chute=true,app=graval"
     )
-    if any(
-        [dep for dep in existing_deployments.items if dep.spec.template.spec.node_name == node_name]
-    ):
+    if any([job for job in existing_jobs.items if job.spec.template.spec.node_name == node_name]):
         raise NonEmptyServer(
-            f"Kubnernetes node {node_name} already has one or more chute and/or graval deployments."
+            f"Kubernetes node {node_name} already has one or more chute and/or graval jobs."
         )
 
     # Make sure the GPU labels are set.
@@ -181,23 +224,26 @@ async def deploy_graval(
             f"Kubernetes node {node_name} nvidia.com/gpu.count label missing or invalid: {node_labels.get('nvidia.com/gpu.count')}"
         )
 
-    # Create the deployment.
+    # Create the job.
     nice_name = node_name.replace(".", "-")
-    deployment = V1Deployment(
+    job = V1Job(
         metadata=V1ObjectMeta(
-            name=f"{GRAVAL_DEPLOY_PREFIX}-{nice_name}",
+            name=f"{GRAVAL_JOB_PREFIX}-{nice_name}",
             labels={
                 "app": "graval",
                 "chute/chute": "false",
                 "graval-node": node_name,
             },
         ),
-        spec=V1DeploymentSpec(
-            replicas=1,
-            selector={"matchLabels": {"app": "graval", "graval-node": node_name}},
+        spec=V1JobSpec(
+            parallelism=1,
+            completions=1,
+            backoff_limit=3,
+            ttl_seconds_after_finished=300,
             template=V1PodTemplateSpec(
                 metadata=V1ObjectMeta(labels={"app": "graval", "graval-node": node_name}),
                 spec=V1PodSpec(
+                    restart_policy="OnFailure",
                     node_name=node_name,
                     runtime_class_name=settings.nvidia_runtime,
                     containers=[
@@ -217,13 +263,13 @@ async def deploy_graval(
                             ],
                             resources=V1ResourceRequirements(
                                 requests={
-                                    "cpu": str(gpu_count),
-                                    "memory": "8Gi",
+                                    "cpu": str(gpu_count * cpu_per_gpu),
+                                    "memory": f"{int(gpu_count * memory_per_gpu)}Gi",
                                     "nvidia.com/gpu": str(gpu_count),
                                 },
                                 limits={
-                                    "cpu": str(gpu_count),
-                                    "memory": "8Gi",
+                                    "cpu": str(gpu_count * cpu_per_gpu),
+                                    "memory": f"{int(gpu_count * memory_per_gpu)}Gi",
                                     "nvidia.com/gpu": str(gpu_count),
                                 },
                             ),
@@ -263,11 +309,12 @@ async def deploy_graval(
     )
 
     # Deploy!
-    return await K8sOperator().deploy_graval(node_object, deployment, service)
+    return await K8sOperator().deploy_graval(node_object, job, service)
 
 
 async def track_server(
-    validator: str, hourly_cost: float, node_object: V1Node, add_labels: Dict[str, str] = None
+    validator: str, hourly_cost: float, node_object: V1Node, 
+    add_labels: Dict[str, str] = None, kubeconfig: Optional[KubeConfig] = None
 ) -> Tuple[V1Node, Server]:
     """
     Track a new kubernetes (worker/GPU) node in our inventory.
@@ -336,6 +383,7 @@ async def track_server(
             cpu_per_gpu=cpu_per_gpu,
             memory_per_gpu=memory_per_gpu,
             hourly_cost=hourly_cost,
+            kubeconfig = json.dumps(kubeconfig.to_dict())
         )
         session.add(server)
         try:
@@ -376,7 +424,9 @@ async def _advertise_nodes(validator: Validator, gpus: List[GPU]):
             }
             for idx in range(len(gpus))
         ]
-        headers, payload_string = sign_request(payload={"nodes": device_infos})
+        headers, payload_string = sign_request(
+            payload={"nodes": device_infos, "server_id": gpus[0].server_id}
+        )
         async with session.post(
             f"{validator.api}/nodes/", data=payload_string, headers=headers
         ) as response:
@@ -419,7 +469,9 @@ async def check_verification_task_status(validator: Validator, task_id: str) -> 
             return True
 
 
-async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
+async def bootstrap_server(
+    node_object: V1Node, server_args: ServerArgs, kubeconfig: Optional[KubeConfig]
+):
     """
     Bootstrap a server from start to finish, yielding SSEs for miner to track status.
     """
@@ -429,9 +481,13 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
         await K8sOperator().cleanup_graval(node_object)
 
         node_uid = node_object.metadata.uid
-        node_name = node_object.metadata.name.replace(".", "-")
+        node_name = node_object.metadata.name
+        nice_name = node_name.replace(".", "-")
+
         if delete_node:
             logger.info(f"Purging failed server: {node_name=} {node_uid=}")
+            gpu_ids = []
+            validator = None
             async with get_session() as session:
                 node = (
                     (await session.execute(select(Server).where(Server.server_id == node_uid)))
@@ -439,14 +495,51 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
                     .scalar_one_or_none()
                 )
                 if node:
+                    gpu_ids = [gpu.gpu_id for gpu in node.gpus]
+                    validator = validator_by_hotkey(node.validator)
                     await session.delete(node)
                 await session.commit()
+
+                if not gpu_ids:
+                    return
+
+                for gpu_id in gpu_ids:
+                    try:
+                        async with aiohttp.ClientSession(raise_for_status=True) as http_session:
+                            headers, _ = sign_request(purpose="nodes")
+                            async with http_session.delete(
+                                f"{validator.api}/nodes/{gpu_id}", headers=headers
+                            ) as resp:
+                                logger.success(
+                                    f"Successfully purged {gpu_id=} from validator={validator.hotkey}: {await resp.json()}"
+                                )
+                    except Exception as exc:
+                        logger.warning(
+                            f"Error purging {gpu_id=} from validator={validator.hotkey}: {exc}"
+                        )
+
+            nonlocal kubeconfig
+            if kubeconfig:
+                MultiClusterKubeConfig().remove_config(server_args.name)
+
+            if server_args.agent_api:
+                # If adding a standalone cluster, need to start monitoring
+                await stop_server_monitoring(server_args.agent_api)
 
     yield sse_message(
         f"attempting to add node server_id={node_object.metadata.uid} to inventory...",
     )
     seed = None
     try:
+
+        if kubeconfig:
+            # Make sure this is available for deploying
+            MultiClusterKubeConfig().add_config(kubeconfig)
+
+        if server_args.agent_api:
+            # If adding a standalone cluster, need to start monitoring
+            await start_server_monitoring(server_args.agent_api)
+
         node, server = await track_server(
             server_args.validator,
             server_args.hourly_cost,
@@ -456,20 +549,23 @@ async def bootstrap_server(node_object: V1Node, server_args: ServerArgs):
                 "chutes/validator": server_args.validator,
                 "chutes/worker": "true",
             },
+            kubeconfig=kubeconfig
         )
 
         # Great, now it's in our database, but we need to startup graval so the validator can check the GPUs.
         yield sse_message(
             f"server with server_id={node_object.metadata.uid} now tracked in database, provisioning graval...",
         )
-        graval_dep, graval_svc = await deploy_graval(node, server_args.validator)
+        graval_job, graval_svc = await deploy_graval(
+            node, server_args.validator, server.cpu_per_gpu, server.memory_per_gpu
+        )
 
         # Excellent, now gather the GPU info.
         yield sse_message(
-            "graval bootstrap deployment/service created, gathering device info...",
+            "graval bootstrap job/service created, gathering device info...",
         )
         gpus = await gather_gpu_info(
-            server.server_id, server_args.validator, node, graval_dep, graval_svc
+            server.server_id, server_args.validator, node, graval_job, graval_svc
         )
 
         # Beautiful, tell the validators about it.

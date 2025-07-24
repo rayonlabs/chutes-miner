@@ -5,6 +5,7 @@ Unit tests for kubernetes helper module.
 import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from kubernetes.client import V1PodList
 from kubernetes.client.rest import ApiException
 from datetime import datetime
 
@@ -13,6 +14,7 @@ from chutes_miner.api.deployment.schemas import Deployment
 import chutes_miner.api.k8s as k8s
 from chutes_miner.api.exceptions import DeploymentFailure
 from chutes_miner.api.k8s.operator import K8sOperator, SingleClusterK8sOperator
+from chutes_common.k8s import serializer
 
 
 @pytest.fixture(autouse=True, scope="function")
@@ -35,6 +37,12 @@ def mock_k8s_operator_single_cluster():
     # Restore the original method after test
     K8sOperator.__new__ = original_new
     K8sOperator._instance = None
+
+@pytest.fixture(autouse=True)
+def multicluster_setup(
+    mock_k8s_batch_client, mock_k8s_app_client, mock_k8s_core_client
+):    
+    pass
 
 
 # Tests for get_kubernetes_nodes
@@ -193,7 +201,7 @@ def test_extract_deployment_info(mock_k8s_core_client):
 
 # Tests for get_deployment
 @pytest.mark.asyncio
-async def test_get_deployment(mock_k8s_app_client):
+async def test_get_deployment(mock_k8s_batch_client):
     """Test getting a single deployment by ID."""
     # Setup mock
     deployment = MagicMock()
@@ -206,11 +214,11 @@ async def test_get_deployment(mock_k8s_app_client):
         "chutes/version": "1.0.0",
     }
 
-    mock_k8s_app_client.read_namespaced_deployment.return_value = deployment
+    mock_k8s_batch_client.read_namespaced_job.return_value = deployment
 
     # Setup extract_deployment_info mock
     with patch(
-        "chutes_miner.api.k8s.operator.K8sOperator._extract_deployment_info"
+        "chutes_miner.api.k8s.operator.K8sOperator._extract_job_info"
     ) as mock_extract:
         mock_extract.return_value = {"name": "test-deployment"}
 
@@ -218,14 +226,14 @@ async def test_get_deployment(mock_k8s_app_client):
         result = await k8s.get_deployment("test-deployment-id")
 
         # Assertions
-        mock_k8s_app_client.read_namespaced_deployment.assert_called_once()
+        mock_k8s_batch_client.read_namespaced_job.assert_called_once()
         mock_extract.assert_called_once_with(deployment)
         assert result == {"name": "test-deployment"}
 
 
 # Tests for get_deployed_chutes
 @pytest.mark.asyncio
-async def test_get_deployed_chutes(mock_k8s_app_client):
+async def test_get_deployed_chutes(mock_k8s_batch_client):
     """Test getting all deployed chutes."""
     # Setup mock
     deployment1 = MagicMock()
@@ -235,13 +243,13 @@ async def test_get_deployed_chutes(mock_k8s_app_client):
     deployment2.metadata.name = "chute-2"
     deployment2.metadata.namespace = "test-namespace"
 
-    deployment_list = MagicMock()
-    deployment_list.items = [deployment1, deployment2]
-    mock_k8s_app_client.list_namespaced_deployment.return_value = deployment_list
+    job_list = MagicMock()
+    job_list.items = [deployment1, deployment2]
+    mock_k8s_batch_client.list_namespaced_job.return_value = job_list
 
     # Setup extract_deployment_info mock
     with patch(
-        "chutes_miner.api.k8s.operator.K8sOperator._extract_deployment_info"
+        "chutes_miner.api.k8s.operator.K8sOperator._extract_job_info"
     ) as mock_extract:
         mock_extract.side_effect = [
             {"name": "chute-1", "chute_id": "id1"},
@@ -252,7 +260,7 @@ async def test_get_deployed_chutes(mock_k8s_app_client):
         result = await k8s.get_deployed_chutes()
 
         # Assertions
-        mock_k8s_app_client.list_namespaced_deployment.assert_called_once()
+        mock_k8s_batch_client.list_namespaced_job.assert_called_once()
         assert mock_extract.call_count == 2
         assert len(result) == 2
         assert result[0]["name"] == "chute-1"
@@ -329,13 +337,15 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
         pod_list_empty,  # Check in the watch loop - pods gone
     ]
 
-    # Setup watch to return one event
     mock_event = Mock()
     mock_event.is_deleted = True
-    mock_watch.stream.return_value = mock_event
+    mock_watch.stream.return_value = [mock_event]
 
-    # Call the function
-    await k8s.wait_for_deletion("app=test")
+    with patch("chutes_miner.api.k8s.operator.WatchEvent") as mock_event_class:
+        mock_event_class.from_dict.return_value = mock_event
+
+        # Call the function
+        await k8s.wait_for_deletion("app=test")
 
     # Assertions
     assert mock_k8s_core_client.list_namespaced_pod.call_count == 1
@@ -343,7 +353,7 @@ async def test_wait_for_deletion_with_pods(mock_k8s_core_client, mock_watch):
 
 # Tests for undeploy
 @pytest.mark.asyncio
-async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
+async def test_undeploy_success(mock_k8s_core_client, mock_k8s_batch_client):
     """Test successful undeployment of a chute."""
     # Setup mocks
     with patch("chutes_miner.api.k8s.operator.K8sOperator.wait_for_deletion") as mock_wait:
@@ -352,12 +362,12 @@ async def test_undeploy_success(mock_k8s_core_client, mock_k8s_app_client):
 
         # Assertions
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
-        mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
+        mock_k8s_batch_client.delete_namespaced_job.assert_called_once()
         mock_wait.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_client):
+async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_batch_client):
     """Test undeployment when service deletion fails."""
     # Setup service deletion to fail
     mock_k8s_core_client.delete_namespaced_service.side_effect = Exception("Service error")
@@ -369,7 +379,7 @@ async def test_undeploy_with_service_error(mock_k8s_core_client, mock_k8s_app_cl
 
         # Assertions
         mock_k8s_core_client.delete_namespaced_service.assert_called_once()
-        mock_k8s_app_client.delete_namespaced_deployment.assert_called_once()
+        mock_k8s_batch_client.delete_namespaced_job.assert_called_once()
         mock_wait.assert_called_once()
 
 
@@ -437,15 +447,16 @@ async def test_create_code_config_map_other_error(mock_k8s_core_client):
 # Tests for deploy_chute
 @pytest.mark.asyncio
 async def test_deploy_chute_success(
-    mock_k8s_core_client, mock_k8s_app_client, mock_db_session, sample_server, sample_chute
+    mock_k8s_core_client, mock_k8s_batch_client, mock_db_session, sample_server, sample_chute,
+    create_api_test_nodes, create_api_test_pods
 ):
     """Test successful deployment of a chute."""
     # Setup mocks for kubernetes deployment and service creation
     mock_deployment = MagicMock()
     mock_service = MagicMock()
-    mock_service.spec.ports = [MagicMock(node_port=30000)]
+    mock_service.spec.ports = [MagicMock(node_port=30000), MagicMock(node_port=8000), MagicMock(node_port=8001)]
 
-    mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
+    mock_k8s_batch_client.create_namespaced_job.return_value = mock_deployment
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
 
     # Setup session mock for deployment retrieval
@@ -457,11 +468,17 @@ async def test_deploy_chute_success(
     mock_db_session.execute = AsyncMock(return_value=mock_result)
     # mock_session.execute.return_value.unique.return_value.scalar_one_or_none.return_value = mock_deployment_db
 
+    nodes = create_api_test_nodes(1)
+    mock_k8s_core_client.read_node.return_value = serializer.deserialize(nodes[0], "V1Node")
+
+    pods = create_api_test_pods(1)
+    mock_k8s_core_client.list_namespaced_pod.return_value = V1PodList(items=serializer.deserialize(pods, "list[V1Pod]"))
+
     # Call the function
     with patch(
         "chutes_miner.api.k8s.operator.uuid.uuid4", return_value=mock_deployment_db.deployment_id
     ):
-        result, created_deployment, created_service = await k8s.deploy_chute(
+        result, created_deployment = await k8s.deploy_chute(
             sample_chute, sample_server
         )
 
@@ -469,10 +486,9 @@ async def test_deploy_chute_success(
     assert mock_db_session.add.call_count == 1
     assert mock_db_session.commit.call_count == 2
     mock_k8s_core_client.create_namespaced_service.assert_called_once()
-    mock_k8s_app_client.create_namespaced_deployment.assert_called_once()
+    mock_k8s_batch_client.create_namespaced_job.assert_called_once()
     assert result == mock_deployment_db
     assert created_deployment == mock_deployment
-    assert created_service == mock_service
     assert mock_deployment_db.host == sample_server.ip_address
     assert mock_deployment_db.port == 30000
     assert mock_deployment_db.stub is False
@@ -500,15 +516,16 @@ async def test_deploy_chute_no_gpu_capacity(sample_server, sample_chute, mock_db
 
 @pytest.mark.asyncio
 async def test_deploy_chute_deployment_disappeared(
-    mock_k8s_core_client, mock_k8s_app_client, mock_db_session, sample_server, sample_chute
+    mock_k8s_core_client, mock_k8s_batch_client, mock_db_session, sample_server, sample_chute,
+    create_api_test_nodes, create_api_test_pods
 ):
     """Test handling when deployment disappears mid-flight."""
     # Setup mocks for kubernetes deployment and service creation
     mock_deployment = MagicMock()
     mock_service = MagicMock()
-    mock_service.spec.ports = [MagicMock(node_port=30000)]
+    mock_service.spec.ports = [MagicMock(node_port=30000), MagicMock(node_port=8000), MagicMock(node_port=8001)]
 
-    mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
+    mock_k8s_batch_client.create_namespaced_job.return_value = mock_deployment
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
 
     # Setup session mock to return None for deployment
@@ -518,6 +535,12 @@ async def test_deploy_chute_deployment_disappeared(
     mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, None]
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
+    nodes = create_api_test_nodes(1)
+    mock_k8s_core_client.read_node.return_value = serializer.deserialize(nodes[0], "V1Node")
+
+    pods = create_api_test_pods(1)
+    mock_k8s_core_client.list_namespaced_pod.return_value = V1PodList(items=serializer.deserialize(pods, "list[V1Pod]"))
+
     # Call the function and expect exception
     with pytest.raises(DeploymentFailure, match="Deployment disappeared mid-flight"):
         await k8s.deploy_chute(sample_chute, sample_server)
@@ -525,12 +548,13 @@ async def test_deploy_chute_deployment_disappeared(
 
 @pytest.mark.asyncio
 async def test_deploy_chute_api_exception(
-    mock_k8s_core_client, mock_k8s_app_client, mock_db_session, sample_server, sample_chute
+    mock_k8s_core_client, mock_k8s_batch_client, mock_db_session, sample_server, sample_chute,
+    create_api_test_nodes, create_api_test_pods
 ):
     """Test handling of API exception during deployment."""
     # Setup mock to raise ApiException
     error = ApiException(status=500, reason="Internal error")
-    mock_k8s_app_client.create_namespaced_deployment.side_effect = error
+    mock_k8s_batch_client.create_namespaced_job.side_effect = error
 
     # Setup session mock for deployment retrieval
     mock_deployment_db = MagicMock(spec=Deployment)
@@ -542,8 +566,14 @@ async def test_deploy_chute_api_exception(
 
     # Setup service creation to succeed
     mock_service = MagicMock()
-    mock_service.spec.ports = [MagicMock(node_port=30000)]
+    mock_service.spec.ports = [MagicMock(node_port=30000), MagicMock(node_port=8000), MagicMock(node_port=8001)]
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
+
+    nodes = create_api_test_nodes(1)
+    mock_k8s_core_client.read_node.return_value = serializer.deserialize(nodes[0], "V1Node")
+
+    pods = create_api_test_pods(1)
+    mock_k8s_core_client.list_namespaced_pod.return_value = V1PodList(items=serializer.deserialize(pods, "list[V1Pod]"))
 
     # Call the function and expect exception
     with pytest.raises(DeploymentFailure, match="Failed to deploy chute"):

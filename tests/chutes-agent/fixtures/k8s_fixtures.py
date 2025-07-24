@@ -1,7 +1,7 @@
 from collections import namedtuple
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-from chutes_common.monitoring.models import ClusterResources
+from chutes_common.k8s import ClusterResources
 import pytest
 
 

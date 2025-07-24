@@ -1,5 +1,0 @@
----
-# Karmada-specific configuration
-karmada_chart_version: 1.13.0
-karmada_namespace: karmada-system
-karmada_api_server_node_port: "32443"

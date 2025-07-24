@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, patch
 from datetime import datetime, timezone, timedelta
 
 from chutes_monitor.cluster_monitor import HealthChecker, ClusterMonitor
-from chutes_common.monitoring.models import ClusterStatus, ClusterState, ClusterResources
+from chutes_common.monitoring.models import ClusterStatus, ClusterState
+from chutes_common.k8s import ClusterResources
 
 
 @pytest.mark.asyncio

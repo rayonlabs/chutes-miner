@@ -1,0 +1,190 @@
+---
+- name: Check if kubeconfig secret/configmap already exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: "{{ 'Secret' if store_as == 'secret' else 'ConfigMap' }}"
+    name: "{{ cert_name }}-kubeconfig"
+    namespace: "{{ namespace }}"
+  register: existing_kubeconfig
+
+- name: Generate miner certificates and create kubeconfig in cluster    
+  when: existing_kubeconfig.resources | length == 0
+  block:
+
+    - name: Create temporary directory for certificates
+      tempfile:
+        state: directory
+      register: temp_dir
+
+    - name: Generate private key
+      openssl_privatekey:
+        path: "{{ temp_dir.path }}/{{ cert_name }}.key"
+        size: 2048
+        type: RSA
+
+    - name: Generate certificate signing request
+      openssl_csr:
+        path: "{{ temp_dir.path }}/{{ cert_name }}.csr"
+        privatekey_path: "{{ temp_dir.path }}/{{ cert_name }}.key"
+        common_name: "{{ cert_name }}"
+        organization_name: "{{ cert_organization }}"
+
+    - name: Read CSR file
+      slurp:
+        src: "{{ temp_dir.path }}/{{ cert_name }}.csr"
+      register: csr_content
+
+    - name: Apply CSR to Kubernetes
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: certificates.k8s.io/v1
+          kind: CertificateSigningRequest
+          metadata:
+            name: "{{ cert_name }}-csr"
+          spec:
+            request: "{{ csr_content.content }}"
+            signerName: kubernetes.io/kube-apiserver-client
+            usages:
+              - client auth
+        state: present
+
+    - name: Approve certificate signing request
+      shell:
+        cmd: |
+          set -o pipefail
+          kubectl certificate approve {{ cert_name }}-csr
+        executable: /bin/bash
+
+    - name: Wait for certificate to be issued
+      kubernetes.core.k8s_info:
+        api_version: certificates.k8s.io/v1
+        kind: CertificateSigningRequest
+        name: "{{ cert_name }}-csr"
+      register: csr_status
+      until: csr_status.resources[0].status.certificate is defined
+      retries: 10
+      delay: 5
+
+    - name: Get certificate from CSR
+      set_fact:
+        cert_data: "{{ csr_status.resources[0].status.certificate }}"
+
+    - name: Decode and save certificate
+      copy:
+        content: "{{ cert_data | b64decode }}"
+        dest: "{{ temp_dir.path }}/{{ cert_name }}.crt"
+
+    - name: Get cluster CA data
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: ConfigMap
+        name: kube-root-ca.crt
+        namespace: "{{ namespace }}"
+      register: ca_configmap
+
+    - name: Get current kubeconfig cluster info
+      shell: |
+        kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'
+      register: cluster_ca_data
+
+    - name: Get API server URL
+      shell: |
+        kubectl config view --raw -o jsonpath='{.clusters[0].cluster.server}'
+      register: api_server_url
+
+    - name: Read certificate file
+      slurp:
+        src: "{{ temp_dir.path }}/{{ cert_name }}.crt"
+      register: cert_file_content
+
+    - name: Read private key file
+      slurp:
+        src: "{{ temp_dir.path }}/{{ cert_name }}.key"
+      register: key_file_content
+
+    - name: Create kubeconfig content
+      set_fact:
+        kubeconfig_content: |
+          apiVersion: v1
+          kind: Config
+          clusters:
+          - cluster:
+              certificate-authority-data: {{ cluster_ca_data.stdout }}
+              server: https://{{ ansible_host }}:{{ api_server_url.stdout.split(':')[-1] }}
+            name: {{ inventory_hostname }}
+          contexts:
+          - context:
+              cluster: {{ inventory_hostname }}
+              user: {{ inventory_hostname }}
+              namespace: {{ namespace }}
+            name: {{ inventory_hostname }}
+          current-context: {{ cert_name }}
+          users:
+          - name: {{ inventory_hostname }}
+            user:
+              client-certificate-data: {{ cert_file_content.content }}
+              client-key-data: {{ key_file_content.content }}
+
+    - name: Create kubeconfig as Secret
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ cert_name }}-kubeconfig"
+            namespace: "{{ namespace }}"
+          type: Opaque
+          data:
+            kubeconfig: "{{ kubeconfig_content | b64encode }}"
+        state: present
+      when: store_as == 'secret'
+
+    - name: Create kubeconfig as ConfigMap
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ cert_name }}-kubeconfig"
+            namespace: "{{ namespace }}"
+          data:
+            kubeconfig: "{{ kubeconfig_content }}"
+        state: present
+      when: store_as == 'configmap'
+
+    - name: Clean up temporary files
+      file:
+        path: "{{ temp_dir.path }}"
+        state: absent
+
+    - name: Clean up CSR from cluster
+      kubernetes.core.k8s:
+        api_version: certificates.k8s.io/v1
+        kind: CertificateSigningRequest
+        name: "{{ cert_name }}-csr"
+        state: absent
+
+    - name: Display completion message
+      debug:
+        msg: |
+          Certificate generation completed successfully!
+          Kubeconfig has been stored as a {{ store_as }} named '{{ cert_name }}-kubeconfig' in namespace '{{ namespace }}'.
+          
+          To use the kubeconfig:
+          {% if store_as == 'secret' %}
+          kubectl get secret {{ cert_name }}-kubeconfig -n {{ namespace }} -o jsonpath='{.data.kubeconfig}' | base64 -d > {{ cert_name }}-kubeconfig.yaml
+          {% else %}
+          kubectl get configmap {{ cert_name }}-kubeconfig -n {{ namespace }} -o jsonpath='{.data.kubeconfig}' > {{ cert_name }}-kubeconfig.yaml
+          {% endif %}
+
+- name: Display skip message
+  debug:
+    msg: |
+      Kubeconfig {{ store_as }} '{{ cert_name }}-kubeconfig' already exists in namespace '{{ namespace }}'.
+      Skipping certificate generation.
+  when: existing_kubeconfig.resources | length > 0
+
+- name: Apply Miner RBAC configuration
+  kubernetes.core.k8s:
+    definition: "{{ lookup('file', 'files/miner.rbac.yml') }}"
+    state: present

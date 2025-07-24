@@ -1,9 +1,16 @@
 from datetime import datetime
-from typing import Generator, Optional, Tuple, Union
-from chutes_common.k8s import serializer
-from pydantic import BaseModel, ConfigDict
+from typing import Optional
+from pydantic import BaseModel
 from enum import Enum
-from kubernetes_asyncio.client import V1Deployment, V1Service, V1Pod, V1Node
+
+
+class ResourceType(str, Enum):
+    ALL = "*"
+    NODE = "node"
+    DEPLOYMENT = "deployment"
+    SERVICE = "service"
+    POD = "pod"
+    JOB = "job"
 
 
 class MonitoringState(str, Enum):
@@ -46,48 +53,6 @@ class ClusterStatus(BaseModel):
     @property
     def is_healthy(self):
         return self.state in [ClusterState.ACTIVE, ClusterState.STARTING]
-
-
-class ClusterResources(BaseModel):
-    """Cluster monitoring status"""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    deployments: list[V1Deployment] = []
-    services: list[V1Service] = []
-    pods: list[V1Pod] = []
-    nodes: list[V1Node] = []
-
-    @classmethod
-    def from_dict(cls, v: dict) -> "ClusterResources":
-        return cls(
-            deployments=serializer.deserialize(v.get("deployments", []), "list[V1Deployment]"),
-            services=serializer.deserialize(v.get("services", []), "list[V1Service]"),
-            pods=serializer.deserialize(v.get("pods", []), "list[V1Pod]"),
-            nodes=serializer.deserialize(v.get("nodes", []), "list[V1Node]"),
-        )
-
-    def to_dict(self) -> dict:
-        """Convert the cluster resources to a dictionary representation"""
-        result = {}
-
-        for field_name, field_value in self:
-            if isinstance(field_value, list):
-                # Convert each Kubernetes object to dict using its to_dict method
-                result[field_name] = [serializer.serialize(obj) for obj in field_value]
-            else:
-                result[field_name] = serializer.serialize(field_value)
-
-        return result
-
-    def items(
-        self,
-    ) -> Generator[Tuple[str, list[Union[V1Deployment, V1Service, V1Pod, V1Node]]], None, None]:
-        yield "deployment", self.deployments
-        yield "service", self.services
-        yield "pod", self.pods
-        yield "node", self.nodes
-
 
 class HeartbeatData(BaseModel):
     """Heartbeat data from member cluster"""

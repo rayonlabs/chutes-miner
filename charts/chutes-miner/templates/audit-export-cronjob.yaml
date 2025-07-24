@@ -38,7 +38,7 @@ spec:
           - name: audit-export
             image: {{ .Values.auditExporter.image }}
             imagePullPolicy: Always
-            command: ["poetry", "run", "python", "audit_exporter.py"]
+            command: ["python", "chutes-miner/chutes_miner/audit_exporter.py"]
             env:
               - name: MINER_SS58
                 valueFrom:

@@ -1,7 +1,8 @@
 # agent/api/monitor/router.py
+from chutes_common.auth import authorize
 from chutes_common.monitoring.models import MonitoringState, MonitoringStatus
 from chutes_common.monitoring.requests import StartMonitoringRequest
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from chutes_agent.monitor import ResourceMonitor
@@ -27,7 +28,10 @@ async def get_status() -> MonitoringStatus:
 
 
 @router.post("/start")
-async def start_monitoring(request: StartMonitoringRequest):
+async def start_monitoring(
+    request: StartMonitoringRequest,
+    _: None = Depends(authorize(allow_miner=True, purpose="monitoring")),
+):
     """Start monitoring with provided configuration"""
     try:
         # Stop existing monitoring if running
@@ -44,8 +48,10 @@ async def start_monitoring(request: StartMonitoringRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/stop")
-async def stop_monitoring():
+@router.get("/stop")
+async def stop_monitoring(
+    _: None = Depends(authorize(allow_miner=True, purpose="monitoring")),
+):
     """Stop monitoring"""
     try:
         await resource_monitor.stop()
