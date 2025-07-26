@@ -183,8 +183,3 @@
       Kubeconfig {{ store_as }} '{{ cert_name }}-kubeconfig' already exists in namespace '{{ namespace }}'.
       Skipping certificate generation.
   when: existing_kubeconfig.resources | length > 0
-
-- name: Apply Miner RBAC configuration
-  kubernetes.core.k8s:
-    definition: "{{ lookup('file', 'files/miner.rbac.yml') }}"
-    state: present

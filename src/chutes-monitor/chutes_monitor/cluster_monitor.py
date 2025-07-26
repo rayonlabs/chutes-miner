@@ -2,6 +2,7 @@
 import asyncio
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
+from chutes_monitor.exceptions import ClusterConflictException, ClusterNotFoundException
 from loguru import logger
 from chutes_common.redis import MonitoringRedisClient
 from chutes_monitor.config import settings
@@ -181,7 +182,9 @@ class HealthChecker:
 
                     if cluster_status.last_heartbeat < cutoff_time:
                         logger.info(f"Cleaning up stale cluster {cluster_name}")
-                        await self.redis_client.clear_cluster(cluster_name)
+                        # Only clear the resources.  Do not remove health or node info
+                        # to avoid triggering a delete event in Gepetto.
+                        await self.redis_client.clear_cluster_resources(cluster_name)
                 except Exception as e:
                     # Invalid timestamp format
                     logger.warning(f"Failed to cleanup stale cluster {cluster_name}: {e}")
@@ -213,6 +216,11 @@ class ClusterMonitor:
     async def register_cluster(self, cluster_name: str, resources: ClusterResources) -> bool:
         """Register and start monitoring on a member cluster"""
         try:
+
+            clusters = self.redis_client.get_all_cluster_names()
+            if cluster_name in clusters:
+                raise ClusterConflictException(f"Cluster {cluster_name} already exists.")
+
             await self.redis_client.track_cluster(cluster_name, resources)
         except Exception as e:
             logger.error(f"Error registering cluster {cluster_name}: {e}")
@@ -228,6 +236,22 @@ class ClusterMonitor:
 
         except Exception as e:
             logger.error(f"Error unregistering cluster {cluster_name}: {e}")
+            raise
+
+    async def set_cluster_resources(self, cluster_name: str, resources: ClusterResources) -> bool:
+        """Set resources for a cluster.  If currently being tracked it will overwrite all existing resources."""
+        try:
+            clusters = self.redis_client.get_all_cluster_names()
+            if cluster_name not in clusters:
+                raise ClusterNotFoundException(f"Cluster {cluster_name} not found.")
+
+            # Clear all data
+            await self.redis_client.set_cluster_resources(cluster_name, resources)
+
+            logger.info(f"Successfully set cluster resources for {cluster_name}")
+
+        except Exception as e:
+            logger.error(f"Error setting cluster resources {cluster_name}: {e}")
             raise
 
     async def list_clusters(self) -> List[ClusterStatus]:

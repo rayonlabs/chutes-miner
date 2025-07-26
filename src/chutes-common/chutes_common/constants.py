@@ -6,5 +6,5 @@ SIGNATURE_HEADER = "X-Chutes-Signature"
 
 # Monitoring
 CLUSTER_ENDPOINT = "/api/v1/cluster"
-RESOURCE_PURPOSE = "resources"
+MONITORING_PURPOSE = "monitoring"
 HEALTH_PURPOSE = "health"

@@ -7,6 +7,7 @@ import uuid
 import aiohttp
 import asyncio
 from chutes_miner.api.k8s.operator import K8sOperator
+from chutes_miner.api.server.util import stop_server_monitoring
 import orjson as json
 import traceback
 import semver
@@ -928,6 +929,7 @@ class Gepetto:
         """
         server_id = event_data["server_id"]
         logger.info(f"Received server_deleted event {server_id=}")
+        
         async with get_session() as session:
             server = (
                 (await session.execute(select(Server).where(Server.server_id == server_id)))
@@ -935,6 +937,11 @@ class Gepetto:
                 .scalar_one_or_none()
             )
             if server:
+
+                # If this is a standalone server, we need to stop monitoring from the agent
+                if server.agent_api:
+                    stop_server_monitoring(server.agent_api)
+
                 await asyncio.gather(
                     *[self.gpu_deleted({"gpu_id": gpu.gpu_id}) for gpu in server.gpus]
                 )
@@ -1657,8 +1664,8 @@ class Gepetto:
         # Get all pods with config_id labels for orphan detection
         k8s_config_ids = set()
         try:
-            pods = await K8sOperator().get_pods(label_selector="chutes/config-id")
-            k8s_config_ids = {pod.metadata.labels["chutes/config-id"] for pod in pods}
+            pods = K8sOperator().get_pods(label_selector="chutes/config-id")
+            k8s_config_ids = {pod.metadata.labels["chutes/config-id"] for pod in pods.items}
         except Exception as exc:
             logger.error(f"Failed to get pods by config-id label: {exc}")
 
@@ -2081,12 +2088,7 @@ class Gepetto:
         while True:
             await asyncio.sleep(60)
             try:
-                if self._reconcile_lock.locked():
-                    logger.warning("Reconciliation already in progress, skipping.")
-                    continue
-
-                async with self._reconcile_lock:
-                    await self.reconcile()
+                await self.reconcile()
             except Exception as exc:
                 logger.error(
                     f"Unexpected error in reconciliation loop: {exc}\n{traceback.format_exc()}"

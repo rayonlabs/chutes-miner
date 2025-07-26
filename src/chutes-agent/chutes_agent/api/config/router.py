@@ -41,18 +41,23 @@ async def get_kubeconfig_from_secret(
         # Create API client
         v1 = client.CoreV1Api()
 
-        # Get the secret
-        secret = await v1.read_namespaced_secret(name=secret_name, namespace=namespace)
+        try:
+            # Get the secret
+            secret = await v1.read_namespaced_secret(name=secret_name, namespace=namespace)
 
-        # Extract and decode the kubeconfig
-        if "kubeconfig" not in secret.data:
-            raise HTTPException(
-                status_code=500, detail=f"Secret {secret_name} does not contain 'kubeconfig' key"
-            )
+            # Extract and decode the kubeconfig
+            if "kubeconfig" not in secret.data:
+                raise HTTPException(
+                    status_code=500, detail=f"Secret {secret_name} does not contain 'kubeconfig' key"
+                )
 
-        kubeconfig_b64 = secret.data["kubeconfig"]
-        kubeconfig_content = base64.b64decode(kubeconfig_b64).decode("utf-8")
-        return kubeconfig_content
+            kubeconfig_b64 = secret.data["kubeconfig"]
+            kubeconfig_content = base64.b64decode(kubeconfig_b64).decode("utf-8")
+            return kubeconfig_content
+            
+        finally:
+            # Properly close the async API client
+            await v1.api_client.close()
 
     except ApiException as e:
         if e.status == 404:

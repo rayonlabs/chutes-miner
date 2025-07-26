@@ -1,7 +1,8 @@
 # app/cache/redis_client.py
 from datetime import datetime, timezone
-from chutes_common.k8s import ClusterResources, WatchEvent, serializer
-from chutes_common.monitoring.messages import ResourceChangeMessage
+from re import A
+from chutes_common.k8s import ClusterResources, WatchEvent, WatchEventType, serializer
+from chutes_common.monitoring.messages import ClusterChangeMessage, ResourceChangeMessage
 from chutes_common.monitoring.models import (
     ClusterState,
     ClusterStatus,
@@ -66,14 +67,16 @@ class MonitoringRedisClient:
                 last_heartbeat=datetime.now(timezone.utc),
             )
         )
-        await self.store_initial_resources(cluster_name, resources)
+        await self.set_cluster_resources(cluster_name, resources)
+        self._publish_cluster_change(cluster_name, WatchEventType.ADDED)
 
     async def clear_cluster(self, cluster_name):
         try:
-            await self.clear_cluster_resources(cluster_name)
+            await self.clear_cluster_resources(cluster_name, True)
             # Clear health data
             health_key = f"clusters:{cluster_name}:health"
             self.redis.delete(health_key)
+            self._publish_cluster_change(cluster_name, WatchEventType.DELETED)
         except Exception as e:
             logger.error(f"Failed to clear cluster {cluster_name}: {e}")
             raise
@@ -110,6 +113,33 @@ class MonitoringRedisClient:
             logger.error(f"Failed to publish resource change: {e}")
             # Don't raise - pub/sub failures shouldn't break the main functionality
 
+    def _publish_cluster_change(self, cluster_name: str, event_type: WatchEventType):
+        """Publish change event to Redis pub/sub"""
+        try:
+            # Create different channel types for different use cases
+            channels = [
+                "clusters:all",  # All resource changes across all clusters
+            ]
+
+            # Create the message payload
+            message = ClusterChangeMessage(
+                cluster=cluster_name, event_type=event_type, timestamp=datetime.now(timezone.utc)
+            )
+
+            message_json = json.dumps(message.to_dict())
+
+            # Publish to all relevant channels
+            for channel in channels:
+                self.redis.publish(channel, message_json)
+
+            logger.debug(
+                f"Published cluster change to {len(channels)} channels: {cluster_name} [{event_type.value}]"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to publish resource change: {e}")
+            # Don't raise - pub/sub failures shouldn't break the main functionality
+
     def subscribe_to_cluster_resources(self, cluster_name: str) -> PubSub:
         """Subscribe to all resource changes for a specific cluster"""
         pubsub = self.redis.pubsub()
@@ -140,12 +170,18 @@ class MonitoringRedisClient:
         pubsub.subscribe(channel)
         logger.info(f"Subscribed to channel: {channel}")
         return pubsub
+    
+    def subscribe_to_clusters(self) -> PubSub:
+        """Subscribe to cluster changes"""
+        pubsub = self.redis.pubsub()
+        channel = "clusters:all"
+        pubsub.subscribe(channel)
+        logger.info(f"Subscribed to channel: {channel}")
+        return pubsub
 
     # Resource storage methods
-    async def store_initial_resources(self, cluster_name: str, resources: ClusterResources):
-        """Store initial resource dump for a cluster"""
-        # Clear existing resources first
-        await self.clear_cluster_resources(cluster_name)
+    async def set_cluster_resources(self, cluster_name: str, resources: ClusterResources):
+        """Sets cluster resources in redis, overwrite any existing resources."""
 
         for resource_type, items in resources.items():
             if items:
@@ -157,8 +193,7 @@ class MonitoringRedisClient:
                     _item = serializer.serialize(item)
                     resource_map[resource_name] = json.dumps(_item)
 
-                if resource_map:
-                    self.redis.hset(key, mapping=resource_map)
+                self.redis.hset(key, mapping=resource_map)
 
         logger.info(f"Stored initial resources for cluster {cluster_name}")
 
@@ -194,7 +229,7 @@ class MonitoringRedisClient:
             _resources = self.redis.hgetall(key)
             _resources = self._filter_resources(_resources, resource_name, namespace)
             # Initialize the resource type if it doesn't exist
-            if _resource_type not in _results:
+            if f"{_resource_type}s" not in _results:
                 _results[f"{_resource_type}s"] = []
 
             # Merge the new resources with existing ones
@@ -249,13 +284,21 @@ class MonitoringRedisClient:
 
         return _clusters[0] if len(_clusters) == 1 else None
 
-    async def clear_cluster_resources(self, cluster_name: str):
+    async def clear_cluster_resources(self, cluster_name: str, clear_nodes: bool = False):
         """Clear all resources for a cluster"""
-        pattern = f"clusters:{cluster_name}:resources:*"
-        keys = self.redis.keys(pattern)
-        if keys:
-            self.redis.delete(*keys)
-            logger.info(f"Cleared {len(keys)} resource keys for cluster {cluster_name}")
+        
+        for resource_type in ResourceType:
+            if resource_type == ResourceType.NODE and not clear_nodes:
+                # Don't clear nodes when clearing resources to avoid deleteing
+                # a server in gepetto
+                continue
+
+            pattern = f"clusters:{cluster_name}:resources:{resource_type.value}"
+            keys = self.redis.keys(pattern)
+
+            if keys:
+                self.redis.delete(*keys)
+                logger.info(f"Cleared {len(keys)} resource keys for cluster {cluster_name}")
 
     # Health tracking methods
     async def update_cluster_status(self, status: ClusterStatus):
