@@ -55,7 +55,7 @@ WORKDIR /app
 
 COPY --from=base-cuda /app .
 
-ENTRYPOINT ["python", "bootstrap.py"]
+ENTRYPOINT ["graval-bootstrap"]
 
 FROM parachutes/python:3.12.3-rocm AS production-rocm
 
@@ -75,7 +75,7 @@ WORKDIR /app
 
 COPY --from=base-rocm /app .
 
-ENTRYPOINT ["python", "bootstrap.py"]
+ENTRYPOINT ["graval-bootstrap"]
 
 FROM base-cuda AS development-cuda
 

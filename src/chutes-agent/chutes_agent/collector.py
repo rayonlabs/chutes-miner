@@ -48,7 +48,7 @@ class ResourceCollector:
 
                     # Collect services for this namespace
                     jobs_response = await self.batch_v1.list_namespaced_job(namespace)
-                    resources.services.extend(jobs_response.items)
+                    resources.jobs.extend(jobs_response.items)
 
                     logger.debug(
                         f"Collected from namespace {namespace}: {len(deployments_response.items)} deployments, {len(jobs_response.items)} jobs, {len(pods_response.items)} pods, {len(services_response.items)} services, {len(nodes_response.items)} nodes"

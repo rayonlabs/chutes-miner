@@ -2,7 +2,7 @@
 from chutes_common.auth import authorize
 from chutes_common.monitoring.models import MonitoringState, MonitoringStatus
 from chutes_common.monitoring.requests import StartMonitoringRequest
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
 
 from chutes_agent.monitor import ResourceMonitor
@@ -36,8 +36,10 @@ async def start_monitoring(
     try:
         # Stop existing monitoring if running
         if resource_monitor.status == MonitoringState.RUNNING:
-            logger.info("Stopping existing monitoring task")
-            await resource_monitor.stop()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Monitoring process already running."
+            )
 
         await resource_monitor.start(request.control_plane_url)
 

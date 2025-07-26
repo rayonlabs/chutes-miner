@@ -4,25 +4,24 @@ from chutes_common.k8s import ClusterResources
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
-class RegisterClusterRequest(BaseModel):
-    """Request to register and start monitoring a cluster"""
+class SetClusterResourcesRequest(BaseModel):
+    """Request to set cluster resources"""
 
-    cluster_name: str = Field(min_length=1, description="Unique cluster name")
-    initial_resources: ClusterResources = Field(
+    resources: ClusterResources = Field(
         ..., description="Intiial resources to register for this cluster"
     )
 
-    @field_serializer("initial_resources")
-    def serialize_event(self, initial_resources: ClusterResources) -> Dict[str, Any]:
-        return initial_resources.to_dict()
+    @field_serializer("resources")
+    def serialize_event(self, resources: ClusterResources) -> Dict[str, Any]:
+        return resources.to_dict()
 
-    @field_validator("initial_resources", mode="before")
+    @field_validator("resources", mode="before")
     @classmethod
     def validate_resources(cls, v: Any) -> ClusterResources:
         if isinstance(v, ClusterResources):
             return v
         if not isinstance(v, dict):
-            raise ValueError("initial_resources must be a dictionary")
+            raise ValueError("resources must be a dictionary")
 
         # Reconstruct the Kubernetes objects from their dictionary representations.
         # The constructor of the k8s client objects can typically take the dict.
