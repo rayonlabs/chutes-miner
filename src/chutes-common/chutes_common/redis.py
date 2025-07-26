@@ -183,6 +183,8 @@ class MonitoringRedisClient:
     async def set_cluster_resources(self, cluster_name: str, resources: ClusterResources):
         """Sets cluster resources in redis, overwrite any existing resources."""
 
+        self.clear_cluster_resources(cluster_name)
+
         for resource_type, items in resources.items():
             if items:
                 key = f"clusters:{cluster_name}:resources:{resource_type.value}"
@@ -195,7 +197,7 @@ class MonitoringRedisClient:
 
                 self.redis.hset(key, mapping=resource_map)
 
-        logger.info(f"Stored initial resources for cluster {cluster_name}")
+        logger.info(f"Stored resources for cluster {cluster_name}")
 
     async def update_resource(self, cluster_name: str, event: WatchEvent):
         """Update a single resource"""
