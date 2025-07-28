@@ -290,7 +290,9 @@ class MonitoringRedisClient:
         """Clear all resources for a cluster"""
         
         for resource_type in ResourceType:
-            if resource_type == ResourceType.NODE and not clear_nodes:
+            if resource_type == ResourceType.ALL or (
+                resource_type == ResourceType.NODE and not clear_nodes
+            ):
                 # Don't clear nodes when clearing resources to avoid deleteing
                 # a server in gepetto
                 continue
