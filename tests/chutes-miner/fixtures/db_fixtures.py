@@ -19,6 +19,7 @@ def mock_db_session():
     mock_result.scalar_one_or_none.return_value = []
     session.execute = AsyncMock(return_value=mock_result)
     session.commit = AsyncMock()
+    session.delete = AsyncMock()
     session.refresh = AsyncMock()
 
     mock_get_session = AsyncMock(__aenter__=AsyncMock(return_value=session), __aexit__=mock_aexit)

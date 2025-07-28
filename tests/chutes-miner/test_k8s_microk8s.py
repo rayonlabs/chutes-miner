@@ -532,7 +532,7 @@ async def test_deploy_chute_deployment_disappeared(
     # Setup session mock for deployment retrieval
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
-    mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, None]
+    mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, None, None]
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
     nodes = create_api_test_nodes(1)
