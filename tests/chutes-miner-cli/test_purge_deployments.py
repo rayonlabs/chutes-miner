@@ -144,7 +144,11 @@ def test_purge_deployment_by_node(
     monkeypatch.setattr("aiohttp.ClientSession", MagicMock(return_value=_session))
 
     # Run the command
-    with patch("builtins.open", create=True) as mock_open:
+    with (
+        patch("builtins.open", create=True) as mock_open,
+        patch('chutes_miner_cli.cli.delete_preflight') as mock_preflight
+    ):
+        mock_preflight.return_value = True
         mock_open.return_value.__enter__ = lambda s: s
         mock_open.return_value.__exit__ = MagicMock()
         mock_open.return_value.read = MagicMock(return_value=mock_hotkey_content)
@@ -193,7 +197,11 @@ def test_purge_deployment_by_node_name(
     monkeypatch.setattr("aiohttp.ClientSession", MagicMock(return_value=_session))
 
     # Run the command
-    with patch("builtins.open", create=True) as mock_open:
+    with (
+        patch("builtins.open", create=True) as mock_open,
+        patch('chutes_miner_cli.cli.delete_preflight') as mock_preflight
+    ):
+        mock_preflight.return_value = True
         mock_open.return_value.__enter__ = lambda s: s
         mock_open.return_value.__exit__ = MagicMock()
         mock_open.return_value.read = MagicMock(return_value=mock_hotkey_content)
