@@ -1,13 +1,9 @@
 from chutes_common.constants import CLUSTER_ENDPOINT
-from chutes_common.k8s import WatchEvent, WatchEventType
-from chutes_common.monitoring.requests import ResourceUpdateRequest
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock
 from datetime import datetime, timezone
-from kubernetes.client import V1Deployment, V1ObjectMeta, V1DeploymentSpec
 
-from chutes_monitor.api.cluster.router import router
 from chutes_common.monitoring.models import ClusterState, ClusterStatus, HeartbeatData
 
 
@@ -15,6 +11,7 @@ from chutes_common.monitoring.models import ClusterState, ClusterStatus, Heartbe
 def test_client():
     """Create test client for router testing"""
     from fastapi import FastAPI
+    from chutes_monitor.api.cluster.router import router
     app = FastAPI()
     app.include_router(router, prefix=CLUSTER_ENDPOINT)
     return TestClient(app)
@@ -114,7 +111,7 @@ async def test_receive_resource_update_success(mock_redis_client, test_client, t
     mock_redis_client.update_resource = AsyncMock()
     
     json_data = test_resource_update_request.model_dump()
-    response = test_client.put(f"{CLUSTER_ENDPOINT}/test-cluster/resources", json=json_data)
+    response = test_client.patch(f"{CLUSTER_ENDPOINT}/test-cluster/resources", json=json_data)
     
     assert response.status_code == 200
     json_response = response.json()

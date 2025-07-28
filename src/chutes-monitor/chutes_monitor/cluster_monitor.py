@@ -257,7 +257,7 @@ class ClusterMonitor:
     async def list_clusters(self) -> List[ClusterStatus]:
         """List all registered clusters with their status"""
         try:
-            cluster_names = await self.redis_client.get_all_cluster_names()
+            cluster_names = self.redis_client.get_all_cluster_names()
             clusters = []
 
             for cluster_name in cluster_names:

@@ -8,7 +8,7 @@ from kubernetes_asyncio.client import (
 import pytest
 
 from datetime import datetime
-from chutes_common.monitoring.requests import RegisterClusterRequest
+from chutes_common.monitoring.requests import SetClusterResourcesRequest
 import pytest
 
 
@@ -116,7 +116,7 @@ def create_cluster_request_data(sample_cluster_resources):
         # pods = [create_mock_pod(f"pod-{i}") for i in range(num_pods)]
         # nodes = [create_mock_node(f"node-{i}") for i in range(num_nodes)]
         
-        return RegisterClusterRequest(cluster_name=cluster_name, initial_resources=sample_cluster_resources)
+        return SetClusterResourcesRequest(cluster_name=cluster_name, resources=sample_cluster_resources)
     
     return _create_request_data
 

@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone, timedelta
 
 from chutes_monitor.cluster_monitor import HealthChecker, ClusterMonitor
@@ -53,6 +53,7 @@ async def test_cluster_monitor_full_lifecycle(mock_redis_client):
         
         # Test complete lifecycle
         cluster_monitor = ClusterMonitor()
+        mock_redis_client.get_all_cluster_names = MagicMock(return_value=[])
         
         # Register cluster
         cluster_name = "integration-test-cluster"
