@@ -72,13 +72,7 @@ def test_health_check_endpoint_structure(app):
 
 def test_get_status_stopped(resource_monitor, client):
     """Test get status when monitoring is stopped"""
-    mock_status = MonitoringStatus(
-        state=MonitoringState.STOPPED,
-        cluster_id=None,
-        control_plane_url=None,
-        error_message=None
-    )
-    resource_monitor.status = mock_status
+    resource_monitor.state = MonitoringState.STOPPED
     
     response = client.get("/status")
     
@@ -96,7 +90,7 @@ def test_get_status_running(resource_monitor, client):
         error_message=None,
         last_heartbeat="2023-12-01T10:30:00Z"
     )
-    resource_monitor.status = mock_status
+    resource_monitor._status = mock_status
     
     response = client.get("/status")
     
@@ -114,7 +108,7 @@ def test_get_status_error(resource_monitor, client):
         control_plane_url="http://control-plane.example.com",
         error_message="Connection timeout"
     )
-    resource_monitor.status = mock_status
+    resource_monitor._status = mock_status
     
     response = client.get("/status")
     
@@ -130,7 +124,7 @@ def test_get_status_starting(resource_monitor, client):
         cluster_id="test-cluster",
         control_plane_url="http://control-plane.example.com"
     )
-    resource_monitor.status = mock_status
+    resource_monitor._status = mock_status
     
     response = client.get("/status")
     
@@ -144,7 +138,7 @@ def test_get_status_starting(resource_monitor, client):
 def test_start_monitoring_success_when_stopped(mock_settings, resource_monitor, client):
     """Test successful start monitoring when currently stopped"""
     mock_settings.cluster_name = "test-cluster"
-    resource_monitor.status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
     resource_monitor.start = AsyncMock()
     
     request_data = {"control_plane_url": "http://control-plane.example.com"}
@@ -160,7 +154,7 @@ def test_start_monitoring_success_when_stopped(mock_settings, resource_monitor, 
 def test_start_monitoring_failure_when_running(mock_settings, resource_monitor, client):
     """Test successful start monitoring when already running (restarts)"""
     mock_settings.cluster_name = "test-cluster"
-    resource_monitor.status = MonitoringStatus(state=MonitoringState.RUNNING)
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.RUNNING)
 
     resource_monitor.stop = AsyncMock()
     resource_monitor.start = AsyncMock()
@@ -206,7 +200,7 @@ def test_start_monitoring_missing_url(resource_monitor, client):
 def test_start_monitoring_failure(mock_settings, resource_monitor, client):
     """Test start monitoring failure"""
     mock_settings.cluster_name = "test-cluster"
-    resource_monitor.status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
     resource_monitor.start = AsyncMock(side_effect=Exception("Connection failed"))
     
     request_data = {"control_plane_url": "http://control-plane.example.com"}
@@ -297,7 +291,7 @@ def test_monitoring_workflow_integration(mock_settings, resource_monitor, client
     mock_settings.cluster_name = "integration-test-cluster"
     
     # Initially stopped
-    resource_monitor.status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
     resource_monitor.start = AsyncMock()
     resource_monitor.stop = AsyncMock()
     
@@ -312,7 +306,7 @@ def test_monitoring_workflow_integration(mock_settings, resource_monitor, client
     resource_monitor.start.assert_called_once_with("http://test.com")
     
     # 3. Check status (simulate running state)
-    resource_monitor.status = MonitoringStatus(
+    resource_monitor._status = MonitoringStatus(
         state=MonitoringState.RUNNING,
         control_plane_url="http://test.com"
     )
@@ -327,7 +321,7 @@ def test_monitoring_workflow_integration(mock_settings, resource_monitor, client
 
 def test_concurrent_start_requests(resource_monitor, client):
     """Test handling of concurrent start requests"""
-    resource_monitor.status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
     resource_monitor.start = AsyncMock()
     
     # Simulate multiple concurrent requests
@@ -344,7 +338,7 @@ def test_concurrent_start_requests(resource_monitor, client):
 
 def test_request_validation_edge_cases(resource_monitor, client):
     """Test request validation with various edge cases"""
-    resource_monitor.status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
     
     # Test with None URL
     response = client.post("/start", json={"control_plane_url": None})
@@ -363,7 +357,7 @@ def test_request_validation_edge_cases(resource_monitor, client):
 @patch('chutes_agent.api.monitor.router.logger')
 def test_start_monitoring_logs_errors(mock_logger, resource_monitor, client):
     """Test that start monitoring logs errors appropriately"""
-    resource_monitor.status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
     resource_monitor.start = AsyncMock(side_effect=Exception("Test error"))
     
     request_data = {"control_plane_url": "http://control-plane.example.com"}
@@ -412,7 +406,7 @@ def test_health_check_performance(client):
 def test_status_endpoint_no_side_effects(resource_monitor, client):
     """Test that status endpoint doesn't modify state"""
     initial_status = MonitoringStatus(state=MonitoringState.RUNNING)
-    resource_monitor.status = initial_status
+    resource_monitor._status = initial_status
     
     # Call status endpoint multiple times
     for _ in range(5):
