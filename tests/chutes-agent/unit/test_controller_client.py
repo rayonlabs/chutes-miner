@@ -50,7 +50,9 @@ async def test_send_initial_resources_failure(mock_sign, mock_aiohttp_session, c
 
 @pytest.mark.asyncio
 @patch('chutes_agent.client.sign_request')
-async def test_send_resource_update_success(mock_sign, mock_aiohttp_session, control_plane_client, sample_pod):
+async def test_send_resource_update_success(
+    mock_sign, mock_aiohttp_session, control_plane_client
+):
     """Test successful resource update send"""
     # Setup mocks
     mock_sign.return_value = ({"Authorization": "Bearer token"}, {"data": "payload"})
@@ -64,7 +66,7 @@ async def test_send_resource_update_success(mock_sign, mock_aiohttp_session, con
 
     # Verify calls were made
     mock_sign.assert_called_once()
-    mock_aiohttp_session.session.put.assert_called_once()
+    mock_aiohttp_session.session.patch.assert_called_once()
 
 @pytest.mark.asyncio
 @patch('chutes_agent.client.sign_request')

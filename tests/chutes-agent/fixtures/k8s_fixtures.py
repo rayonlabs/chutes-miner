@@ -191,3 +191,80 @@ def mock_watch():
             mock_stream=mock_stream,
             mock_stream_events=mock_stream_events
         )
+
+@pytest.fixture(scope="function")
+def sample_pod():
+    """Sample kubernetes_asyncio pod object"""
+    pod = MagicMock()
+    pod.metadata.name = "test-pod"
+    pod.metadata.namespace = "default"
+    pod.to_dict.return_value = {
+        "metadata": {"name": "test-pod", "namespace": "default"},
+        "spec": {"containers": [{"name": "test-container"}]}
+    }
+    return pod
+
+@pytest.fixture(scope="function")
+def sample_deployment():
+    """Sample kubernetes_asyncio deployment object"""
+    deployment = MagicMock()
+    deployment.metadata.name = "test-deployment"
+    deployment.metadata.namespace = "default"
+    deployment.to_dict.return_value = {
+        "metadata": {"name": "test-deployment", "namespace": "default"},
+        "spec": {"replicas": 3}
+    }
+    return deployment
+
+@pytest.fixture(scope="function")
+def sample_service():
+    """Sample kubernetes_asyncio service object"""
+    service = MagicMock()
+    service.metadata.name = "test-service"
+    service.metadata.namespace = "default"
+    service.to_dict.return_value = {
+        "metadata": {"name": "test-service", "namespace": "default"},
+        "spec": {"ports": [{"port": 80}]}
+    }
+    return service
+
+@pytest.fixture(autouse=True)
+def mock_load_k8s_config():
+    with patch("kubernetes_asyncio.config.load_incluster_config") as mock_config:
+        yield mock_config
+
+@pytest.fixture(autouse=True)
+def mock_apps_client():
+    mock_client = AsyncMock()
+    mock_client.api_client.close = AsyncMock()
+    yield mock_client
+
+@pytest.fixture(autouse=True)
+def mock_apps_client_class(mock_apps_client):
+    with patch('kubernetes_asyncio.client.AppsV1Api') as mock_client:
+        mock_client.return_value = mock_apps_client
+        yield mock_client
+
+@pytest.fixture(autouse=True)
+def mock_core_client():
+    mock_client = AsyncMock()
+    mock_client.api_client.close = AsyncMock()
+    yield mock_client
+
+@pytest.fixture(autouse=True)
+def mock_core_client_class(mock_core_client):
+    with patch('kubernetes_asyncio.client.CoreV1Api') as mock_client:
+        mock_client.return_value = mock_core_client
+        yield mock_client
+
+@pytest.fixture(autouse=True)
+def mock_batch_client():
+    mock_client = AsyncMock()
+    mock_client.api_client.close = AsyncMock()
+    yield mock_client
+
+@pytest.fixture(autouse=True)
+def mock_batch_client_class(mock_batch_client):
+    with patch('kubernetes_asyncio.client.BatchV1Api') as mock_client:
+        mock_client.return_value = mock_batch_client
+        yield mock_client

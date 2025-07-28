@@ -4,12 +4,13 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from chutes_agent.config import settings
 
+# @pytest.fixture(autouse=True)
+# def agent_setup(mock_client_class):
+#     pass
+
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.client.AppsV1Api')
-@patch('kubernetes_asyncio.client.CoreV1Api')
-@patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_complete_monitoring_workflow(
-    mock_config, mock_core_v1, mock_apps_v1, mock_client_class, resource_monitor
+    mock_core_client_class, mock_apps_client_class, mock_batch_client_class, mock_client_class, resource_monitor, mock_load_k8s_config
 ):
     """Test the complete monitoring workflow from start to finish"""
     # Setup mocks
@@ -20,25 +21,28 @@ async def test_complete_monitoring_workflow(
     
     # Mock collector to return empty resources
     with patch.object(monitor.collector, 'collect_all_resources') as mock_collect:
-        mock_collect.return_value = {'pods': [], 'deployments': [], 'services': []}
-        
-        # Initialize monitor
-        await monitor.start("http://test-control-plane")
-        
-        # Verify client was created and register_cluster was called
-        mock_client_class.assert_called_once_with("http://test-control-plane")
-        mock_client.register_cluster.assert_called_once()
-        
-        # Verify kubernetes_asyncio components were initialized
-        mock_config.assert_called_once()
-        mock_core_v1.assert_called_once()
-        mock_apps_v1.assert_called_once()
+        with patch.object(monitor, '_persist_control_plane_url'):
+            mock_collect.return_value = {'pods': [], 'deployments': [], 'services': [], 'jobs': [], 'nodes': []}
+            
+            # Initialize monitor
+            await monitor.start("http://test-control-plane")
+            
+            # Verify client was created and register_cluster was called
+            mock_client_class.assert_called_once_with("http://test-control-plane")
+            mock_client.register_cluster.assert_called_once()
+            
+            # Verify kubernetes_asyncio components were initialized
+            mock_load_k8s_config.assert_called_once()
+            mock_core_client_class.assert_called_once()
+            mock_apps_client_class.assert_called_once()
+            mock_batch_client_class.assert_called_once()
 
 
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.config.load_incluster_config', side_effect=Exception("K8s error"))
-async def test_error_handling_and_recovery(mock_config, resource_monitor):
+async def test_error_handling_and_recovery(mock_load_k8s_config, resource_monitor):
     """Test error handling and recovery mechanisms"""
+    mock_load_k8s_config.side_effect=Exception("K8s error")
+
     from chutes_common.monitoring.models import MonitoringState
     
     monitor = resource_monitor
@@ -48,7 +52,7 @@ async def test_error_handling_and_recovery(mock_config, resource_monitor):
         await monitor.initialize()
     
     # Verify status remains in appropriate state
-    assert monitor.status.state in [MonitoringState.STOPPED, MonitoringState.ERROR]
+    assert monitor.state in [MonitoringState.STOPPED, MonitoringState.ERROR]
 
 @pytest.mark.asyncio
 async def test_client_collector_integration(mock_sign_request, mock_aiohttp_session):
@@ -72,13 +76,10 @@ async def test_client_collector_integration(mock_sign_request, mock_aiohttp_sess
         mock_aiohttp_session.session.post.assert_called_once()
 
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.client.AppsV1Api')
-@patch('kubernetes_asyncio.client.CoreV1Api')
-@patch('kubernetes_asyncio.config.load_incluster_config')
 @patch.object(settings, 'cluster_name', 'test-cluster')
 @patch.object(settings, 'watch_namespaces', ['default'])
 async def test_full_startup_sequence(
-    mock_config, mock_core_v1, mock_apps_v1, mock_client_class, resource_monitor
+    mock_load_k8s_config, mock_core_client_class, mock_apps_client_class, mock_client_class, resource_monitor
 ):
     """Test the full application startup sequence"""
     
@@ -136,29 +137,26 @@ def test_api_models_integration():
     assert request.control_plane_url == "https://control.example.com"
 
 @pytest.mark.asyncio
-async def test_error_propagation(mock_client_class, resource_monitor):
+async def test_error_propagation(resource_monitor):
     """Test that errors propagate correctly through the system"""
     from chutes_common.monitoring.models import MonitoringState
     
     monitor = resource_monitor
     
     # Test that client errors affect monitor status
-    with patch.object(monitor, 'initialize', side_effect=Exception("Client connection failed")):
+    with patch.object(monitor.collector, 'collect_all_resources', side_effect=Exception("Client connection failed")):
         try:
             await monitor.start("https://control.example.com")
         except Exception:
             pass
         
         # Status should reflect the error
-        assert monitor.status.state == MonitoringState.ERROR
+        assert monitor.state == MonitoringState.ERROR
         assert "Client connection failed" in monitor.status.error_message
 
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.client.AppsV1Api')
-@patch('kubernetes_asyncio.client.CoreV1Api') 
-@patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_monitor_restart_functionality(
-    mock_config, mock_core_v1, mock_apps_v1, mock_client_class, resource_monitor
+    mock_load_k8s_config, mock_core_client_class, mock_apps_client_class, mock_client_class, resource_monitor
 ):
     """Test monitor restart functionality in integration"""
     from chutes_common.monitoring.models import MonitoringState
@@ -171,17 +169,17 @@ async def test_monitor_restart_functionality(
     monitor.control_plane_client = mock_client
     
     with patch.object(monitor.collector, 'collect_all_resources') as mock_collect:
-        mock_collect.return_value = {'pods': [], 'deployments': [], 'services': []}
+        mock_collect.return_value = {'pods': [], 'deployments': [], 'services': [], 'jobs': []}
         
         # Start monitoring
         await monitor.start("http://test-control-plane")
-        assert monitor.status.state == MonitoringState.RUNNING
+        assert monitor.state == MonitoringState.RUNNING
         
         # Test restart functionality
         await monitor._async_restart()
         
         # Verify restart sequence
-        mock_client.remove_cluster.assert_called()
+        mock_client.set_cluster_resources.assert_called()
 
 @pytest.mark.asyncio 
 async def test_signed_request_integration(mock_sign_request, mock_aiohttp_session):
@@ -200,15 +198,12 @@ async def test_signed_request_integration(mock_sign_request, mock_aiohttp_sessio
     # Verify the call was made with proper JSON payload
     call_args = mock_aiohttp_session.session.put.call_args
     assert 'data' in call_args.kwargs
-    assert call_args.kwargs['data'] == {"signed": "payload"}
+    assert call_args.kwargs['data'] == {"payload": "data"}
 
 @pytest.mark.asyncio
 @patch('kubernetes_asyncio.watch.Watch')
-@patch('kubernetes_asyncio.client.AppsV1Api')
-@patch('kubernetes_asyncio.client.CoreV1Api')
-@patch('kubernetes_asyncio.config.load_incluster_config')
 async def test_watch_event_handling_integration(
-    mock_config, mock_core_v1, mock_apps_v1, mock_watch, mock_client_class, resource_monitor
+    mock_watch, mock_client_class, resource_monitor
 ):
     """Test watch event handling in integration"""
     from chutes_common.k8s import WatchEvent
@@ -219,8 +214,6 @@ async def test_watch_event_handling_integration(
     
     monitor = resource_monitor
     monitor.control_plane_client = mock_client
-    monitor.apps_v1 = AsyncMock()
-    monitor.core_v1 = AsyncMock()
     
     # Create a mock watch event
     test_event = WatchEvent(type="ADDED", object=MagicMock())

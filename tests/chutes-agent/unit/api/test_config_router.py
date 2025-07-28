@@ -10,10 +10,16 @@ app = FastAPI()
 app.include_router(router)
 client = TestClient(app)
 
+@pytest.fixture(autouse=True)
+def setup(
+    mock_core_client_class, mock_batch_client_class, mock_apps_client_class,
+    mock_load_k8s_config
+):
+    pass
+
+
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.client.CoreV1Api')
-@patch('kubernetes_asyncio.config.load_incluster_config')
-async def test_get_kubeconfig_from_secret_success(mock_load_config, mock_core_v1_class):
+async def test_get_kubeconfig_from_secret_success(mock_core_client):
     """Test successful kubeconfig retrieval"""
     # Mock the secret data
     kubeconfig_content = "apiVersion: v1\nkind: Config"
@@ -22,28 +28,24 @@ async def test_get_kubeconfig_from_secret_success(mock_load_config, mock_core_v1
     mock_secret = MagicMock()
     mock_secret.data = {"kubeconfig": kubeconfig_b64}
     
-    mock_v1 = MagicMock()
-    mock_v1.read_namespaced_secret.return_value = mock_secret
-    mock_core_v1_class.return_value = mock_v1
+    mock_core_client.read_namespaced_secret.return_value = mock_secret
     
     result = await get_kubeconfig_from_secret()
     
     assert result == kubeconfig_content
-    mock_v1.read_namespaced_secret.assert_called_once_with(
+    mock_core_client.read_namespaced_secret.assert_called_once_with(
         name="miner-kubeconfig", 
         namespace="default"
     )
 
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.client.CoreV1Api')
-@patch('kubernetes_asyncio.config.load_incluster_config')
-async def test_get_kubeconfig_from_secret_not_found(mock_load_config, mock_core_v1_class):
+async def test_get_kubeconfig_from_secret_not_found(
+    mock_core_client
+):
     """Test kubeconfig retrieval when secret not found"""
     from kubernetes_asyncio.client.rest import ApiException
     
-    mock_v1 = MagicMock()
-    mock_v1.read_namespaced_secret.side_effect = ApiException(status=404, reason="Not Found")
-    mock_core_v1_class.return_value = mock_v1
+    mock_core_client.read_namespaced_secret.side_effect=ApiException(status=404, reason="Not Found")
     
     with pytest.raises(HTTPException) as exc_info:
         await get_kubeconfig_from_secret()
@@ -52,15 +54,13 @@ async def test_get_kubeconfig_from_secret_not_found(mock_load_config, mock_core_
     assert "not found" in exc_info.value.detail
 
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.client.CoreV1Api')
-@patch('kubernetes_asyncio.config.load_incluster_config')
-async def test_get_kubeconfig_from_secret_permission_denied(mock_load_config, mock_core_v1_class):
+async def test_get_kubeconfig_from_secret_permission_denied(
+    mock_core_client
+):
     """Test kubeconfig retrieval with permission denied"""
     from kubernetes_asyncio.client.rest import ApiException
     
-    mock_v1 = MagicMock()
-    mock_v1.read_namespaced_secret.side_effect = ApiException(status=403, reason="Forbidden")
-    mock_core_v1_class.return_value = mock_v1
+    mock_core_client.read_namespaced_secret.side_effect = ApiException(status=403, reason="Forbidden")
     
     with pytest.raises(HTTPException) as exc_info:
         await get_kubeconfig_from_secret()
@@ -69,16 +69,12 @@ async def test_get_kubeconfig_from_secret_permission_denied(mock_load_config, mo
     assert "Permission denied" in exc_info.value.detail
 
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.client.CoreV1Api')
-@patch('kubernetes_asyncio.config.load_incluster_config')
-async def test_get_kubeconfig_from_secret_missing_key(mock_load_config, mock_core_v1_class):
+async def test_get_kubeconfig_from_secret_missing_key(mock_core_client):
     """Test kubeconfig retrieval when secret missing kubeconfig key"""
     mock_secret = MagicMock()
     mock_secret.data = {"other_key": "value"}
     
-    mock_v1 = MagicMock()
-    mock_v1.read_namespaced_secret.return_value = mock_secret
-    mock_core_v1_class.return_value = mock_v1
+    mock_core_client.read_namespaced_secret.return_value = mock_secret
     
     with pytest.raises(HTTPException) as exc_info:
         await get_kubeconfig_from_secret()
@@ -98,9 +94,7 @@ async def test_get_kubeconfig_from_secret_config_failure(mock_incluster_config, 
     assert "Error loading kubeconfig" in exc_info.value.detail
 
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.client.CoreV1Api')
-@patch('kubernetes_asyncio.config.load_incluster_config')
-async def test_get_kubeconfig_from_secret_custom_params(mock_load_config, mock_core_v1_class):
+async def test_get_kubeconfig_from_secret_custom_params(mock_core_client):
     """Test kubeconfig retrieval with custom secret name and namespace"""
     kubeconfig_content = "custom config"
     kubeconfig_b64 = base64.b64encode(kubeconfig_content.encode()).decode()
@@ -108,9 +102,7 @@ async def test_get_kubeconfig_from_secret_custom_params(mock_load_config, mock_c
     mock_secret = MagicMock()
     mock_secret.data = {"kubeconfig": kubeconfig_b64}
     
-    mock_v1 = MagicMock()
-    mock_v1.read_namespaced_secret.return_value = mock_secret
-    mock_core_v1_class.return_value = mock_v1
+    mock_core_client.read_namespaced_secret.return_value = mock_secret
     
     result = await get_kubeconfig_from_secret(
         secret_name="custom-secret", 
@@ -118,7 +110,7 @@ async def test_get_kubeconfig_from_secret_custom_params(mock_load_config, mock_c
     )
     
     assert result == kubeconfig_content
-    mock_v1.read_namespaced_secret.assert_called_once_with(
+    mock_core_client.read_namespaced_secret.assert_called_once_with(
         name="custom-secret", 
         namespace="custom-namespace"
     )
