@@ -941,7 +941,7 @@ class Gepetto:
 
                 # If this is a standalone server, we need to stop monitoring from the agent
                 if server.agent_api:
-                    stop_server_monitoring(server.agent_api)
+                    await stop_server_monitoring(server.agent_api)
 
                 await asyncio.gather(
                     *[self.gpu_deleted({"gpu_id": gpu.gpu_id}) for gpu in server.gpus]

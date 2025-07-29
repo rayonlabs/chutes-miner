@@ -630,7 +630,7 @@ async def bootstrap_server(
             yield sse_message(error_message)
             raise GraValBootstrapFailure(error_message)
         
-        if kubeconfig:
+        if server_args.agent_api:
             # If this is a mutli cluster setup, need to propagate existing Chute CMs to the cluster
             async with get_session() as session:
                 chutes = (await session.execute(select(Chute))).unique().scalars()

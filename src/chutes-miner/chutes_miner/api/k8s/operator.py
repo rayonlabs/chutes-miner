@@ -1361,7 +1361,12 @@ class MultiClusterK8sOperator(K8sOperator):
         clusters = self._redis.get_all_cluster_names()
         for cluster in clusters:
             client = self._manager.get_core_client(cluster)
-            client.create_namespaced_config_map(namespace=namespace, body=config_map)
+            # Need to handle 409 per cluster so we don't break out early
+            try:
+                client.create_namespaced_config_map(namespace=namespace, body=config_map)
+            except ApiException as e:
+                if e.status != 409:
+                    raise
 
     def _deploy_job(self, job, server_name, namespace=settings.namespace):
         client = self._manager.get_batch_client(server_name)
