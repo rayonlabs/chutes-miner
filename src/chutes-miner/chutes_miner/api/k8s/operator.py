@@ -1316,7 +1316,7 @@ class MultiClusterK8sOperator(K8sOperator):
         except ApiException as e:
             if e.status == 404:
                 # Not found, remove from redis
-                self._redis.delete_resource(name, context, ResourceType.DEPLOYMENT)
+                self._redis.delete_resource(name, context, ResourceType.DEPLOYMENT, namespace)
                 logger.warning(f"Attempted to delete deployment {name}, but appears to have disappeared.  Removed from redis cache.")
             else:
                 raise
@@ -1341,7 +1341,7 @@ class MultiClusterK8sOperator(K8sOperator):
         except ApiException as e:
             if e.status == 404:
                 # Not found, remove from redis
-                self._redis.delete_resource(name, context, ResourceType.SERVICE)
+                self._redis.delete_resource(name, context, ResourceType.SERVICE, namespace)
                 logger.warning(f"Attempted to delete service {name}, but appears to have disappeared.  Removed from redis cache.")
             else:
                 raise
@@ -1385,7 +1385,7 @@ class MultiClusterK8sOperator(K8sOperator):
         except ApiException as e:
             if e.status == 404:
                 # Not found, remove from redis
-                self._redis.delete_resource(name, context, ResourceType.JOB)
+                self._redis.delete_resource(name, context, ResourceType.JOB, namespace)
                 logger.warning(f"Attempted to delete job {name}, but appears to have disappeared.  Removed from redis cache.")
             else:
                 raise

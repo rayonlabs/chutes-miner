@@ -213,9 +213,13 @@ class MonitoringRedisClient:
         # Publish the resource change event
         self._publish_resource_change(cluster_name, event)
 
-    def delete_resource(self, name: str, cluster: str = "*", type: ResourceType = ResourceType.ALL):
+    def delete_resource(
+            self, name: str, cluster: str = "*", type: ResourceType = ResourceType.ALL,
+            namespace = "*"
+    ):
         key = f"clusters:{cluster}:resources:{type.value}"
-        self.redis.hdel(key, name)
+        map_key = f"{namespace}:{name}"
+        self.redis.hdel(key, map_key)
 
     def get_resources(
         self,
