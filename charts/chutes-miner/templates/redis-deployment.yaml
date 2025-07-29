@@ -49,3 +49,11 @@ spec:
               protocol: TCP
           resources:
             {{- toYaml .Values.redis.resources | nindent 12 }}
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          hostPath:
+            path: /var/snap/redis-data
+            type: DirectoryOrCreate
