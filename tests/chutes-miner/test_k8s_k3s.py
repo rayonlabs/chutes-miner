@@ -15,7 +15,7 @@ from chutes_common.k8s import WatchEvent, WatchEventType, serializer
 
 
 # Import the module under test
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.deployment import Deployment
 import chutes_miner.api.k8s as k8s
 from chutes_miner.api.exceptions import DeploymentFailure
 from chutes_miner.api.k8s.constants import (

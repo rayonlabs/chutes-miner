@@ -268,3 +268,15 @@ def mock_batch_client_class(mock_batch_client):
     with patch('kubernetes_asyncio.client.BatchV1Api') as mock_client:
         mock_client.return_value = mock_batch_client
         yield mock_client
+
+@pytest.fixture(autouse=True)
+def mock_api_client():
+    mock_client = AsyncMock()
+    mock_client.close = AsyncMock()
+    yield mock_client
+
+@pytest.fixture(autouse=True)
+def mock_api_client_class(mock_batch_client):
+    with patch('kubernetes_asyncio.client.ApiClient') as mock_client:
+        mock_client.return_value = mock_batch_client
+        yield mock_client

@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 
 from chutes_common.monitoring.models import ClusterStatus, ClusterState, HeartbeatData
 from chutes_monitor.cluster_monitor import HealthChecker, ClusterMonitor
-from chutes_monitor.config import settings
 
 
 @pytest.fixture

@@ -57,7 +57,7 @@ def test_get_status(mock_monitor, client):
 
 def test_start_monitoring_success(mock_monitor, client):
     """Test successful start monitoring"""
-    mock_monitor.state = state=MonitoringState.STOPPED
+    mock_monitor.state = MonitoringState.STOPPED
     
     with patch('chutes_agent.api.monitor.router.settings') as mock_settings:
         mock_settings.cluster_name = "test-cluster"
@@ -68,7 +68,7 @@ def test_start_monitoring_success(mock_monitor, client):
 
 def test_start_monitoring_failure(mock_monitor, client):
     """Test failed start monitoring"""
-    mock_monitor.state = state=MonitoringState.STOPPED
+    mock_monitor.state = MonitoringState.STOPPED
     mock_monitor.stop = AsyncMock()
     mock_monitor.start = AsyncMock(side_effect=Exception("Start failed"))
     

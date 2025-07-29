@@ -12,7 +12,6 @@ def setup(
 ):
     pass
 
-@pytest.mark.asyncio
 def test_resource_monitor_init(
     mock_core_client, mock_batch_client, mock_apps_client
 ):
@@ -75,7 +74,6 @@ async def test_stop_monitoring_no_task(resource_monitor):
     await resource_monitor.stop_monitoring_tasks()
     assert resource_monitor.state == MonitoringState.STOPPED
 
-@pytest.mark.asyncio
 def test_restart(resource_monitor):
     """Test restart functionality"""
     with patch('asyncio.create_task') as mock_create_task:
@@ -92,14 +90,16 @@ def test_restart(resource_monitor):
 async def test_async_restart(resource_monitor):
     """Test async restart functionality"""
     # Setup mocks
+    resource_monitor.control_plane_client = AsyncMock()
+    resource_monitor.collector.collect_all_resources = AsyncMock(return_value={})
     resource_monitor._stop_monitoring_tasks = AsyncMock()
     resource_monitor._start_monitoring_tasks = AsyncMock()
-    resource_monitor.control_plane_client = AsyncMock()
     
     await resource_monitor._async_restart()
     
     # Verify sequence of calls
     resource_monitor._stop_monitoring_tasks.assert_called_once()
+    resource_monitor.collector.collect_all_resources.assert_called_once()
     resource_monitor.control_plane_client.set_cluster_resources.assert_called_once()
     resource_monitor._start_monitoring_tasks.assert_called_once()
 
@@ -121,9 +121,9 @@ async def test_initialize_success(
     mock_batch_client_class.assert_called_once()
 
 @pytest.mark.asyncio
-@patch('kubernetes_asyncio.config.load_incluster_config', side_effect=Exception("Config error"))
-async def test_initialize_failure(mock_config, resource_monitor):
+async def test_initialize_failure(mock_load_k8s_config, resource_monitor):
     """Test initialization failure"""
+    mock_load_k8s_config.side_effect=Exception("Config error")
     with pytest.raises(Exception, match="Config error"):
         await resource_monitor.initialize()
 
@@ -352,8 +352,8 @@ async def test_watch_resources_task_creation(mock_namespaces, resource_monitor):
     resource_monitor.watch_namespaced_deployments = AsyncMock()
     resource_monitor.watch_namespaced_pods = AsyncMock()
     resource_monitor.watch_namespaced_services = AsyncMock()
+    resource_monitor.watch_namespaced_jobs = AsyncMock()
     resource_monitor.watch_nodes = AsyncMock()
-    resource_monitor.send_heartbeat = AsyncMock()
         
     # Make the gather finish quickly
     with patch('asyncio.gather', side_effect=asyncio.CancelledError()):

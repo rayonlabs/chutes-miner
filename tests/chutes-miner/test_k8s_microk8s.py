@@ -10,7 +10,7 @@ from kubernetes.client.rest import ApiException
 from datetime import datetime
 
 # Import the module under test
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.deployment import Deployment
 import chutes_miner.api.k8s as k8s
 from chutes_miner.api.exceptions import DeploymentFailure
 from chutes_miner.api.k8s.operator import K8sOperator, SingleClusterK8sOperator

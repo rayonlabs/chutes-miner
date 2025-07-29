@@ -2,7 +2,7 @@ import pytest
 import os
 from unittest.mock import patch
 
-from chutes_monitor.config import MonitorSettings
+from chutes_monitor.settings import MonitorSettings
 
 
 def test_monitor_settings_default_values():

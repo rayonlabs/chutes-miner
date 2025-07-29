@@ -18,7 +18,10 @@ def test_client():
 
 
 @pytest.mark.asyncio
-async def test_register_cluster_success(mock_cluster_monitor, test_client, create_cluster_request_data):
+async def test_register_cluster_success(
+    mock_cluster_monitor, test_client, create_cluster_request_data,
+    mock_db_session
+):
     """Test successful cluster registration via API"""
     mock_cluster_monitor.register_cluster = AsyncMock()
     
@@ -28,6 +31,23 @@ async def test_register_cluster_success(mock_cluster_monitor, test_client, creat
     
     assert response.status_code == 200
     mock_cluster_monitor.register_cluster.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_register_cluster_server_not_found(
+    mock_cluster_monitor, test_client, create_cluster_request_data,
+    mock_db_session
+):
+    mock_db_session.set_result(None)
+    """Test successful cluster registration via API"""
+    mock_cluster_monitor.register_cluster = AsyncMock()
+    
+    request = create_cluster_request_data()
+    json_data = request.model_dump_json()
+    response = test_client.post(f"{CLUSTER_ENDPOINT}/test-cluster", data=json_data)
+    
+    assert response.status_code == 404
+    mock_cluster_monitor.register_cluster.assert_not_called()
+
 
 @pytest.mark.asyncio
 async def test_register_cluster_failure(mock_cluster_monitor, test_client, create_cluster_request_data):
