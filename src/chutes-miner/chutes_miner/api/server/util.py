@@ -489,10 +489,9 @@ async def bootstrap_server(
     async def _cleanup(delete_node: bool = True):
         await K8sOperator().cleanup_graval(node_object)
 
-        node_uid = node_object.metadata.uid
-        node_name = node_object.metadata.name
-
         if delete_node:
+            node_uid = node_object.metadata.uid
+            node_name = node_object.metadata.name
             logger.info(f"Purging failed server: {node_name=} {node_uid=}")
             gpu_ids = []
             validator = None
