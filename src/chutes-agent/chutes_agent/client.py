@@ -8,6 +8,7 @@ from chutes_common.constants import CLUSTER_ENDPOINT, MONITORING_PURPOSE
 from chutes_common.k8s import WatchEvent, ClusterResources
 from chutes_common.monitoring.models import ClusterState, HeartbeatData
 from chutes_common.monitoring.requests import SetClusterResourcesRequest, ResourceUpdateRequest
+from chutes_common.exceptions import ClusterConflictException
 from loguru import logger
 from chutes_agent.config import settings
 from typing import Optional
@@ -64,9 +65,14 @@ class ControlPlaneClient:
                     error = json.dumps(error_json)
                 except:
                     error = await response.text()
+
+                if response.status == 409:
+                    raise ClusterConflictException()
+                
                 raise Exception(
                     f"Failed to send initial resources: {response.status} - {error}"
                 )
+            
             logger.info("Successfully sent initial resources")
 
 

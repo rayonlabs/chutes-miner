@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from chutes_common.auth import authorize
 from chutes_common.constants import MONITORING_PURPOSE
-from chutes_monitor.exceptions import ClusterConflictException, ClusterNotFoundException
+from chutes_common.exceptions import ClusterConflictException, ClusterNotFoundException
 from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
 

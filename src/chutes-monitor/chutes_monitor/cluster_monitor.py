@@ -2,7 +2,7 @@
 import asyncio
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
-from chutes_monitor.exceptions import ClusterConflictException, ClusterNotFoundException
+from chutes_common.exceptions import ClusterConflictException, ClusterNotFoundException
 from loguru import logger
 from chutes_common.redis import MonitoringRedisClient
 from chutes_monitor.config import settings

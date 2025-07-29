@@ -5,6 +5,7 @@ import os
 from typing import Any, Callable, Optional
 from chutes_common.monitoring.models import ClusterState, MonitoringState, MonitoringStatus
 from chutes_common.k8s import WatchEvent, serializer
+from chutes_common.exceptions import ClusterConflictException, ClusterNotFoundException
 from kubernetes_asyncio import client, config, watch
 from kubernetes_asyncio.client.exceptions import ApiException
 from chutes_agent.client import ControlPlaneClient
@@ -19,18 +20,6 @@ from tenacity import (
     before_sleep_log,
     after_log,
 )
-
-def _should_retry_api_exception(self, exception):
-    """Custom retry logic - don't retry on CancelledError"""
-    if isinstance(exception, asyncio.CancelledError):
-        return False
-    if isinstance(exception, ApiException):
-        # Don't retry on 410 Gone - need to reset resource version
-        if exception.status == 410:
-            return False
-        return True
-    return True
-
 
 class ResourceMonitor:
     def __init__(self):
@@ -283,14 +272,21 @@ class ResourceMonitor:
     async def _register_cluster(self):
         # Collect and send initial resources
         initial_resources = await self.collector.collect_all_resources()
-        await self.control_plane_client.register_cluster(initial_resources)
+        try:
+            await self.control_plane_client.register_cluster(initial_resources)
+        except ClusterConflictException:
+            await self.control_plane_client.remove_cluster()
+            await self.control_plane_client.register_cluster(initial_resources)
 
         logger.info(f"Registered cluster with control plane.")
 
     async def _send_all_resources(self):
         # Collect and send initial resources
         initial_resources = await self.collector.collect_all_resources()
-        await self.control_plane_client.set_cluster_resources(initial_resources)
+        try:
+            await self.control_plane_client.set_cluster_resources(initial_resources)
+        except ClusterNotFoundException:
+            await self.control_plane_client.register_cluster(initial_resources)
 
         logger.info(f"Sent resources for cluster {settings.cluster_name}")
 
@@ -348,7 +344,7 @@ class ResourceMonitor:
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=1, max=60),
-        retry=_should_retry_api_exception,
+        retry=retry_if_exception_type(Exception),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         after=after_log(logger, logging.DEBUG),
         reraise=True
@@ -363,7 +359,7 @@ class ResourceMonitor:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=2, min=1, max=30),
-        retry=_should_retry_api_exception,
+        retry=retry_if_exception_type(Exception),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True
     )
