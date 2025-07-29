@@ -1307,10 +1307,19 @@ class MultiClusterK8sOperator(K8sOperator):
             resource_name=name, resource_type=ResourceType.DEPLOYMENT, namespace=namespace
         )
         client = self._manager.get_app_client(context)
-        client.delete_namespaced_deployment(
-            name=name,
-            namespace=namespace,
-        )
+
+        try:
+            client.delete_namespaced_deployment(
+                name=name,
+                namespace=namespace,
+            )
+        except ApiException as e:
+            if e.status == 404:
+                # Not found, remove from redis
+                self._redis.delete_resource(name, context, ResourceType.DEPLOYMENT)
+                logger.warning(f"Attempted to delete deployment {name}, but appears to have disappeared.  Removed from redis cache.")
+            else:
+                raise
 
     def _deploy_service(self, service, server_name, namespace=settings.namespace):
         client = self._manager.get_core_client(server_name)
@@ -1324,10 +1333,18 @@ class MultiClusterK8sOperator(K8sOperator):
             resource_name=name, resource_type=ResourceType.SERVICE, namespace=namespace
         )
         client = self._manager.get_core_client(context)
-        client.delete_namespaced_service(
-            name=name,
-            namespace=namespace,
-        )
+        try:
+            client.delete_namespaced_service(
+                name=name,
+                namespace=namespace,
+            )
+        except ApiException as e:
+            if e.status == 404:
+                # Not found, remove from redis
+                self._redis.delete_resource(name, context, ResourceType.SERVICE)
+                logger.warning(f"Attempted to delete service {name}, but appears to have disappeared.  Removed from redis cache.")
+            else:
+                raise
 
     def delete_config_map(self, name, namespace=settings.namespace):
         context = self._redis.get_resource_cluster(
@@ -1358,11 +1375,20 @@ class MultiClusterK8sOperator(K8sOperator):
             resource_name=name, resource_type=ResourceType.JOB, namespace=namespace
         )
         client = self._manager.get_batch_client(context)
-        client.delete_namespaced_job(
-            name=name,
-            namespace=namespace,
-            propagation_policy="Foreground"
-        )
+        
+        try:
+            client.delete_namespaced_job(
+                name=name,
+                namespace=namespace,
+                propagation_policy="Foreground"
+            )
+        except ApiException as e:
+            if e.status == 404:
+                # Not found, remove from redis
+                self._redis.delete_resource(name, context, ResourceType.JOB)
+                logger.warning(f"Attempted to delete job {name}, but appears to have disappeared.  Removed from redis cache.")
+            else:
+                raise
 
     def watch_pods(self, namespace=None, label_selector=None, field_selector=None, timeout=120):
         for event in self._watch_resources(

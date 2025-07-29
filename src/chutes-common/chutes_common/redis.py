@@ -213,6 +213,10 @@ class MonitoringRedisClient:
         # Publish the resource change event
         self._publish_resource_change(cluster_name, event)
 
+    async def delete_resource(self, name: str, cluster: str = "*", type: ResourceType = ResourceType.ALL):
+        key = f"clusters:{cluster}:resources:{type.value}"
+        self.redis.hdel(key, name)
+
     def get_resources(
         self,
         cluster_name: str = "*",
