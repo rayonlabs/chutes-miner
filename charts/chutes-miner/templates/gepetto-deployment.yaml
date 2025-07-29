@@ -80,6 +80,7 @@ spec:
             {{ if not .Values.multiCluster }}
             - name: NVIDIA_RUNTIME
               value: nvidia-container-runtime
+            {{ else }}
             - name: MONITORING_NAMESPACE
               value: "monitoring" 
             {{- end }}

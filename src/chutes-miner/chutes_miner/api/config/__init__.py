@@ -87,7 +87,7 @@ class Settings(CommonSettings):
 
     migrations_dir: str = os.getenv("MIGRATIONS_DIR", "chutes-miner/chutes_miner/api/migrations")
 
-    monitor_api: str = str(os.getenv("MONITOR_API"))
+    monitor_api: str = str(os.getenv("MONITOR_API"), "")
 
 
 settings = Settings()
