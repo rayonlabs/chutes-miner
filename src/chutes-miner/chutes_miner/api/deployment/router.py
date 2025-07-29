@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from chutes_miner.api.database import get_db_session
 from chutes_common.auth import authorize
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.deployment import Deployment
 
 router = APIRouter()
 

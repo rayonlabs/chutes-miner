@@ -12,7 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
 )
-from chutes_miner.api.database import Base
+from chutes_common.schemas import Base
 
 
 class Deployment(Base):

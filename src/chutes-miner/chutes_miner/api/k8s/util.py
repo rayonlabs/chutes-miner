@@ -25,9 +25,9 @@ from kubernetes.client import (
     V1JobSpec
 )
 
-from chutes_miner.api.chute.schemas import Chute
+from chutes_common.schemas.chute import Chute
 from chutes_miner.api.k8s.constants import CHUTE_DEPLOY_PREFIX, CHUTE_SVC_PREFIX
-from chutes_miner.api.server.schemas import Server
+from chutes_common.schemas.server import Server
 from chutes_miner.api.config import settings
 
 

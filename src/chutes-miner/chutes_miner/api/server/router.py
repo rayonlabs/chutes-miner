@@ -15,9 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chutes_miner.api.database import get_db_session
 from chutes_miner.api.config import settings, validator_by_hotkey
 from chutes_common.auth import authorize
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.deployment import Deployment
 from chutes_miner.api.k8s.operator import K8sOperator
-from chutes_miner.api.server.schemas import Server, ServerArgs
+from chutes_common.schemas.server import Server, ServerArgs
 from chutes_miner.api.server.util import bootstrap_server, get_server_kubeconfig
 from chutes_miner.gepetto import Gepetto
 

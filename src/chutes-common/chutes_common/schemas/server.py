@@ -8,7 +8,7 @@ from sqlalchemy import Column, String, DateTime, Integer, BigInteger, Float, Boo
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from chutes_miner.api.database import Base
+from chutes_common.schemas import Base
 
 
 class ServerArgs(BaseModel):

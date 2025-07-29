@@ -11,7 +11,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["pods"]
-  verbs: ["get", "list", "delete"]
+  verbs: ["get", "list", "delete", "watch"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
   verbs: ["get", "list", "delete", "create", "watch"]

@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from chutes_common.auth import authorize
 from chutes_common.constants import MONITORING_PURPOSE
 from chutes_common.exceptions import ClusterConflictException, ClusterNotFoundException
+from chutes_common.schemas.server import Server
+from chutes_monitor.database import get_session
 from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
 
@@ -10,6 +12,7 @@ from chutes_monitor.cluster_monitor import ClusterMonitor
 from chutes_common.monitoring.models import ClusterState, ClusterStatus, HeartbeatData
 from chutes_common.monitoring.requests import SetClusterResourcesRequest, ResourceUpdateRequest
 from chutes_common.redis import MonitoringRedisClient
+from sqlalchemy import select
 
 
 class ClusterRouter:
@@ -45,12 +48,27 @@ class ClusterRouter:
         )
         self.router.add_api_route("/{cluster_name}/health", self.handle_heartbeat, methods=["PUT"])
 
+    async def _cluster_exists(self, cluster_name: str):
+        async with get_session() as session:
+            server = (
+                await session.execute(
+                    select(Server)
+                    .where(Server.name == cluster_name)
+                )).unique().scalar_one_or_none()
+            return server is not None
+
     async def register_cluster(
         self, cluster_name: str, request: SetClusterResourcesRequest,
         _: None = Depends(authorize(allow_miner=True, purpose=MONITORING_PURPOSE)),
     ):
         """Register and start monitoring a new cluster"""
         try:
+            if not await self._cluster_exists(cluster_name):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Server does not exist in inventory."
+                )
+
             await self.cluster_monitor.register_cluster(cluster_name, request.resources)
         except ClusterConflictException as e:
             logger.error(f"Failed to register cluster {cluster_name}:\n{e}")
@@ -58,6 +76,8 @@ class ClusterRouter:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(e)
             )
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error registering cluster {cluster_name}: {e}")
             raise HTTPException(status_code=500, detail=str(e))
@@ -84,6 +104,12 @@ class ClusterRouter:
     ):
         """Register and start monitoring a new cluster"""
         try:
+            if not await self._cluster_exists(cluster_name):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Server does not exist in inventory."
+                )
+
             await self.redis_client.update_cluster_status(
                 ClusterStatus(
                     cluster_name=cluster_name,
@@ -95,9 +121,11 @@ class ClusterRouter:
         except ClusterNotFoundException as e:
             logger.error(f"Failed to set resources for {cluster_name}:\n{e}")
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=status.HTTP_410_GONE,
                 detail=str(e)
             )
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error registering cluster {cluster_name}: {e}")
             raise HTTPException(status_code=500, detail=str(e))

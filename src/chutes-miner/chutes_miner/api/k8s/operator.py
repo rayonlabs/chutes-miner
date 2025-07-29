@@ -45,9 +45,9 @@ from chutes_miner.api.k8s.constants import (
 )
 from chutes_common.k8s import WatchEvent, WatchEventType
 from chutes_miner.api.k8s.util import build_chute_job, build_chute_service
-from chutes_miner.api.server.schemas import Server
-from chutes_miner.api.chute.schemas import Chute
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.server import Server
+from chutes_common.schemas.chute import Chute
+from chutes_common.schemas.deployment import Deployment
 from chutes_miner.api.config import k8s_core_client, k8s_app_client, k8s_batch_client, settings
 from redis.client import PubSub
 import yaml

@@ -1,7 +1,3 @@
-{{- define "redis.url" -}}
-redis://:$(REDIS_PASSWORD)@redis:6379
-{{- end }}
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,7 +50,14 @@ spec:
                   name: redis-secret
                   key: {{ .Values.redis.password.passwordKey }}
             - name: REDIS_URL
-              value: {{ include "redis.url" . }}
+              value: redis://:$(REDIS_PASSWORD)@redis:6379
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: {{ .Values.postgres.database.passwordKey }}
+            - name: POSTGRESQL
+              value: postgresql+asyncpg://{{ .Values.postgres.database.user }}:$(POSTGRES_PASSWORD)@postgres:5432/{{ .Values.postgres.database.name }}
           ports:
             - name: http
               containerPort: {{ .Values.monitor.service.targetPort }}

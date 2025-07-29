@@ -5,7 +5,7 @@ import os
 from typing import Any, Callable, Optional
 from chutes_common.monitoring.models import ClusterState, MonitoringState, MonitoringStatus
 from chutes_common.k8s import WatchEvent, serializer
-from chutes_common.exceptions import ClusterConflictException, ClusterNotFoundException
+from chutes_common.exceptions import ClusterConflictException, ClusterNotFoundException, ServerNotFoundException
 from kubernetes_asyncio import client, config, watch
 from kubernetes_asyncio.client.exceptions import ApiException
 from chutes_agent.client import ControlPlaneClient
@@ -101,6 +101,9 @@ class ResourceMonitor:
                 self.control_plane_client = ControlPlaneClient(url)
                 await self._send_all_resources()
                 await self._start_monitoring_tasks()
+            except ServerNotFoundException:
+                logger.info("Server does not exist in remote inventory, stopping monitoring.")
+                self.stop()
             except Exception as e:
                 logger.error(f"Failed to auto-start monitoring:\n{str(e)}")
         else:

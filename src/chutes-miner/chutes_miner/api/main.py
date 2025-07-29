@@ -9,10 +9,11 @@ from contextlib import asynccontextmanager
 from loguru import logger
 from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
-import chutes_miner.api.database.orms  # noqa: F401
+import chutes_common.schemas.orms  # noqa: F401
 from chutes_miner.api.server.router import router as servers_router
 from chutes_miner.api.deployment.router import router as deployments_router
-from chutes_miner.api.database import Base, engine
+from chutes_miner.api.database import engine
+from chutes_common.schemas import Base
 from chutes_miner.api.config import settings
 from chutes_miner.api.socket_client import SocketClient
 

@@ -12,7 +12,7 @@ import traceback
 import chutes_common.constants as cst
 from chutes_common.k8s import WatchEventType
 from chutes_common.monitoring.requests import StartMonitoringRequest
-from chutes_miner.api.chute.schemas import Chute
+from chutes_common.schemas.chute import Chute
 from chutes_miner.api.k8s.config import KubeConfig, MultiClusterKubeConfig
 from loguru import logger
 from kubernetes.client import (
@@ -41,8 +41,8 @@ from chutes_miner.api.k8s.constants import GRAVAL_JOB_PREFIX, GRAVAL_SVC_PREFIX
 from chutes_miner.api.k8s.operator import K8sOperator
 from chutes_miner.api.util import sse_message
 from chutes_miner.api.database import get_session
-from chutes_miner.api.server.schemas import Server, ServerArgs
-from chutes_miner.api.gpu.schemas import GPU
+from chutes_common.schemas.server import Server, ServerArgs
+from chutes_common.schemas.gpu import GPU
 from chutes_miner.api.exceptions import (
     DuplicateServer,
     NonEmptyServer,

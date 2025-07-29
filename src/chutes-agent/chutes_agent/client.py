@@ -8,7 +8,7 @@ from chutes_common.constants import CLUSTER_ENDPOINT, MONITORING_PURPOSE
 from chutes_common.k8s import WatchEvent, ClusterResources
 from chutes_common.monitoring.models import ClusterState, HeartbeatData
 from chutes_common.monitoring.requests import SetClusterResourcesRequest, ResourceUpdateRequest
-from chutes_common.exceptions import ClusterConflictException
+from chutes_common.exceptions import ClusterConflictException, ClusterNotFoundException, ServerNotFoundException
 from loguru import logger
 from chutes_agent.config import settings
 from typing import Optional
@@ -60,18 +60,19 @@ class ControlPlaneClient:
 
         async with self._session.post(url, data=payload, headers=headers) as response:
             if response.status != 200:
-                try:
-                    error_json = await response.json()
-                    error = json.dumps(error_json)
-                except:
-                    error = await response.text()
-
                 if response.status == 409:
                     raise ClusterConflictException()
-                
-                raise Exception(
-                    f"Failed to send initial resources: {response.status} - {error}"
-                )
+                elif response.status == 404:
+                    raise ServerNotFoundException()
+                else:
+                    try:
+                        error_json = await response.json()
+                        error = json.dumps(error_json)
+                    except:
+                        error = await response.text()
+                    raise Exception(
+                        f"Failed to send initial resources: {response.status} - {error}"
+                    )
             
             logger.info("Successfully sent initial resources")
 
@@ -109,12 +110,17 @@ class ControlPlaneClient:
 
         async with self._session.put(url, data=payload, headers=headers) as response:
             if response.status != 200:
-                try:
-                    error_json = await response.json()
-                    error = json.dumps(error_json)
-                except:
-                    error = await response.text()
-                raise Exception(f"Failed to set cluster resources: {response.status} - {error}")
+                if response.status == 404:
+                    raise ServerNotFoundException()
+                elif response.status == 410:
+                    raise ClusterNotFoundException()
+                else:
+                    try:
+                        error_json = await response.json()
+                        error = json.dumps(error_json)
+                    except:
+                        error = await response.text()
+                    raise Exception(f"Failed to set cluster resources: {response.status} - {error}")
 
     async def send_resource_update(self, event: WatchEvent):
         """Send resource update to control plane"""

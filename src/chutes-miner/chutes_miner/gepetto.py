@@ -22,11 +22,12 @@ from chutes_miner.api.config import settings, validator_by_hotkey
 from chutes_miner.api.redis_pubsub import RedisListener
 from chutes_common.auth import sign_request
 from chutes_common.settings import Validator
-from chutes_miner.api.database import get_session, engine, Base
-from chutes_miner.api.chute.schemas import Chute
-from chutes_miner.api.server.schemas import Server
-from chutes_miner.api.gpu.schemas import GPU
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_miner.api.database import get_session, engine
+from chutes_common.schemas import Base
+from chutes_common.schemas.chute import Chute
+from chutes_common.schemas.server import Server
+from chutes_common.schemas.gpu import GPU
+from chutes_common.schemas.deployment import Deployment
 from chutes_miner.api.exceptions import DeploymentFailure
 import chutes_miner.api.k8s as k8s
 

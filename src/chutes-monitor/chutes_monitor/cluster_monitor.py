@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from chutes_common.exceptions import ClusterConflictException, ClusterNotFoundException
 from loguru import logger
 from chutes_common.redis import MonitoringRedisClient
-from chutes_monitor.config import settings
+from chutes_monitor.settings import settings
 from chutes_common.monitoring.models import ClusterState, ClusterStatus
 from chutes_common.k8s import ClusterResources
 
@@ -156,8 +156,8 @@ class HealthChecker:
         """Mark cluster as unhealthy"""
         try:
             cluster_name = current_status.cluster_name
-            # Only update if state has changed to avoid unnecessary Redis writes
-            if current_status.state != ClusterState.UNHEALTHY:
+            # Only update if state if currently healthy
+            if current_status.is_healthy:
                 new_status = ClusterStatus(
                     cluster_name=cluster_name,
                     state=ClusterState.UNHEALTHY,
@@ -180,10 +180,18 @@ class HealthChecker:
                 try:
                     cluster_name = cluster_status.cluster_name
 
-                    if cluster_status.last_heartbeat < cutoff_time:
+                    if cluster_status.last_heartbeat < cutoff_time \
+                        and cluster_status.state != ClusterState.ERROR:
                         logger.info(f"Cleaning up stale cluster {cluster_name}")
                         # Only clear the resources.  Do not remove health or node info
                         # to avoid triggering a delete event in Gepetto.
+                        new_status = ClusterStatus(
+                            cluster_name=cluster_name,
+                            state=ClusterState.ERROR,
+                            last_heartbeat=cluster_status.last_heartbeat,
+                            error_message="Cluster offline for more than 1 hour.",
+                        )
+                        await self.redis_client.update_cluster_status(new_status)
                         await self.redis_client.clear_cluster_resources(cluster_name)
                 except Exception as e:
                     # Invalid timestamp format

@@ -14,6 +14,7 @@ from loguru import logger
 from chutes_monitor.api.cluster.router import router as cluster_router
 from chutes_common.redis import MonitoringRedisClient
 from chutes_common.constants import CLUSTER_ENDPOINT
+import chutes_common.schemas.orms  # noqa: F401
 import os
 
 # Configure logging

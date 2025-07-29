@@ -1,7 +1,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from chutes_miner.api.database import get_session
-from chutes_miner.api.server.schemas import Server
+from chutes_common.schemas.server import Server
 from loguru import logger
 from sqlalchemy import select
 import yaml

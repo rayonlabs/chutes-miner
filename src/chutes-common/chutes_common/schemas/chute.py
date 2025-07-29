@@ -6,7 +6,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from sqlalchemy import Column, String, DateTime, Integer
 from sqlalchemy.dialects.postgresql import ARRAY
-from chutes_miner.api.database import Base
+from chutes_common.schemas import Base
 
 
 class Chute(Base):

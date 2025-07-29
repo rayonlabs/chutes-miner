@@ -12,6 +12,7 @@ app.kubernetes.io/name: chutes-registry
 
 {{- define "monitor.labels" -}}
 app.kubernetes.io/name: chutes-monitor
+postgres-access: "true"
 redis-access: "true"
 {{- end }}
 
