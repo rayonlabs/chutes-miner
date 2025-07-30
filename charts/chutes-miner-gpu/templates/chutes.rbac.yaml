@@ -10,7 +10,7 @@ metadata:
   name: chutes
 rules:
 - apiGroups: [""]
-  resources: ["pods"]
+  resources: ["pods", "services"]
   verbs: ["get", "list", "delete", "watch"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
