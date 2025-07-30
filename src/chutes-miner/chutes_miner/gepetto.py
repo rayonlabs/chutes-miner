@@ -216,10 +216,14 @@ class Gepetto:
                     data=payload_string,
                 ) as resp:
                     if resp.status >= 300:
+                        error = await resp.text()
                         logger.error(
-                            f"Error announcing deployment to validator:\n{await resp.text()}"
+                            f"Error announcing deployment to validator:\n{error}"
                         )
-                    resp.raise_for_status()
+                        raise DeploymentFailure(
+                            f"Error announcing deployment {deployment.deployment_id} to validator:\n{error}"
+                        )
+                    
                     instance = await resp.json()
 
                     # Track the instance ID.
@@ -231,6 +235,8 @@ class Gepetto:
                         )
                         await session.commit()
                     logger.success(f"Successfully advertised instance: {instance['instance_id']}")
+        except DeploymentFailure:
+            raise
         except Exception as exc:
             logger.warning(f"Error announcing deployment: {exc}\n{traceback.format_exc()}")
             raise DeploymentFailure(
