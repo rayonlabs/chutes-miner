@@ -15,9 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chutes_miner.api.database import get_db_session
 from chutes_miner.api.config import settings, validator_by_hotkey
 from chutes_common.auth import authorize
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.deployment import Deployment
 from chutes_miner.api.k8s.operator import K8sOperator
-from chutes_miner.api.server.schemas import Server, ServerArgs
+from chutes_common.schemas.server import Server, ServerArgs
 from chutes_miner.api.server.util import bootstrap_server, get_server_kubeconfig
 from chutes_miner.gepetto import Gepetto
 
@@ -66,6 +66,11 @@ async def create_server(
     server_kubeconfig: Optional[KubeConfig] = None
     if server_args.agent_api:
         server_kubeconfig = await get_server_kubeconfig(server_args.agent_api)
+        if not server_kubeconfig.get_context(server_args.name):
+            raise HTTPException(
+                status_Code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Kubeconfig from {server_args.agent_api} expected to contain context for {server_args.name}, instead found {', '.join(ctx.name for ctx in server_kubeconfig.contexts)}"
+            )
 
     node = K8sOperator().get_node(server_args.name, server_kubeconfig)
     if not node:

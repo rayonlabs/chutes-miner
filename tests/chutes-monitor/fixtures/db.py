@@ -1,11 +1,12 @@
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
-
 @pytest.fixture
 def mock_db_session():
+
     # Create a list of paths where k8s_core_client is imported
-    import_paths = ["chutes_miner.api.k8s.operator.get_session"]
+    import_paths = ["chutes_monitor.api.cluster.router.get_session"]
 
     # Create a specific __aexit__ function that returns False only when an exception is raised
     async def mock_aexit(self, exc_type, exc_val, exc_tb):
@@ -16,13 +17,20 @@ def mock_db_session():
     session = MagicMock()
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
-    mock_result.scalar_one_or_none.return_value = []
+    mock_result.scalar_one_or_none.return_value = [mock_result]
     session.execute = AsyncMock(return_value=mock_result)
     session.commit = AsyncMock()
     session.delete = AsyncMock()
     session.refresh = AsyncMock()
 
     mock_get_session = AsyncMock(__aenter__=AsyncMock(return_value=session), __aexit__=mock_aexit)
+
+    def _set_result(result: list[Any] = []):
+        """Configure the mock result that will be returned by scalar_one_or_none"""
+        mock_result.scalar_one_or_none.return_value = result
+
+    # Attach the configuration function to the session for easy access
+    session.set_result = _set_result
 
     # Create and start patches for each import path, all returning the same mock
     patches = []

@@ -23,7 +23,7 @@ from substrateinterface import SubstrateInterface
 from chutes_miner.api.config import settings
 from chutes_miner.api.database import get_session
 from chutes_common.auth import sign_request
-import chutes_miner.api.database.orms  # noqa
+import chutes_common.schemas.orms  # noqa
 
 
 def get_prometheus_metrics(end_time) -> dict:
@@ -79,7 +79,7 @@ def get_prometheus_uptime() -> float:
     """
     Get the prometheus-server deployment uptime in seconds.
     """
-    pods = K8sOperator().list_namespaced_pod(
+    pods = K8sOperator().get_pods(
         namespace=settings.monitoring_namespace,
         label_selector="app.kubernetes.io/name=prometheus,app.kubernetes.io/component=server",
     )

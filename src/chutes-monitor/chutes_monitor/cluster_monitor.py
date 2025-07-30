@@ -2,9 +2,10 @@
 import asyncio
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
+from chutes_common.exceptions import ClusterConflictException, ClusterNotFoundException
 from loguru import logger
 from chutes_common.redis import MonitoringRedisClient
-from chutes_monitor.config import settings
+from chutes_monitor.settings import settings
 from chutes_common.monitoring.models import ClusterState, ClusterStatus
 from chutes_common.k8s import ClusterResources
 
@@ -155,8 +156,8 @@ class HealthChecker:
         """Mark cluster as unhealthy"""
         try:
             cluster_name = current_status.cluster_name
-            # Only update if state has changed to avoid unnecessary Redis writes
-            if current_status.state != ClusterState.UNHEALTHY:
+            # Only update if state if currently healthy
+            if current_status.is_healthy:
                 new_status = ClusterStatus(
                     cluster_name=cluster_name,
                     state=ClusterState.UNHEALTHY,
@@ -179,9 +180,19 @@ class HealthChecker:
                 try:
                     cluster_name = cluster_status.cluster_name
 
-                    if cluster_status.last_heartbeat < cutoff_time:
+                    if cluster_status.last_heartbeat < cutoff_time \
+                        and cluster_status.state != ClusterState.ERROR:
                         logger.info(f"Cleaning up stale cluster {cluster_name}")
-                        await self.redis_client.clear_cluster(cluster_name)
+                        # Only clear the resources.  Do not remove health or node info
+                        # to avoid triggering a delete event in Gepetto.
+                        new_status = ClusterStatus(
+                            cluster_name=cluster_name,
+                            state=ClusterState.ERROR,
+                            last_heartbeat=cluster_status.last_heartbeat,
+                            error_message="Cluster offline for more than 1 hour.",
+                        )
+                        await self.redis_client.update_cluster_status(new_status)
+                        await self.redis_client.clear_cluster_resources(cluster_name)
                 except Exception as e:
                     # Invalid timestamp format
                     logger.warning(f"Failed to cleanup stale cluster {cluster_name}: {e}")
@@ -213,6 +224,11 @@ class ClusterMonitor:
     async def register_cluster(self, cluster_name: str, resources: ClusterResources) -> bool:
         """Register and start monitoring on a member cluster"""
         try:
+
+            clusters = self.redis_client.get_all_cluster_names()
+            if cluster_name in clusters:
+                raise ClusterConflictException(f"Cluster {cluster_name} already exists.")
+
             await self.redis_client.track_cluster(cluster_name, resources)
         except Exception as e:
             logger.error(f"Error registering cluster {cluster_name}: {e}")
@@ -230,10 +246,26 @@ class ClusterMonitor:
             logger.error(f"Error unregistering cluster {cluster_name}: {e}")
             raise
 
+    async def set_cluster_resources(self, cluster_name: str, resources: ClusterResources) -> bool:
+        """Set resources for a cluster.  If currently being tracked it will overwrite all existing resources."""
+        try:
+            clusters = self.redis_client.get_all_cluster_names()
+            if cluster_name not in clusters:
+                raise ClusterNotFoundException(f"Cluster {cluster_name} not found.")
+
+            # Clear all data
+            await self.redis_client.set_cluster_resources(cluster_name, resources)
+
+            logger.info(f"Successfully set cluster resources for {cluster_name}")
+
+        except Exception as e:
+            logger.error(f"Error setting cluster resources {cluster_name}: {e}")
+            raise
+
     async def list_clusters(self) -> List[ClusterStatus]:
         """List all registered clusters with their status"""
         try:
-            cluster_names = await self.redis_client.get_all_cluster_names()
+            cluster_names = self.redis_client.get_all_cluster_names()
             clusters = []
 
             for cluster_name in cluster_names:

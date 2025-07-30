@@ -2,7 +2,7 @@
 from chutes_common.auth import authorize
 from chutes_common.monitoring.models import MonitoringState, MonitoringStatus
 from chutes_common.monitoring.requests import StartMonitoringRequest
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
 
 from chutes_agent.monitor import ResourceMonitor
@@ -13,7 +13,6 @@ router = APIRouter()
 
 # Global monitoring state
 resource_monitor = ResourceMonitor()
-
 
 @router.get("/health")
 async def health_check():
@@ -35,14 +34,17 @@ async def start_monitoring(
     """Start monitoring with provided configuration"""
     try:
         # Stop existing monitoring if running
-        if resource_monitor.status == MonitoringState.RUNNING:
-            logger.info("Stopping existing monitoring task")
-            await resource_monitor.stop()
+        if resource_monitor.state == MonitoringState.RUNNING:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Monitoring process already running."
+            )
 
         await resource_monitor.start(request.control_plane_url)
 
         return {"message": "Monitoring started", "cluster": settings.cluster_name}
-
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to start monitoring: {e}")
         raise HTTPException(status_code=500, detail=str(e))

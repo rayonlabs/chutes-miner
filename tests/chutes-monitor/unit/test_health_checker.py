@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone, timedelta
 from chutes_monitor.cluster_monitor import ClusterMonitor, HealthChecker
 from chutes_common.monitoring.models import ClusterStatus, ClusterState
@@ -188,7 +188,7 @@ async def test_cleanup_stale_clusters(mock_settings, mock_redis_client):
     await health_checker._cleanup_stale_clusters()
     
     # Should only clear the old cluster
-    mock_redis_client.clear_cluster.assert_called_once_with("old-cluster")
+    mock_redis_client.clear_cluster_resources.assert_called_once_with("old-cluster")
 
 
 @patch('chutes_monitor.cluster_monitor.settings')
@@ -210,16 +210,21 @@ async def test_health_checker_redis_error_handling(mock_settings, mock_redis_cli
 @patch('chutes_monitor.cluster_monitor.HealthChecker')
 @patch('chutes_monitor.cluster_monitor.settings')
 @pytest.mark.asyncio
-async def test_cluster_monitor_redis_error_during_registration(mock_settings, mock_health_checker, mock_redis_client):
+async def test_cluster_monitor_redis_error_during_registration(
+    mock_settings, mock_health_checker, mock_redis_client
+):
     """Test cluster monitor handles Redis errors during registration"""
+    cluster_name = "test-cluster"
+
     mock_settings.url = "http://test-control-plane:8000"
+    mock_redis_client.get_all_cluster_names = MagicMock(return_value=[])
     mock_redis_client.track_cluster.side_effect = Exception("Redis write failed")
     mock_health_checker_instance = AsyncMock()
     mock_health_checker.return_value = mock_health_checker_instance
     
     cluster_monitor = ClusterMonitor()
     
-    cluster_name = "test-cluster"
+    
     resources = ClusterResources()
     
     # Should re-raise the exception
@@ -332,7 +337,7 @@ async def test_cleanup_stale_clusters_with_invalid_timestamps(mock_settings, moc
     await health_checker._cleanup_stale_clusters()
     
     # Should only clear the old cluster, not the invalid one
-    mock_redis_client.clear_cluster.assert_called_once_with("old-cluster")
+    mock_redis_client.clear_cluster_resources.assert_called_once_with("old-cluster")
 
 
 @patch('chutes_monitor.cluster_monitor.settings')

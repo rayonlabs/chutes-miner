@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Agent API server")
 
     # Stop monitoring on shutdown
-    await resource_monitor.shutdown()
+    await resource_monitor.stop_monitoring_tasks()
 
     # Close serializer API connection
     await serializer.close()

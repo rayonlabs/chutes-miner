@@ -7,6 +7,7 @@ import uuid
 import aiohttp
 import asyncio
 from chutes_miner.api.k8s.operator import K8sOperator
+from chutes_miner.api.server.util import stop_server_monitoring
 import orjson as json
 import traceback
 import semver
@@ -21,11 +22,12 @@ from chutes_miner.api.config import settings, validator_by_hotkey
 from chutes_miner.api.redis_pubsub import RedisListener
 from chutes_common.auth import sign_request
 from chutes_common.settings import Validator
-from chutes_miner.api.database import get_session, engine, Base
-from chutes_miner.api.chute.schemas import Chute
-from chutes_miner.api.server.schemas import Server
-from chutes_miner.api.gpu.schemas import GPU
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_miner.api.database import get_session, engine
+from chutes_common.schemas import Base
+from chutes_common.schemas.chute import Chute
+from chutes_common.schemas.server import Server
+from chutes_common.schemas.gpu import GPU
+from chutes_common.schemas.deployment import Deployment
 from chutes_miner.api.exceptions import DeploymentFailure
 import chutes_miner.api.k8s as k8s
 
@@ -214,10 +216,14 @@ class Gepetto:
                     data=payload_string,
                 ) as resp:
                     if resp.status >= 300:
+                        error = await resp.text()
                         logger.error(
-                            f"Error announcing deployment to validator:\n{await resp.text()}"
+                            f"Error announcing deployment to validator:\n{error}"
                         )
-                    resp.raise_for_status()
+                        raise DeploymentFailure(
+                            f"Error announcing deployment {deployment.deployment_id} to validator:\n{error}"
+                        )
+                    
                     instance = await resp.json()
 
                     # Track the instance ID.
@@ -229,6 +235,8 @@ class Gepetto:
                         )
                         await session.commit()
                     logger.success(f"Successfully advertised instance: {instance['instance_id']}")
+        except DeploymentFailure:
+            raise
         except Exception as exc:
             logger.warning(f"Error announcing deployment: {exc}\n{traceback.format_exc()}")
             raise DeploymentFailure(
@@ -330,7 +338,7 @@ class Gepetto:
                 # For each deployment, check if it's ready to go in kubernetes.
                 for deployment in deployments:
                     core_version = re.match(
-                        r"^([0-9]+\.[0-9]+\.[0-9]+).*", deployment.chute.chutes_version
+                        r"^([0-9]+\.[0-9]+\.[0-9]+).*", deployment.chute.chutes_version or "0.0.0"
                     ).group(1)
                     if semver.compare(core_version or "0.0.0", "0.3.0") >= 0:
                         # The new chutes library activates the chute as part of startup flow via JWT.
@@ -410,18 +418,35 @@ class Gepetto:
 
                     # If we have all deployments already (no other miner has this) then no need to scale.
                     total_count = metrics.get("instance_count", 0)
-                    if local_count and local_count >= total_count:
+                    if (
+                        local_count
+                        and local_count >= total_count
+                        and not metrics.get("rate_limit_count")
+                    ):
                         logger.info(
                             f"We have all deployments for {chute_id=} {chute_name}, scaling would be unproductive..."
                         )
                         continue
 
+                    # First, we need to adjust the theoretical usage based on the rate limit counts.
+                    rate_limited = metrics.get("rate_limit_count")
+                    if metrics.get("instance_count") and metrics["instance_count"] >= 5:
+                        # We try up to 5 miners so the rate limit count can be artificially high.
+                        rate_limited /= 5
+
+                    # Calculate approximate compute units.
+                    compute_units = metrics.get("total_compute_time")
+                    if metrics.get("compute_multiplier"):
+                        compute_units *= metrics["compute_multiplier"]
+                    per_invocation = compute_units / (metrics.get("total_invocations", 0) or 1.0)
+                    theoretical = compute_units
+                    if per_invocation and rate_limited:
+                        theoretical += rate_limited * per_invocation
+
                     # Calculate potential gain from a new deployment.
-                    potential_gain = (
-                        metrics.get("total_usage_usd", 0)
-                        if not total_count
-                        else metrics.get("total_usage_usd", 0) / (total_count + 1)
-                    )
+                    potential_gain = theoretical
+                    if total_count:
+                        potential_gain /= total_count + 1
 
                     # See if we have a server that could even handle it.
                     potential_server = await self.optimal_scale_up_server(chute)
@@ -593,6 +618,41 @@ class Gepetto:
         except Exception as exc:
             logger.warning(f"Failed to release job: {exc=}")
 
+    async def _get_job_extra_services(self, chute: Chute):
+        """
+        Get the list of extra services (i.e. extra ports that the chute requires) for a chute.
+        """
+        if (chute_obj := self.remote_chutes.get(chute.validator, {}).get(chute.chute_id)) is None:
+            if (validator := validator_by_hotkey(chute.validator)) is None:
+                # Won't work anyways, but we'll avoid an exception here...
+                logger.warning(f"No validator found? {chute.validator=}")
+                return []
+            await self._remote_refresh_objects(
+                self.remote_chutes, chute.validator, f"{validator.api}/miner/chutes/", "chute_id"
+            )
+            chute_obj = self.remote_chutes.get(chute.validator, {}).get(chute.chute_id)
+        if not chute_obj:
+            logger.warning(
+                f"Could not find {chute.chute_id=} in remote chutes when trying to determine job services!"
+            )
+            return []
+        if not chute_obj.get("jobs"):
+            return []
+        extra_services = []
+        observed = set([])
+        for job in chute_obj["jobs"]:
+            for port in job.get("ports") or []:
+                skip_key = f"{port['proto']}:{port['port']}"
+                if skip_key in observed:
+                    continue
+                observed.add(skip_key)
+                extra_services.append(port)
+                extra_services[-1]["proto"] = (
+                    "TCP" if extra_services[-1]["proto"].lower() in ("tcp", "http") else "UDP"
+                )
+                logger.info(f"Adding {port=} to job for {chute.chute_id=}")
+        return extra_services
+
     async def run_job(
         self, chute: Chute, job_id: str, server: Server, validator: Validator, disk_gb: int = 10
     ):
@@ -605,7 +665,8 @@ class Gepetto:
         deployment = None
         try:
             launch_token = await self.get_launch_token(chute, job_id=job_id)
-            deployment, _ = await k8s.deploy_chute(
+            extra_ports = await self._get_job_extra_services(chute)
+            deployment, k8s_dep = await k8s.deploy_chute(
                 chute.chute_id,
                 server.server_id,
                 token=launch_token["token"] if launch_token else None,
@@ -613,6 +674,7 @@ class Gepetto:
                 job_id=job_id,
                 extra_labels={"chutes/job": "true"},
                 disk_gb=disk_gb,
+                extra_service_ports=extra_ports
             )
             logger.success(
                 f"Successfully deployed {job_id=} {chute.chute_id=} on {server.server_id=}: {deployment.deployment_id=}"
@@ -874,6 +936,7 @@ class Gepetto:
         """
         server_id = event_data["server_id"]
         logger.info(f"Received server_deleted event {server_id=}")
+        
         async with get_session() as session:
             server = (
                 (await session.execute(select(Server).where(Server.server_id == server_id)))
@@ -881,6 +944,11 @@ class Gepetto:
                 .scalar_one_or_none()
             )
             if server:
+
+                # If this is a standalone server, we need to stop monitoring from the agent
+                if server.agent_api:
+                    await stop_server_monitoring(server.agent_api)
+
                 await asyncio.gather(
                     *[self.gpu_deleted({"gpu_id": gpu.gpu_id}) for gpu in server.gpus]
                 )
@@ -1062,10 +1130,8 @@ class Gepetto:
                     server_id = deployment.server.server_id
                     server_gpu_type = deployment.server.gpus[0].model_short_ref
                     await self.undeploy(deployment.deployment_id)
-                deployment = None
 
             # Make sure the local chute is updated.
-            chute_dict = None
             if (chute := await self.load_chute(chute_id, version, validator_hotkey)) is None:
                 chute_dict = None
                 try:
@@ -1120,8 +1186,10 @@ class Gepetto:
                     await k8s.create_code_config_map(chute)
 
             # Deploy the new version.
-            logger.info(f"Determining if we can deploy {chute.chute_id=} on {server_id=} with {server_gpu_type=} and supported={chute_dict['supported_gpus']}")
-            if server_id and chute_dict and server_gpu_type in chute_dict["supported_gpus"]:
+            logger.info(
+                f"Determining if we can deploy {chute.chute_id=} on {server_id=} with {server_gpu_type=} and supported={chute.supported_gpus}"
+            )
+            if server_id and server_gpu_type in chute.supported_gpus:
                 logger.info(f"Attempting to deploy {chute.chute_id=} on {server_id=}")
                 deployment = None
                 try:
@@ -1279,9 +1347,16 @@ class Gepetto:
         chute_values = {}
         for chute_id, metric in self.remote_metrics.get(chute.validator, {}).items():
             instance_count = metric["instance_count"]
-            value_per_instance = (
-                0 if not instance_count else metric["total_usage_usd"] / instance_count
-            )
+            rate_limited = metric.get("rate_limit_count", 0)
+            if instance_count and instance_count >= 5:
+                rate_limited = rate_limited / 5
+            total_usage_usd = metric.get("total_usage_usd", 0)
+            total_invocations = metric.get("total_invocations", 0)
+            per_invocation_cost = total_usage_usd / (total_invocations or 1.0)
+            theoretical_usage = total_usage_usd
+            if per_invocation_cost and rate_limited:
+                theoretical_usage += rate_limited * per_invocation_cost
+            value_per_instance = 0 if not instance_count else theoretical_usage / instance_count
             chute_values[chute_id] = value_per_instance
 
         # Find all servers that support this chute, sorted by cheapest & most already free GPUs.
@@ -1456,13 +1531,15 @@ class Gepetto:
         # Deploy on our target server.
         deployment = None
         try:
-            deployment, _ = await k8s.deploy_chute(
+            extra_ports = await self._get_job_extra_services(chute) if job_id else []
+            deployment, k8s_dep = await k8s.deploy_chute(
                 chute.chute_id,
                 target_server.server_id,
                 deployment_id,
                 token=launch_token["token"] if launch_token else None,
                 config_id=launch_token["config_id"] if launch_token else None,
                 disk_gb=disk_gb,
+                extra_service_ports=extra_ports
             )
             logger.success(
                 f"Successfully deployed {chute.chute_id=} {job_id=} via preemption on {server.server_id=}: {deployment.deployment_id=}"
@@ -1594,8 +1671,8 @@ class Gepetto:
         # Get all pods with config_id labels for orphan detection
         k8s_config_ids = set()
         try:
-            pods = await K8sOperator().get_pods(label_selector="chutes/config-id")
-            k8s_config_ids = {pod.metadata.labels["chutes/config-id"] for pod in pods}
+            pods = K8sOperator().get_pods(label_selector="chutes/config-id")
+            k8s_config_ids = {pod.metadata.labels["chutes/config-id"] for pod in pods.items}
         except Exception as exc:
             logger.error(f"Failed to get pods by config-id label: {exc}")
 
@@ -1671,7 +1748,7 @@ class Gepetto:
                         deployment.instance_id
                     )
                     if remote_instance:
-                        if remote_instance.get("inst_verified_at") and not deployment.verified_at:
+                        if remote_instance.get("last_verified_at") and not deployment.verified_at:
                             deployment.verified_at = func.now()
                             logger.info(
                                 f"Marking deployment {deployment.deployment_id} as verified based on remote status"
@@ -1826,7 +1903,7 @@ class Gepetto:
                 # Check for terminated jobs or jobs that never started
                 if (
                     not deployment.active
-                    or not deployment.verified_at
+                    or deployment.verified_at is None
                     and deployment_age >= timedelta(minutes=5)
                 ):
                     try:
@@ -2018,12 +2095,7 @@ class Gepetto:
         while True:
             await asyncio.sleep(60)
             try:
-                if self._reconcile_lock.locked():
-                    logger.warning("Reconciliation already in progress, skipping.")
-                    continue
-
-                async with self._reconcile_lock:
-                    await self.reconcile()
+                await self.reconcile()
             except Exception as exc:
                 logger.error(
                     f"Unexpected error in reconciliation loop: {exc}\n{traceback.format_exc()}"

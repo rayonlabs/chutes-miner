@@ -6,8 +6,8 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from chutes_miner.api.config import settings
+from sqlalchemy.orm import sessionmaker, declarative_base
+from chutes_monitor.settings import settings
 
 
 engine = create_async_engine(settings.sqlalchemy, echo=settings.debug)
@@ -17,6 +17,9 @@ SessionLocal = sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False
 )
+
+Base = declarative_base()
+
 
 @asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

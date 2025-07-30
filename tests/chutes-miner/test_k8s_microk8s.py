@@ -10,7 +10,7 @@ from kubernetes.client.rest import ApiException
 from datetime import datetime
 
 # Import the module under test
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.deployment import Deployment
 import chutes_miner.api.k8s as k8s
 from chutes_miner.api.exceptions import DeploymentFailure
 from chutes_miner.api.k8s.operator import K8sOperator, SingleClusterK8sOperator
@@ -532,7 +532,7 @@ async def test_deploy_chute_deployment_disappeared(
     # Setup session mock for deployment retrieval
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
-    mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, None]
+    mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, None, None]
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
     nodes = create_api_test_nodes(1)

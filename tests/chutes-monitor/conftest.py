@@ -30,3 +30,4 @@ from fixtures.router import *
 from fixtures.requests import *
 from fixtures.redis import *
 from fixtures.health_checker import *
+from fixtures.db import *

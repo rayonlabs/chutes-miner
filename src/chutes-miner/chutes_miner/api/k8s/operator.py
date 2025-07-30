@@ -9,7 +9,7 @@ import uuid
 import traceback
 import abc
 import semver
-from chutes_common.monitoring.messages import ResourceChangeMessage
+from chutes_common.monitoring.messages import ClusterChangeMessage, ResourceChangeMessage
 from chutes_common.monitoring.models import ResourceType
 from chutes_common.redis import MonitoringRedisClient
 from chutes_miner.api.k8s.client import KubernetesMultiClusterClientManager
@@ -43,13 +43,14 @@ from chutes_miner.api.k8s.constants import (
     GRAVAL_JOB_PREFIX,
     GRAVAL_SVC_PREFIX,
 )
-from chutes_common.k8s import WatchEvent
+from chutes_common.k8s import WatchEvent, WatchEventType
 from chutes_miner.api.k8s.util import build_chute_job, build_chute_service
-from chutes_miner.api.server.schemas import Server
-from chutes_miner.api.chute.schemas import Chute
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.server import Server
+from chutes_common.schemas.chute import Chute
+from chutes_common.schemas.deployment import Deployment
 from chutes_miner.api.config import k8s_core_client, k8s_app_client, k8s_batch_client, settings
 from redis.client import PubSub
+import yaml
 
 # Cache disk stats.
 _disk_info_cache: dict[str, tuple[dict[str, float], datetime]] = {}
@@ -545,7 +546,7 @@ class K8sOperator(abc.ABC):
         """Create a ConfigMap to store the chute code."""
         try:
             config_map = self._build_code_config_map(chute)
-            self.deploy_config_map(config_map)
+            self._deploy_config_map(config_map)
         except ApiException as e:
             if e.status != 409:
                 raise
@@ -566,7 +567,7 @@ class K8sOperator(abc.ABC):
         return config_map
 
     @abc.abstractmethod
-    def deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
+    def _deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         raise NotImplementedError()
 
     async def deploy_chute(
@@ -615,6 +616,10 @@ class K8sOperator(abc.ABC):
             self.invalidate_node_disk_cache(server.name)
             return deployment, job
         except Exception as exc:
+
+            if deployment_id:
+                await self._clear_deployment(deployment_id)
+
 
             try:
                 if service:
@@ -699,6 +704,21 @@ class K8sOperator(abc.ABC):
         await session.commit()
 
         return deployment_id, gpu_uuids
+    
+    async def _clear_deployment(self, deployment_id: str):
+        async with get_session() as session:
+            deployment = (
+                (
+                    await session.execute(
+                        select(Deployment).where(Deployment.deployment_id == deployment_id)
+                    )
+                )
+                .unique()
+                .scalar_one_or_none()
+            )
+            if deployment:
+                await session.delete(deployment)
+                await session.commit()
     
     async def _update_deployment(self, deployment_id: str, server: Server, service: V1Service):
         deployment_port = service.spec.ports[0].node_port
@@ -1173,13 +1193,14 @@ class SingleClusterK8sOperator(K8sOperator):
     def _delete_job(self, name, namespace=settings.namespace):
         k8s_batch_client().delete_namespaced_job(
             name=name,
-            namespace=namespace
+            namespace=namespace,
+            propagation_policy="Foreground"
         )
 
     def delete_config_map(self, name, namespace=settings.namespace):
         k8s_core_client().delete_namespaced_config_map(name=name, namespace=namespace)
 
-    def deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
+    def _deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         k8s_core_client().create_namespaced_config_map(namespace=namespace, body=config_map)
 
 
@@ -1191,6 +1212,60 @@ class MultiClusterK8sOperator(K8sOperator):
     def __init__(self):
         self._manager = KubernetesMultiClusterClientManager()
         self._redis = MonitoringRedisClient()
+        self._initialize()
+
+    def _initialize(self):
+        # Ugly pattern to ensure we don't kick this off every time singleton is called.
+        if not hasattr(self, "_cluster_monitor_task"):
+            self._cluster_monitor_task = asyncio.create_task(self._watch_clusters())
+
+    async def _watch_clusters(self):
+
+        try:
+            pubsub = self._redis.subscribe_to_clusters()
+            
+            while True:
+                try:
+                    message = pubsub.get_message(timeout=1)
+                    if message and message["type"] == "message":
+                        data = json.loads(message["data"])
+                        _message = ClusterChangeMessage.from_dict(data)
+                        await self._handle_cluster_change(_message)
+                    else:
+                        await asyncio.sleep(1)
+
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"Unexpected error while watching clusters:\n{e}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Unexpected error while watching clusters:\n{e}")
+        finally: 
+            pubsub.close()
+
+    async def _handle_cluster_change(self, message: ClusterChangeMessage):
+        try:
+            if message.event_type == WatchEventType.DELETED:
+                self._manager.multi_config.remove_config(message.cluster)
+            elif message.event_type == WatchEventType.ADDED:
+                async with get_session() as session:
+                    server = (await session.execute(
+                        select(Server)
+                        .where(Server.name == message.cluster))
+                    ).unique().scalar_one_or_none()
+
+                    if server:
+                        if server.kubeconfig:
+                            self._manager.multi_config.add_config(KubeConfig.from_dict(yaml.safe_load(server.kubeconfig)))
+                        else:
+                            logger.warning(f"Received add event for cluster {message.cluster} but no kubeconfig is set in DB.")
+                    else:
+                        logger.warning(f"Received add event for cluster {message.cluster}, but does not exist in DB")
+        except Exception as e:
+            logger.error(f"Unexpected exception while handling cluster change:\n{e}")
+
 
     def get_node(self, name: str, kubeconfig: Optional[KubeConfig] = None) -> V1Node:
         """
@@ -1232,10 +1307,19 @@ class MultiClusterK8sOperator(K8sOperator):
             resource_name=name, resource_type=ResourceType.DEPLOYMENT, namespace=namespace
         )
         client = self._manager.get_app_client(context)
-        client.delete_namespaced_deployment(
-            name=name,
-            namespace=namespace,
-        )
+
+        try:
+            client.delete_namespaced_deployment(
+                name=name,
+                namespace=namespace,
+            )
+        except ApiException as e:
+            if e.status == 404:
+                # Not found, remove from redis
+                self._redis.delete_resource(name, context, ResourceType.DEPLOYMENT, namespace)
+                logger.warning(f"Attempted to delete deployment {name}, but appears to have disappeared.  Removed from redis cache.")
+            else:
+                raise
 
     def _deploy_service(self, service, server_name, namespace=settings.namespace):
         client = self._manager.get_core_client(server_name)
@@ -1249,10 +1333,18 @@ class MultiClusterK8sOperator(K8sOperator):
             resource_name=name, resource_type=ResourceType.SERVICE, namespace=namespace
         )
         client = self._manager.get_core_client(context)
-        client.delete_namespaced_service(
-            name=name,
-            namespace=namespace,
-        )
+        try:
+            client.delete_namespaced_service(
+                name=name,
+                namespace=namespace,
+            )
+        except ApiException as e:
+            if e.status == 404:
+                # Not found, remove from redis
+                self._redis.delete_resource(name, context, ResourceType.SERVICE, namespace)
+                logger.warning(f"Attempted to delete service {name}, but appears to have disappeared.  Removed from redis cache.")
+            else:
+                raise
 
     def delete_config_map(self, name, namespace=settings.namespace):
         context = self._redis.get_resource_cluster(
@@ -1264,12 +1356,17 @@ class MultiClusterK8sOperator(K8sOperator):
             namespace=namespace,
         )
 
-    def deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
+    def _deploy_config_map(self, config_map: V1ConfigMap, namespace=settings.namespace):
         # Create CM on all clusters
         clusters = self._redis.get_all_cluster_names()
         for cluster in clusters:
             client = self._manager.get_core_client(cluster)
-            client.create_namespaced_config_map(namespace=namespace, body=config_map)
+            # Need to handle 409 per cluster so we don't break out early
+            try:
+                client.create_namespaced_config_map(namespace=namespace, body=config_map)
+            except ApiException as e:
+                if e.status != 409:
+                    raise
 
     def _deploy_job(self, job, server_name, namespace=settings.namespace):
         client = self._manager.get_batch_client(server_name)
@@ -1283,10 +1380,20 @@ class MultiClusterK8sOperator(K8sOperator):
             resource_name=name, resource_type=ResourceType.JOB, namespace=namespace
         )
         client = self._manager.get_batch_client(context)
-        client.delete_namespaced_job(
-            name=name,
-            namespace=namespace,
-        )
+        
+        try:
+            client.delete_namespaced_job(
+                name=name,
+                namespace=namespace,
+                propagation_policy="Foreground"
+            )
+        except ApiException as e:
+            if e.status == 404:
+                # Not found, remove from redis
+                self._redis.delete_resource(name, context, ResourceType.JOB, namespace)
+                logger.warning(f"Attempted to delete job {name}, but appears to have disappeared.  Removed from redis cache.")
+            else:
+                raise
 
     def watch_pods(self, namespace=None, label_selector=None, field_selector=None, timeout=120):
         for event in self._watch_resources(

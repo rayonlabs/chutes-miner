@@ -15,7 +15,7 @@ from chutes_common.k8s import WatchEvent, WatchEventType, serializer
 
 
 # Import the module under test
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.deployment import Deployment
 import chutes_miner.api.k8s as k8s
 from chutes_miner.api.exceptions import DeploymentFailure
 from chutes_miner.api.k8s.constants import (
@@ -170,7 +170,8 @@ async def test_get_kubernetes_nodes_exception(mock_redis_client):
 
 
 # Tests for is_deployment_ready
-def test_is_deployment_ready_true():
+@pytest.mark.asyncio
+async def test_is_deployment_ready_true():
     """Test deployment is ready when all conditions are met."""
     deployment = MagicMock()
     deployment.status.available_replicas = 1
@@ -181,7 +182,8 @@ def test_is_deployment_ready_true():
     assert k8s.K8sOperator()._is_deployment_ready(deployment) is True
 
 
-def test_is_deployment_ready_false_available_replicas_none():
+@pytest.mark.asyncio
+async def test_is_deployment_ready_false_available_replicas_none():
     """Test deployment is not ready when available_replicas is None."""
     deployment = MagicMock()
     deployment.status.available_replicas = None
@@ -192,7 +194,8 @@ def test_is_deployment_ready_false_available_replicas_none():
     assert k8s.K8sOperator()._is_deployment_ready(deployment) is False
 
 
-def test_is_deployment_ready_false_not_matching():
+@pytest.mark.asyncio
+async def test_is_deployment_ready_false_not_matching():
     """Test deployment is not ready when replicas don't match."""
     deployment = MagicMock()
     deployment.status.available_replicas = 1
@@ -737,7 +740,7 @@ async def test_deploy_chute_no_gpu_capacity(
 async def test_deploy_chute_deployment_disappeared(
     mock_redis_client,
     mock_k8s_core_client,
-    mock_k8s_app_client,
+    mock_k8s_batch_client,
     mock_db_session,
     sample_server,
     sample_chute,
@@ -750,14 +753,14 @@ async def test_deploy_chute_deployment_disappeared(
     mock_service = MagicMock()
     mock_service.spec.ports = [MagicMock(node_port=30000), MagicMock(port=8000), MagicMock(port=8001)]
 
-    mock_k8s_app_client.create_namespaced_deployment.return_value = mock_deployment
+    mock_k8s_batch_client.create_namespaced_job.return_value = mock_deployment
     mock_k8s_core_client.create_namespaced_service.return_value = mock_service
 
     # Setup session mock to return None for deployment
     # Setup session mock for deployment retrieval
     mock_result = MagicMock()
     mock_result.unique.return_value = mock_result
-    mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, None]
+    mock_result.scalar_one_or_none.side_effect = [sample_chute, sample_server, None, None]
     mock_db_session.execute = AsyncMock(return_value=mock_result)
 
     nodes = create_api_test_nodes(1)

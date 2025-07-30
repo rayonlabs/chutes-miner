@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from fastapi import FastAPI, HTTPException
 
 from chutes_miner.api.deployment.router import router, purge, purge_deployment
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.deployment import Deployment
 from chutes_miner.api.server.router import purge_server
 
 # Create test app

@@ -1,6 +1,6 @@
 from chutes_common.k8s import WatchEvent, WatchEventType
 from chutes_common.k8s import ClusterResources
-from chutes_common.monitoring.requests import RegisterClusterRequest, ResourceUpdateRequest
+from chutes_common.monitoring.requests import SetClusterResourcesRequest, ResourceUpdateRequest
 from kubernetes_asyncio.client import V1Deployment, V1ObjectMeta, V1DeploymentSpec
 import pytest
 
@@ -34,9 +34,9 @@ def test_resource_update_request():
 @pytest.fixture
 def sample_register_request(sample_k8s_objects):
     """Create ClusterResources with sample objects"""
-    return RegisterClusterRequest(
+    return SetClusterResourcesRequest(
         clsuter_name="test-cluster",
-        initial_resources = ClusterResources(
+        resources = ClusterResources(
             pods=[sample_k8s_objects['pod']],
             deployments=[sample_k8s_objects['deployment']],
             services=[sample_k8s_objects['service']],

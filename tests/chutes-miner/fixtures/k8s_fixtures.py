@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from chutes_miner.api.chute.schemas import Chute
-from chutes_miner.api.gpu.schemas import GPU
-from chutes_miner.api.server.schemas import Server
+from chutes_common.schemas.chute import Chute
+from chutes_common.schemas.gpu import GPU
+from chutes_common.schemas.server import Server
 
 import uuid
 import random

@@ -71,7 +71,7 @@ class Settings(CommonSettings):
         "parachutes/graval-bootstrap-opencl:0.2.5-cuda",
     )
     graval_bootstrap_image_rocm: str = os.getenv(
-        "GRAVAL_BOOTSTRAP_IMAGE",
+        "GRAVAL_BOOTSTRAP_IMAGE_ROCM",
         "parachutes/graval-bootstrap-opencl:0.2.5-rocm",
     )
     nvidia_runtime: str = os.getenv("NVIDIA_RUNTIME", "nvidia")
@@ -87,7 +87,7 @@ class Settings(CommonSettings):
 
     migrations_dir: str = os.getenv("MIGRATIONS_DIR", "chutes-miner/chutes_miner/api/migrations")
 
-    monitor_api: str = str(os.getenv("MONITOR_API"))
+    monitor_api: str = str(os.getenv("MONITOR_API", ""))
 
 
 settings = Settings()

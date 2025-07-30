@@ -3,10 +3,10 @@ Helper for kubernetes interactions.
 """
 
 from typing import Any, List, Dict, Tuple, Union
-from chutes_miner.api.deployment.schemas import Deployment
+from chutes_common.schemas.deployment import Deployment
 from chutes_miner.api.k8s.operator import K8sOperator
-from chutes_miner.api.chute.schemas import Chute
-from chutes_miner.api.server.schemas import Server
+from chutes_common.schemas.chute import Chute
+from chutes_common.schemas.server import Server
 from kubernetes.client import V1Job
 
 

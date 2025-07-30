@@ -1,19 +1,46 @@
 # test_api_monitor_router.py
-from unittest.mock import patch, AsyncMock
+from unittest.mock import MagicMock, patch, AsyncMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-from chutes_agent.api.monitor.router import router
 from chutes_common.monitoring.models import MonitoringState, MonitoringStatus
-
-# Create test app
-app = FastAPI()
-app.include_router(router)
-client = TestClient(app)
+import pytest
 
 # Health Check Endpoint Tests
 
+# @pytest.fixture(autouse=True, scope='module')
+# def mock_monitor_instance():
+#     mock_monitor = MagicMock()
+#     mock_monitor.start = AsyncMock()
+#     mock_monitor.stop = AsyncMock()
+#     yield mock_monitor
+
+# # Create test app
+# @pytest.fixture(autouse=True, scope="module")
+# def mock_monitor_class(mock_monitor_instance, mock_authorize):
+#     with patch('chutes_agent.monitor.ResourceMonitor') as mock_class:
+#         mock_class.return_value = mock_monitor_instance
+#         yield mock_class
+
+@pytest.fixture(autouse=True)
+def mock_monitor(resource_monitor):
+    with patch('chutes_agent.api.monitor.router.resource_monitor', resource_monitor):
+        yield resource_monitor
+
+@pytest.fixture(autouse=True)
+def app(resource_monitor):
+    from chutes_agent.api.monitor.router import router
+    # Create test app
+    app = FastAPI()
+    app.include_router(router)
+    yield app
+
+@pytest.fixture
+def client(app):
+    client = TestClient(app)
+    yield client
+
 @patch('chutes_agent.api.monitor.router.settings')
-def test_health_check_success(mock_settings):
+def test_health_check_success(mock_settings, client):
     """Test successful health check"""
     mock_settings.cluster_name = "test-cluster"
     
@@ -23,7 +50,7 @@ def test_health_check_success(mock_settings):
     assert response.json() == {"status": "healthy", "cluster": "test-cluster"}
 
 @patch('chutes_agent.api.monitor.router.settings')
-def test_health_check_different_cluster(mock_settings):
+def test_health_check_different_cluster(mock_settings, client):
     """Test health check with different cluster name"""
     mock_settings.cluster_name = "production-cluster-1"
     
@@ -32,7 +59,7 @@ def test_health_check_different_cluster(mock_settings):
     assert response.status_code == 200
     assert response.json() == {"status": "healthy", "cluster": "production-cluster-1"}
 
-def test_health_check_endpoint_structure():
+def test_health_check_endpoint_structure(app):
     """Test that health check endpoint is properly registered"""
     routes = [route.path for route in app.routes]
     assert "/health" in routes
@@ -43,16 +70,9 @@ def test_health_check_endpoint_structure():
 
 # Status Endpoint Tests
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_get_status_stopped(mock_monitor):
+def test_get_status_stopped(resource_monitor, client):
     """Test get status when monitoring is stopped"""
-    mock_status = MonitoringStatus(
-        state=MonitoringState.STOPPED,
-        cluster_id=None,
-        control_plane_url=None,
-        error_message=None
-    )
-    mock_monitor.status = mock_status
+    resource_monitor.state = MonitoringState.STOPPED
     
     response = client.get("/status")
     
@@ -61,8 +81,7 @@ def test_get_status_stopped(mock_monitor):
     assert response_data["state"] == "stopped"
     assert response_data["cluster_id"] is None
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_get_status_running(mock_monitor):
+def test_get_status_running(resource_monitor, client):
     """Test get status when monitoring is running"""
     mock_status = MonitoringStatus(
         state=MonitoringState.RUNNING,
@@ -71,7 +90,7 @@ def test_get_status_running(mock_monitor):
         error_message=None,
         last_heartbeat="2023-12-01T10:30:00Z"
     )
-    mock_monitor.status = mock_status
+    resource_monitor._status = mock_status
     
     response = client.get("/status")
     
@@ -81,8 +100,7 @@ def test_get_status_running(mock_monitor):
     assert response_data["cluster_id"] == "test-cluster"
     assert response_data["last_heartbeat"] == "2023-12-01T10:30:00Z"
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_get_status_error(mock_monitor):
+def test_get_status_error(resource_monitor, client):
     """Test get status when monitoring is in error state"""
     mock_status = MonitoringStatus(
         state=MonitoringState.ERROR,
@@ -90,7 +108,7 @@ def test_get_status_error(mock_monitor):
         control_plane_url="http://control-plane.example.com",
         error_message="Connection timeout"
     )
-    mock_monitor.status = mock_status
+    resource_monitor._status = mock_status
     
     response = client.get("/status")
     
@@ -99,15 +117,14 @@ def test_get_status_error(mock_monitor):
     assert response_data["state"] == "error"
     assert response_data["error_message"] == "Connection timeout"
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_get_status_starting(mock_monitor):
+def test_get_status_starting(resource_monitor, client):
     """Test get status when monitoring is starting"""
     mock_status = MonitoringStatus(
         state=MonitoringState.STARTING,
         cluster_id="test-cluster",
         control_plane_url="http://control-plane.example.com"
     )
-    mock_monitor.status = mock_status
+    resource_monitor._status = mock_status
     
     response = client.get("/status")
     
@@ -118,12 +135,11 @@ def test_get_status_starting(mock_monitor):
 # Start Monitoring Endpoint Tests
 
 @patch('chutes_agent.api.monitor.router.settings')
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_start_monitoring_success_when_stopped(mock_monitor, mock_settings):
+def test_start_monitoring_success_when_stopped(mock_settings, resource_monitor, client):
     """Test successful start monitoring when currently stopped"""
     mock_settings.cluster_name = "test-cluster"
-    mock_monitor.status = MonitoringState.STOPPED
-    mock_monitor.start = AsyncMock()
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor.start = AsyncMock()
     
     request_data = {"control_plane_url": "http://control-plane.example.com"}
     response = client.post("/start", json=request_data)
@@ -132,58 +148,60 @@ def test_start_monitoring_success_when_stopped(mock_monitor, mock_settings):
     response_data = response.json()
     assert response_data["message"] == "Monitoring started"
     assert response_data["cluster"] == "test-cluster"
-    mock_monitor.start.assert_called_once_with("http://control-plane.example.com")
+    resource_monitor.start.assert_called_once_with("http://control-plane.example.com")
 
 @patch('chutes_agent.api.monitor.router.settings')
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_start_monitoring_success_when_running(mock_monitor, mock_settings):
+def test_start_monitoring_failure_when_running(mock_settings, resource_monitor, client):
     """Test successful start monitoring when already running (restarts)"""
     mock_settings.cluster_name = "test-cluster"
-    mock_monitor.status = MonitoringState.RUNNING
-    mock_monitor.stop = AsyncMock()
-    mock_monitor.start = AsyncMock()
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.RUNNING)
+
+    resource_monitor.stop = AsyncMock()
+    resource_monitor.start = AsyncMock()
     
     request_data = {"control_plane_url": "http://new-control-plane.example.com"}
     response = client.post("/start", json=request_data)
     
-    assert response.status_code == 200
+    assert response.status_code == 409
     response_data = response.json()
-    assert response_data["message"] == "Monitoring started"
-    assert response_data["cluster"] == "test-cluster"
+    assert response_data["detail"] == "Monitoring process already running."
     
-    # Should stop existing monitoring first, then start new
-    mock_monitor.stop.assert_called_once()
-    mock_monitor.start.assert_called_once_with("http://new-control-plane.example.com")
+    # Should not interfer with existing process
+    resource_monitor.stop.assert_not_called()
+    resource_monitor.start.assert_not_called()
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_start_monitoring_invalid_payload(mock_monitor):
+def test_start_monitoring_invalid_payload(resource_monitor, client):
     """Test start monitoring with invalid payload"""
     request_data = {"invalid_field": "value"}
+    resource_monitor.stop = AsyncMock()
+    resource_monitor.start = AsyncMock()
+
     response = client.post("/start", json=request_data)
     
     assert response.status_code == 422  # Validation error
     
     # Should not call start method
-    mock_monitor.start.assert_not_called()
+    resource_monitor.start.assert_not_called()
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_start_monitoring_missing_url(mock_monitor):
+def test_start_monitoring_missing_url(resource_monitor, client):
     """Test start monitoring with missing control_plane_url"""
+    resource_monitor.stop = AsyncMock()
+    resource_monitor.start = AsyncMock()
+    
     request_data = {}
     response = client.post("/start", json=request_data)
     
     assert response.status_code == 422  # Validation error
     
     # Should not call start method
-    mock_monitor.start.assert_not_called()
+    resource_monitor.start.assert_not_called()
 
 @patch('chutes_agent.api.monitor.router.settings')
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_start_monitoring_failure(mock_monitor, mock_settings):
+def test_start_monitoring_failure(mock_settings, resource_monitor, client):
     """Test start monitoring failure"""
     mock_settings.cluster_name = "test-cluster"
-    mock_monitor.status = MonitoringState.STOPPED
-    mock_monitor.start = AsyncMock(side_effect=Exception("Connection failed"))
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor.start = AsyncMock(side_effect=Exception("Connection failed"))
     
     request_data = {"control_plane_url": "http://control-plane.example.com"}
     response = client.post("/start", json=request_data)
@@ -192,23 +210,7 @@ def test_start_monitoring_failure(mock_monitor, mock_settings):
     response_data = response.json()
     assert "Connection failed" in response_data["detail"]
 
-@patch('chutes_agent.api.monitor.router.settings')
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_start_monitoring_stop_failure(mock_monitor, mock_settings):
-    """Test start monitoring when stop fails"""
-    mock_settings.cluster_name = "test-cluster"
-    mock_monitor.status = MonitoringState.RUNNING
-    mock_monitor.stop = AsyncMock(side_effect=Exception("Stop failed"))
-    mock_monitor.start = AsyncMock()
-    
-    request_data = {"control_plane_url": "http://control-plane.example.com"}
-    response = client.post("/start", json=request_data)
-    
-    assert response.status_code == 500
-    response_data = response.json()
-    assert "Stop failed" in response_data["detail"]
-
-def test_start_monitoring_url_validation():
+def test_start_monitoring_url_validation(client):
     """Test start monitoring with various URL formats"""
     valid_urls = [
         "http://localhost:8080",
@@ -221,7 +223,7 @@ def test_start_monitoring_url_validation():
         with patch('chutes_agent.api.monitor.router.resource_monitor') as mock_monitor:
             with patch('chutes_agent.api.monitor.router.settings') as mock_settings:
                 mock_settings.cluster_name = "test-cluster"
-                mock_monitor.status = MonitoringState.STOPPED
+                mock_monitor.status = MonitoringStatus(state=MonitoringState.STOPPED)
                 mock_monitor.start = AsyncMock()
                 
                 request_data = {"control_plane_url": url}
@@ -232,44 +234,41 @@ def test_start_monitoring_url_validation():
 
 # Stop Monitoring Endpoint Tests
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_stop_monitoring_success(mock_monitor):
+def test_stop_monitoring_success(resource_monitor, client):
     """Test successful stop monitoring"""
-    mock_monitor.stop = AsyncMock()
+    resource_monitor.stop = AsyncMock()
     
-    response = client.post("/stop")
+    response = client.get("/stop")
     
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["message"] == "Monitoring stopped"
-    mock_monitor.stop.assert_called_once()
+    resource_monitor.stop.assert_called_once()
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_stop_monitoring_failure(mock_monitor):
+def test_stop_monitoring_failure(resource_monitor, client):
     """Test stop monitoring failure"""
-    mock_monitor.stop = AsyncMock(side_effect=Exception("Stop operation failed"))
+    resource_monitor.stop = AsyncMock(side_effect=Exception("Stop operation failed"))
     
-    response = client.post("/stop")
+    response = client.get("/stop")
     
     assert response.status_code == 500
     response_data = response.json()
     assert "Stop operation failed" in response_data["detail"]
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_stop_monitoring_when_already_stopped(mock_monitor):
+def test_stop_monitoring_when_already_stopped(resource_monitor, client):
     """Test stop monitoring when already stopped (should still succeed)"""
-    mock_monitor.stop = AsyncMock()
+    resource_monitor.stop = AsyncMock()
     
-    response = client.post("/stop")
+    response = client.get("/stop")
     
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["message"] == "Monitoring stopped"
-    mock_monitor.stop.assert_called_once()
+    resource_monitor.stop.assert_called_once()
 
 # Integration and Edge Case Tests
 
-def test_all_endpoints_registered():
+def test_all_endpoints_registered(app):
     """Test that all expected endpoints are registered"""
     routes = [route.path for route in app.routes]
     expected_routes = ["/health", "/status", "/start", "/stop"]
@@ -277,25 +276,24 @@ def test_all_endpoints_registered():
     for route in expected_routes:
         assert route in routes
 
-def test_endpoint_methods():
+def test_endpoint_methods(app):
     """Test that endpoints use correct HTTP methods"""
     route_methods = {route.path: route.methods for route in app.routes}
     
     assert "GET" in route_methods["/health"]
     assert "GET" in route_methods["/status"] 
     assert "POST" in route_methods["/start"]
-    assert "POST" in route_methods["/stop"]
+    assert "GET" in route_methods["/stop"]
 
 @patch('chutes_agent.api.monitor.router.settings')
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_monitoring_workflow_integration(mock_monitor, mock_settings):
+def test_monitoring_workflow_integration(mock_settings, resource_monitor, client):
     """Test complete monitoring workflow: health -> start -> status -> stop"""
     mock_settings.cluster_name = "integration-test-cluster"
     
     # Initially stopped
-    mock_monitor.status = MonitoringState.STOPPED
-    mock_monitor.start = AsyncMock()
-    mock_monitor.stop = AsyncMock()
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor.start = AsyncMock()
+    resource_monitor.stop = AsyncMock()
     
     # 1. Check health
     health_response = client.get("/health")
@@ -305,10 +303,10 @@ def test_monitoring_workflow_integration(mock_monitor, mock_settings):
     # 2. Start monitoring
     start_response = client.post("/start", json={"control_plane_url": "http://test.com"})
     assert start_response.status_code == 200
-    mock_monitor.start.assert_called_once_with("http://test.com")
+    resource_monitor.start.assert_called_once_with("http://test.com")
     
     # 3. Check status (simulate running state)
-    mock_monitor.status = MonitoringStatus(
+    resource_monitor._status = MonitoringStatus(
         state=MonitoringState.RUNNING,
         control_plane_url="http://test.com"
     )
@@ -317,15 +315,14 @@ def test_monitoring_workflow_integration(mock_monitor, mock_settings):
     assert status_response.json()["state"] == "running"
     
     # 4. Stop monitoring
-    stop_response = client.post("/stop")
+    stop_response = client.get("/stop")
     assert stop_response.status_code == 200
-    mock_monitor.stop.assert_called_once()
+    resource_monitor.stop.assert_called_once()
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_concurrent_start_requests(mock_monitor):
+def test_concurrent_start_requests(resource_monitor, client):
     """Test handling of concurrent start requests"""
-    mock_monitor.status = MonitoringState.STOPPED
-    mock_monitor.start = AsyncMock()
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor.start = AsyncMock()
     
     # Simulate multiple concurrent requests
     request_data = {"control_plane_url": "http://control-plane.example.com"}
@@ -339,10 +336,9 @@ def test_concurrent_start_requests(mock_monitor):
     for response in responses:
         assert response.status_code == 200
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_request_validation_edge_cases(mock_monitor):
+def test_request_validation_edge_cases(resource_monitor, client):
     """Test request validation with various edge cases"""
-    mock_monitor.status = MonitoringState.STOPPED
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
     
     # Test with None URL
     response = client.post("/start", json={"control_plane_url": None})
@@ -359,11 +355,10 @@ def test_request_validation_edge_cases(mock_monitor):
 # Error Handling and Logging Tests
 
 @patch('chutes_agent.api.monitor.router.logger')
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_start_monitoring_logs_errors(mock_monitor, mock_logger):
+def test_start_monitoring_logs_errors(mock_logger, resource_monitor, client):
     """Test that start monitoring logs errors appropriately"""
-    mock_monitor.status = MonitoringState.STOPPED
-    mock_monitor.start = AsyncMock(side_effect=Exception("Test error"))
+    resource_monitor._status = MonitoringStatus(state=MonitoringState.STOPPED)
+    resource_monitor.start = AsyncMock(side_effect=Exception("Test error"))
     
     request_data = {"control_plane_url": "http://control-plane.example.com"}
     response = client.post("/start", json=request_data)
@@ -377,12 +372,11 @@ def test_start_monitoring_logs_errors(mock_monitor, mock_logger):
     assert "Test error" in log_call_args
 
 @patch('chutes_agent.api.monitor.router.logger')
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_stop_monitoring_logs_errors(mock_monitor, mock_logger):
+def test_stop_monitoring_logs_errors(mock_logger, resource_monitor, client):
     """Test that stop monitoring logs errors appropriately"""
-    mock_monitor.stop = AsyncMock(side_effect=Exception("Stop error"))
+    resource_monitor.stop = AsyncMock(side_effect=Exception("Stop error"))
     
-    response = client.post("/stop")
+    response = client.get("/stop")
     
     assert response.status_code == 500
     mock_logger.error.assert_called_once()
@@ -392,23 +386,9 @@ def test_stop_monitoring_logs_errors(mock_monitor, mock_logger):
     assert "Failed to stop monitoring" in log_call_args
     assert "Stop error" in log_call_args
 
-@patch('chutes_agent.api.monitor.router.logger')
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_restart_monitoring_logs_info(mock_monitor, mock_logger):
-    """Test that restarting monitoring logs info message"""
-    mock_monitor.status = MonitoringState.RUNNING
-    mock_monitor.stop = AsyncMock()
-    mock_monitor.start = AsyncMock()
-    
-    request_data = {"control_plane_url": "http://control-plane.example.com"}
-    response = client.post("/start", json=request_data)
-    
-    assert response.status_code == 200
-    mock_logger.info.assert_called_once_with("Stopping existing monitoring task")
-
 # Performance and Resource Tests
 
-def test_health_check_performance():
+def test_health_check_performance(client):
     """Test that health check is fast and doesn't consume resources"""
     import time
     
@@ -423,11 +403,10 @@ def test_health_check_performance():
         # Health check should be very fast (< 100ms in tests)
         assert (end_time - start_time) < 0.1
 
-@patch('chutes_agent.api.monitor.router.resource_monitor')
-def test_status_endpoint_no_side_effects(mock_monitor):
+def test_status_endpoint_no_side_effects(resource_monitor, client):
     """Test that status endpoint doesn't modify state"""
     initial_status = MonitoringStatus(state=MonitoringState.RUNNING)
-    mock_monitor.status = initial_status
+    resource_monitor._status = initial_status
     
     # Call status endpoint multiple times
     for _ in range(5):
@@ -435,4 +414,4 @@ def test_status_endpoint_no_side_effects(mock_monitor):
         assert response.status_code == 200
     
     # Status should remain unchanged
-    assert mock_monitor.status == initial_status
+    assert resource_monitor.status == initial_status

@@ -20,6 +20,9 @@ ruff = "^0.12.2"
 wheel = "^0.45.1"
 pytest = "^8.4.1"
 
+[tool.poetry.scripts]
+graval-bootstrap = "graval_bootstrap.bootstrap:main"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

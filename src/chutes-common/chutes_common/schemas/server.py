@@ -8,7 +8,7 @@ from sqlalchemy import Column, String, DateTime, Integer, BigInteger, Float, Boo
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from chutes_miner.api.database import Base
+from chutes_common.schemas import Base
 
 
 class ServerArgs(BaseModel):
@@ -26,6 +26,7 @@ class Server(Base):
     validator = Column(String, nullable=False)
     name = Column(String, unique=True, nullable=False)
     ip_address = Column(String)
+    agent_api = Column(String, nullable=True)
     verification_port = Column(Integer)
     status = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

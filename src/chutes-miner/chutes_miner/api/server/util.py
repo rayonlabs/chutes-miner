@@ -12,6 +12,7 @@ import traceback
 import chutes_common.constants as cst
 from chutes_common.k8s import WatchEventType
 from chutes_common.monitoring.requests import StartMonitoringRequest
+from chutes_common.schemas.chute import Chute
 from chutes_miner.api.k8s.config import KubeConfig, MultiClusterKubeConfig
 from loguru import logger
 from kubernetes.client import (
@@ -40,8 +41,8 @@ from chutes_miner.api.k8s.constants import GRAVAL_JOB_PREFIX, GRAVAL_SVC_PREFIX
 from chutes_miner.api.k8s.operator import K8sOperator
 from chutes_miner.api.util import sse_message
 from chutes_miner.api.database import get_session
-from chutes_miner.api.server.schemas import Server, ServerArgs
-from chutes_miner.api.gpu.schemas import GPU
+from chutes_common.schemas.server import Server, ServerArgs
+from chutes_common.schemas.gpu import GPU
 from chutes_miner.api.exceptions import (
     DuplicateServer,
     NonEmptyServer,
@@ -84,8 +85,14 @@ async def get_server_kubeconfig(agent_url: str):
             f"{agent_url}/config/kubeconfig",
             headers=headers,
         ) as response:
-            data = await response.json()
-            return KubeConfig.from_dict(yaml.safe_load(data["kubeconfig"]))
+            if response.status != 200:
+                raise RuntimeError(f"Failed to retrieve kubeconfig from {agent_url}.")
+            
+            try:
+                data = await response.json()
+                return KubeConfig.from_dict(yaml.safe_load(data["kubeconfig"]))
+            except Exception as err:
+                raise RuntimeError(f"Failed to retrieve kubeconfig from {agent_url}:\n{err}")
         
 async def start_server_monitoring(agent_url: str):
     request = StartMonitoringRequest(
@@ -314,7 +321,8 @@ async def deploy_graval(
 
 async def track_server(
     validator: str, hourly_cost: float, node_object: V1Node, 
-    add_labels: Dict[str, str] = None, kubeconfig: Optional[KubeConfig] = None
+    add_labels: Dict[str, str] = None, agent_api: Optional[str] = None,
+    kubeconfig: Optional[KubeConfig] = None
 ) -> Tuple[V1Node, Server]:
     """
     Track a new kubernetes (worker/GPU) node in our inventory.
@@ -383,7 +391,8 @@ async def track_server(
             cpu_per_gpu=cpu_per_gpu,
             memory_per_gpu=memory_per_gpu,
             hourly_cost=hourly_cost,
-            kubeconfig = json.dumps(kubeconfig.to_dict())
+            kubeconfig = json.dumps(kubeconfig.to_dict()),
+            agent_api=agent_api
         )
         session.add(server)
         try:
@@ -480,51 +489,45 @@ async def bootstrap_server(
     async def _cleanup(delete_node: bool = True):
         await K8sOperator().cleanup_graval(node_object)
 
-        node_uid = node_object.metadata.uid
-        node_name = node_object.metadata.name
-        nice_name = node_name.replace(".", "-")
-
         if delete_node:
+            node_uid = node_object.metadata.uid
+            node_name = node_object.metadata.name
             logger.info(f"Purging failed server: {node_name=} {node_uid=}")
             gpu_ids = []
             validator = None
             async with get_session() as session:
-                node = (
+                server = (
                     (await session.execute(select(Server).where(Server.server_id == node_uid)))
                     .unique()
                     .scalar_one_or_none()
                 )
-                if node:
-                    gpu_ids = [gpu.gpu_id for gpu in node.gpus]
-                    validator = validator_by_hotkey(node.validator)
-                    await session.delete(node)
+                if server:
+                    gpu_ids = [gpu.gpu_id for gpu in server.gpus]
+                    validator = validator_by_hotkey(server.validator)
+                    await session.delete(server)
                 await session.commit()
 
-                if not gpu_ids:
-                    return
-
-                for gpu_id in gpu_ids:
-                    try:
-                        async with aiohttp.ClientSession(raise_for_status=True) as http_session:
-                            headers, _ = sign_request(purpose="nodes")
-                            async with http_session.delete(
-                                f"{validator.api}/nodes/{gpu_id}", headers=headers
-                            ) as resp:
-                                logger.success(
-                                    f"Successfully purged {gpu_id=} from validator={validator.hotkey}: {await resp.json()}"
-                                )
-                    except Exception as exc:
-                        logger.warning(
-                            f"Error purging {gpu_id=} from validator={validator.hotkey}: {exc}"
-                        )
-
-            nonlocal kubeconfig
-            if kubeconfig:
-                MultiClusterKubeConfig().remove_config(server_args.name)
+                if gpu_ids:
+                    for gpu_id in gpu_ids:
+                        try:
+                            async with aiohttp.ClientSession(raise_for_status=True) as http_session:
+                                headers, _ = sign_request(purpose="nodes")
+                                async with http_session.delete(
+                                    f"{validator.api}/nodes/{gpu_id}", headers=headers
+                                ) as resp:
+                                    logger.success(
+                                        f"Successfully purged {gpu_id=} from validator={validator.hotkey}: {await resp.json()}"
+                                    )
+                        except Exception as exc:
+                            logger.warning(
+                                f"Error purging {gpu_id=} from validator={validator.hotkey}: {exc}"
+                            )
 
             if server_args.agent_api:
-                # If adding a standalone cluster, need to start monitoring
+                # If adding a standalone cluster, need to stop monitoring
                 await stop_server_monitoring(server_args.agent_api)
+                logger.info(f"Stopped monitoring for {node_name=} {node_uid=}")
+
 
     yield sse_message(
         f"attempting to add node server_id={node_object.metadata.uid} to inventory...",
@@ -536,10 +539,6 @@ async def bootstrap_server(
             # Make sure this is available for deploying
             MultiClusterKubeConfig().add_config(kubeconfig)
 
-        if server_args.agent_api:
-            # If adding a standalone cluster, need to start monitoring
-            await start_server_monitoring(server_args.agent_api)
-
         node, server = await track_server(
             server_args.validator,
             server_args.hourly_cost,
@@ -549,6 +548,7 @@ async def bootstrap_server(
                 "chutes/validator": server_args.validator,
                 "chutes/worker": "true",
             },
+            agent_api=server_args.agent_api,
             kubeconfig=kubeconfig
         )
 
@@ -556,6 +556,15 @@ async def bootstrap_server(
         yield sse_message(
             f"server with server_id={node_object.metadata.uid} now tracked in database, provisioning graval...",
         )
+
+        if server_args.agent_api:
+            # If adding a standalone cluster, need to start monitoring
+            await start_server_monitoring(server_args.agent_api)
+
+            yield sse_message(
+                f"Started monitoring server_id={node_object.metadata.uid}, deploying graval...",
+            )
+
         graval_job, graval_svc = await deploy_graval(
             node, server_args.validator, server.cpu_per_gpu, server.memory_per_gpu
         )
@@ -620,6 +629,13 @@ async def bootstrap_server(
             error_message = f"GPU verification failed for {validator.hotkey}, aborting!"
             yield sse_message(error_message)
             raise GraValBootstrapFailure(error_message)
+        
+        if server_args.agent_api:
+            # If this is a mutli cluster setup, need to propagate existing Chute CMs to the cluster
+            async with get_session() as session:
+                chutes = (await session.execute(select(Chute))).unique().scalars()
+                for chute in chutes:
+                    await K8sOperator().create_code_config_map(chute)
 
     except Exception as exc:
         error_message = (

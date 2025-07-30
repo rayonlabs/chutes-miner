@@ -1,7 +1,8 @@
 import asyncio
 from dataclasses import dataclass, field
 from chutes_miner.api.database import get_session
-from chutes_miner.api.server.schemas import Server
+from chutes_common.schemas.server import Server
+from loguru import logger
 from sqlalchemy import select
 import yaml
 from typing import Dict, List, Optional
@@ -346,9 +347,11 @@ class MultiClusterKubeConfig:
 
         # Merge with prefix to avoid naming conflicts
         self.kubeconfig.merge(other_config)
+        logger.debug(f"Add config for {', '.join([c.name for c in other_config.clusters])} from kubeconfig.")
 
     def remove_config(self, context: str):
         self.kubeconfig.remove_context(context)
+        logger.debug(f"Removed config for {context} from kubeconfig.")
 
     def set_context(self, context_name: str):
         """Set the current context"""

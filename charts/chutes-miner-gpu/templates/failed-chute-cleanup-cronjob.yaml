@@ -4,11 +4,9 @@ metadata:
   name: failed-chute-cleanup
 spec:
   schedule: "* * * * *"
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
   concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       template:
@@ -22,5 +20,14 @@ spec:
           - name: cleanup
             image: {{ .Values.failedChuteCleanup.image }}
             imagePullPolicy: Always
-            command: ["kubectl", "delete", "pods", "--field-selector=status.phase=Failed", "-l", "chutes/chute=true", "-n", "chutes"]
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              kubectl delete pods --field-selector=status.phase=Failed -l chutes/chute=true -n chutes;
+              for svc in $(kubectl get svc -n chutes -l chutes/chute=true -o jsonpath='{.items[*].metadata.name}'); do
+                deployment_id=$(kubectl get svc ${svc} -n chutes -o jsonpath='{.spec.selector.chutes/deployment-id}');
+                if [ -n "$deployment_id" ] && ! kubectl get job -n chutes -l chutes/deployment-id=${deployment_id} -o jsonpath='{.items[*].metadata.name}' | grep -q .; then
+                  kubectl delete svc ${svc} -n chutes;
+                fi
+              done
           restartPolicy: OnFailure

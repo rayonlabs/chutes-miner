@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import Column, String, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from chutes_miner.api.database import Base
+from chutes_common.schemas import Base
 
 
 class VerificationArgs(BaseModel):
