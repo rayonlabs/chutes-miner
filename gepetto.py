@@ -349,7 +349,7 @@ class Gepetto:
                 logger.error(f"Error performing announcement loop: {exc}")
                 await asyncio.sleep(5)
 
-async def _autoscale(self):
+    async def _autoscale(self):
         """
         Autoscale chutes, based on metrics and server availability.
         """
