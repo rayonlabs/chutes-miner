@@ -349,7 +349,7 @@ class Gepetto:
                 logger.error(f"Error performing announcement loop: {exc}")
                 await asyncio.sleep(5)
 
-    async def _autoscale(self):
+async def _autoscale(self):
         """
         Autoscale chutes, based on metrics and server availability.
         """
@@ -469,21 +469,36 @@ class Gepetto:
             logger.info("No benefit in scaling, or no ability to do so...")
             return
 
-        # Sort by value and attempt to deploy the highest value chute
+        # Sort by value and attempt to deploy the highest value chutes
         chute_values.sort(key=lambda x: x[2], reverse=True)
-        best_validator, best_chute_id, best_value = chute_values[0]
-        if (
-            chute := await self.load_chute(
-                best_chute_id,
-                self.remote_chutes[best_validator][best_chute_id]["version"],
-                best_validator,
+        
+        # Try each chute in order of value until one succeeds
+        for validator, chute_id, value in chute_values:
+            chute = await self.load_chute(
+                chute_id,
+                self.remote_chutes[validator][chute_id]["version"],
+                validator,
             )
-        ) is not None:
+            if chute is None:
+                logger.warning(f"Failed to load chute {chute_id} for validator {validator}, trying next...")
+                continue
+                
             current_count = await self.count_non_job_deployments(
-                best_chute_id, chute.version, best_validator
+                chute_id, chute.version, validator
             )
-            logger.info(f"Scaling up {best_chute_id} for validator {best_validator}")
-            await self.scale_chute(chute, current_count + 1, preempt=False)
+            logger.info(f"Attempting to scale up {chute_id} for validator {validator}")
+            
+            try:
+                await self.scale_chute(chute, current_count + 1, preempt=False)
+            except DeploymentFailure:
+                logger.warning(f"Failued to deploy chute {chute_id}, trying next available chute")
+                continue
+            except Exception as exc:
+                logger.warning(f"Unknown error trying to deploy chute {chute_id} {exc}\n{traceback.format_exc()}")
+                return
+                
+            logger.info(f"Successfully scaled chute {chute_id} for validator {validator}")
+            return
 
     async def autoscaler(self):
         """
@@ -848,7 +863,10 @@ class Gepetto:
             chute = await self.get_chute(event_data["chute_id"], event_data["validator"])
         if chute:
             logger.info(f"Attempting to claim the bounty: {event_data}")
-            await self.scale_chute(chute, 1, preempt=True)
+            try:
+                await self.scale_chute(chute, 1, preempt=True)
+            except DeploymentFailure as exc:
+                logger.error(f"Failed to scale chute {chute.chute_id} for bounty!\n{exc}")
 
     @staticmethod
     async def remove_gpu_from_validator(validator: Validator, gpu_id: str):
@@ -1084,7 +1102,10 @@ class Gepetto:
             chute.chute_id, chute.version, chute.validator
         )
         if not current_count:
-            await self.scale_chute(chute, desired_count=desired_count, preempt=False)
+            try:
+                await self.scale_chute(chute, desired_count=desired_count, preempt=False)
+            except DeploymentFailure as exc:
+                logger.error(f"Failed to deploy new chute\n{exc}")
 
     async def rolling_update(self, event_data: Dict[str, Any]):
         """
@@ -1593,6 +1614,11 @@ class Gepetto:
                     # - select server with the fewest GPUs available which suite the chute, like bin-packing
                     # - select the cheapest server that is capable of running the chute
                     # - select the server which already has the image and/or model warm (would be custom)
+                    launch_token = None
+                    try:
+                        launch_token = await self.get_launch_token(chute)
+                    except Exception as exc:
+                        raise DeploymentFailure(f"Failed to get launch token for {chute.chute_id}\n{exc}\n{traceback.format_exc()}")
                     if (server := await self.optimal_scale_up_server(chute)) is None:
                         logger.warning(
                             f"No servers available to accept additional chute deployment: {chute.chute_id}"
@@ -1609,7 +1635,6 @@ class Gepetto:
                         )
                         deployment = None
                         try:
-                            launch_token = await self.get_launch_token(chute)
                             deployment_id = str(uuid.uuid4())
                             service = await k8s.create_service_for_deployment(chute, deployment_id)
                             deployment, k8s_dep = await k8s.deploy_chute(
@@ -1624,7 +1649,13 @@ class Gepetto:
                                 f"Successfully deployed {chute.chute_id=} on {server.server_id=}: {deployment.deployment_id=}"
                             )
                             if not launch_token:
-                                await self.announce_deployment(deployment)
+                                try:
+                                    await self.announce_deployment(deployment)
+                                except Exception as exc:
+                                    if deployment:
+                                        await self.undeploy(deployment.deployment_id)
+                                    raise DeploymentFailure(f"Failed to announce deployment for {chute.chute_id}n{exc}\n{traceback.format_exc()}")
+
                         except DeploymentFailure as exc:
                             logger.error(
                                 f"Error attempting to deploy {chute.chute_id=} on {server.server_id=}: {exc}\n{traceback.format_exc()}"
