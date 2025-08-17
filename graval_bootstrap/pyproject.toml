@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "graval-bootstrap"
-version = "0.2.5"
+version = "0.2.6"
 description = "chutes.ai miner -- graval bootstrapper"
 authors = ["Jon Durbin <jon@jondurbin.com>", "namoray <namoray@rayonlabs.ai>"]
 license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.10,<3.13"
 fastapi = "^0.115.5"
 uvicorn = "^0.32.0"
 substrate-interface = "^1.7.11"
