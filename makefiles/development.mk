@@ -24,8 +24,8 @@ build:
 				for stage_target in $$available_targets; do \
 					if [[ "$$stage_target" == production* ]]; then \
 						if [[ "$$stage_target" == *-* ]]; then \
-							gpu_suffix=$$(echo $$stage_target | sed 's/production-//'); \
-							image_tag="$$pkg_version-$$gpu_suffix"; \
+							suffix=$$(echo $$stage_target | sed 's/production-//'); \
+							image_tag="$$suffix-$$pkg_version"; \
 							image_name="$$pkg_name"; \
 						else \
 							image_tag="$$pkg_version"; \
@@ -40,13 +40,12 @@ build:
 							--build-arg PROJECT=$$pkg_name \
 							${args} .; \
 					elif [[ "$$stage_target" == development* ]]; then \
+						image_name="$${pkg_name}_dev"; \
 						if [[ "$$stage_target" == *-* ]]; then \
-							gpu_suffix=$$(echo $$stage_target | sed 's/development-//'); \
-							image_tag="$$pkg_version-$$gpu_suffix"; \
-							image_name="$${pkg_name}_dev"; \
+							suffix=$$(echo $$stage_target | sed 's/development-//'); \
+							image_tag="$$suffix-$$pkg_version"; \
 						else \
 							image_tag="$$pkg_version"; \
-							image_name="$${pkg_name}_dev"; \
 						fi; \
 						echo "Building development target: $$stage_target -> $$image_name:$$image_tag"; \
 						DOCKER_BUILDKIT=1 docker build --progress=plain --target $$stage_target \

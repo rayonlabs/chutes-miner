@@ -35,13 +35,16 @@ tag:
 								latest_tag="latest"; \
 							fi; \
 							if [ -n "$$tag_prefix" ]; then \
-								image_tag="$$tag_prefix-$$image_tag"; \
-								latest_tag="$$tag_prefix-$$latest_tag"; \
+								target_tag="$$tag_prefix-$$image_tag"; \
+								target_latest_tag="$$tag_prefix-$$latest_tag"; \
+							else \
+								target_tag="$$image_tag"; \
+								target_latest_tag="$$latest_tag"; \
 							fi; \
-							echo "docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$image_tag"; \
-							docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$image_tag; \
-							echo "docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$latest_tag"; \
-							docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$latest_tag; \
+							echo "docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$target_tag"; \
+							docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$target_tag; \
+							echo "docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$target_latest_tag"; \
+							docker tag $$pkg_name:$$image_tag $$registry/$$image_name:$$target_latest_tag; \
 						fi; \
 					done; \
 				else \
