@@ -1,0 +1,23 @@
+
+- name: Configure UFW rules for all nodes for communciation
+  hosts: all
+  become: yes
+  tasks:
+    - name: Allow all connections between nodes in inventory
+      ufw:
+        rule: allow
+        from_ip: "{{ item }}"
+      loop: "{{ groups['all'] | map('extract', hostvars, ['ansible_host']) | list }}"
+      when: item != ansible_host
+
+    - name: Allow all UDP connections from port range 30000-32767
+      ufw:
+        rule: allow
+        port: 30000:32767
+        proto: udp
+
+    - name: Allow all TCP connections from port range 30000-32767
+      ufw:
+        rule: allow
+        port: 30000:32767
+        proto: tcp
