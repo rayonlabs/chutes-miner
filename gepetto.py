@@ -6,6 +6,7 @@ import re
 import uuid
 import aiohttp
 import asyncio
+import hashlib
 import orjson as json
 import traceback
 import semver
@@ -1642,6 +1643,62 @@ class Gepetto:
         except Exception as exc:
             logger.error(f"Failed to refresh remote resources: {exc}")
             return
+
+        # First, let's make sure the chutes database locally is in sync...
+        chute_hashes = {}
+        async with get_session() as session:
+            chutes = (await session.execute(select(Chute))).unique().scalars().all()
+            for chute in chutes:
+                if chute.validator not in chute_hashes:
+                    chute_hashes[chute.validator] = {}
+                chute_hash = hashlib.sha256(
+                    "\n".join(
+                        [
+                            chute.name,
+                            chute.image,
+                            chute.code,
+                            chute.ref_str,
+                            f"{chute.gpu_count}",
+                            f"{chute.chutes_version}",
+                            f"{set(sorted(chute.supported_gpus))}",
+                        ]
+                    ).encode()
+                ).hexdigest()
+                chute_hashes[chute.validator][chute.chute_id] = chute_hash
+
+        for validator, chutes in self.remote_chutes.items():
+            for chute_id, chute_data in chutes.items():
+                chute_hash = hashlib.sha256(
+                    "\n".join(
+                        [
+                            chute_data["name"],
+                            chute_data["image"],
+                            chute_data["code"],
+                            chute_data["ref_str"],
+                            f"{chute_data['node_selector']['gpu_count']}",
+                            f"{chute_data['chutes_version']}",
+                            f"{set(sorted(chute_data['supported_gpus']))}",
+                        ]
+                    ).encode()
+                ).hexdigest()
+
+                # Ignore chutes that don't exist here since they'll be created later down this loop.
+                if chute_id not in chute_hashes.get(validator, {}):
+                    continue
+
+                if chute_hash != chute_hashes.get(validator, {}).get(chute_id):
+                    logger.warning(f"Local chute is outdated: {chute_id=} {chute_data['name']}")
+                    try:
+                        await self.chute_updated(
+                            {
+                                "chute_id": chute_id,
+                                "version": chute_data["version"],
+                                "validator": validator,
+                            }
+                        )
+                        logger.success(f"Successfully synchronized {chute_id=} to {chute_hash=}")
+                    except Exception:
+                        logger.warning(f"Failed to reconcile {chute_id=} with {chute_hash=}")
 
         # Get the chutes currently undergoing a rolling update.
         updating = {}
