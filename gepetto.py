@@ -1260,8 +1260,6 @@ class Gepetto:
             logger.warning(f"Will not scale up banned chute {chute.chute_id=}: {chute.ban_reason=}")
             return None
         supported_gpus = list(chute.supported_gpus)
-        if "h200" in supported_gpus and set(supported_gpus) - set(["h200"]):
-            supported_gpus = list(set(supported_gpus) - set(["h200"]))
         total_gpus_per_server = (
             select(Server.server_id, func.count(GPU.gpu_id).label("total_gpus"))
             .select_from(Server)
