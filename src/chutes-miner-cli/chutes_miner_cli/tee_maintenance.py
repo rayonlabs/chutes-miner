@@ -7,7 +7,7 @@ hotkey-based auth with X-Chutes-Hotkey / Signature / Nonce headers.
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, Optional
 
 import aiohttp
 import typer
@@ -16,7 +16,7 @@ from rich.table import Table
 from rich import box
 
 from chutes_miner_cli.constants import HOTKEY_ENVVAR, MINER_API_ENVVAR, VALIDATOR_API_ENVVAR
-from chutes_miner_cli.util import sign_request
+from chutes_miner_cli.util import sign_request, sort_servers, filter_server
 
 console = Console()
 
@@ -141,6 +141,12 @@ def register(app: typer.Typer) -> None:
         raw_json: bool = typer.Option(
             False, "--raw-json", help="Output raw JSON for programmatic use"
         ),
+        name: Optional[str] = typer.Option(
+            None,
+            "--name",
+            "-n",
+            help="Show only the server matching this name or ID",
+        ),
         hotkey: str = typer.Option(
             ..., help="Path to the hotkey file for your miner", envvar=HOTKEY_ENVVAR
         ),
@@ -160,6 +166,13 @@ def register(app: typer.Typer) -> None:
                         typer.echo(f"Error {resp.status}: {body}", err=True)
                         raise typer.Exit(1)
                     data = await resp.json()
+
+            data["servers"] = sort_servers(filter_server(data.get("servers"), name))
+            if name and not data["servers"]:
+                typer.echo(
+                    f"No server matching '{name}' found in maintenance status.", err=True
+                )
+                raise typer.Exit(1)
 
             if raw_json:
                 print(json.dumps(data, indent=2))

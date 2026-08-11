@@ -36,6 +36,33 @@ def get_signing_message(
         raise ValueError("Either payload_str or purpose must be provided")
 
 
+def sort_servers(servers: list | None) -> list:
+    """
+    Sort a list of server dicts consistently by name (case-insensitive),
+    falling back to server_id as a tiebreaker. Used across local-inventory,
+    remote-inventory, and tee maintenance-status so ordering is stable.
+    """
+    return sorted(
+        servers or [],
+        key=lambda s: ((s.get("name") or "").lower(), s.get("server_id") or ""),
+    )
+
+
+def filter_server(servers: list | None, name_or_id: str | None) -> list:
+    """
+    Filter server dicts down to those matching name_or_id exactly, by either
+    name or server_id (same semantics as the miner API lock/unlock/delete
+    routes). Returns the list unchanged when name_or_id is falsy.
+    """
+    if not name_or_id:
+        return servers or []
+    return [
+        s
+        for s in (servers or [])
+        if s.get("name") == name_or_id or s.get("server_id") == name_or_id
+    ]
+
+
 def sign_request(
     hotkey: str,
     payload: Dict[str, Any] | str | None = None,

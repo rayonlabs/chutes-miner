@@ -22,7 +22,7 @@ from chutes_miner_cli import tee_cache
 from chutes_miner_cli import tee_images
 from chutes_miner_cli import tee_maintenance
 from chutes_miner_cli import tee_status
-from chutes_miner_cli.util import sign_request
+from chutes_miner_cli.util import sign_request, sort_servers, filter_server
 from loguru import logger
 import yaml
 
@@ -340,6 +340,12 @@ def display_remote_inventory(servers):
 
 def local_inventory(
     raw_json: bool = typer.Option(False, help="Display raw JSON output"),
+    name: Optional[str] = typer.Option(
+        None,
+        "--name",
+        "-n",
+        help="Show only the server matching this name or ID",
+    ),
     hotkey: str = typer.Option(
         ...,
         help="Path to the hotkey file for your miner",
@@ -356,7 +362,7 @@ def local_inventory(
     """
 
     async def _local_inventory():
-        nonlocal hotkey, miner_api, raw_json
+        nonlocal hotkey, miner_api, raw_json, name
         async with aiohttp.ClientSession(raise_for_status=True) as session:
             headers, _ = sign_request(hotkey, purpose="management")
             async with session.get(
@@ -365,6 +371,12 @@ def local_inventory(
                 timeout=30,
             ) as resp:
                 inventory = await resp.json()
+                inventory = sort_servers(filter_server(inventory, name))
+                if name and not inventory:
+                    typer.echo(
+                        f"No server matching '{name}' found in local inventory.", err=True
+                    )
+                    raise typer.Exit(1)
                 if raw_json:
                     print(json.dumps(inventory, indent=2))
                 else:
@@ -375,6 +387,12 @@ def local_inventory(
 
 def remote_inventory(
     raw_json: bool = typer.Option(False, help="Display raw JSON output"),
+    name: Optional[str] = typer.Option(
+        None,
+        "--name",
+        "-n",
+        help="Show only the server matching this name or ID",
+    ),
     hotkey: str = typer.Option(
         ...,
         help="Path to the hotkey file for your miner",
@@ -391,7 +409,7 @@ def remote_inventory(
     """
 
     async def _remote_inventory():
-        nonlocal hotkey, validator_api, raw_json
+        nonlocal hotkey, validator_api, raw_json, name
         async with aiohttp.ClientSession(raise_for_status=True) as session:
             headers, _ = sign_request(hotkey, purpose="miner", remote=True)
             async with session.get(
@@ -420,6 +438,12 @@ def remote_inventory(
                                 "inst_verified_at": item["last_verified_at"],
                             }
                         )
+            servers = sort_servers(filter_server(servers, name))
+            if name and not servers:
+                typer.echo(
+                    f"No server matching '{name}' found in remote inventory.", err=True
+                )
+                raise typer.Exit(1)
             if raw_json:
                 print(json.dumps({"servers": servers}, indent=2))
             else:
