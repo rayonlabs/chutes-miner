@@ -696,12 +696,18 @@ class K8sOperator(abc.ABC):
         nodes = []
         try:
             node_list = self._get_nodes()
-            for node in node_list.items:
-                node_info = await self._extract_node_info(node)
-                nodes.append(node_info)
         except Exception as e:
             logger.error(f"Failed to get Kubernetes nodes: {e}")
             raise
+        # Extract per-node so one malformed node (e.g. a node reporting no GPU capacity yet)
+        # is skipped with a warning rather than taking down the whole reconcile loop.
+        for node in node_list.items:
+            try:
+                node_info = await self._extract_node_info(node)
+                nodes.append(node_info)
+            except Exception as e:
+                node_name = getattr(getattr(node, "metadata", None), "name", "unknown")
+                logger.warning(f"Failed to extract node info for {node_name=}, skipping node: {e}")
         return nodes
 
     @abc.abstractmethod
@@ -749,11 +755,14 @@ class K8sOperator(abc.ABC):
             total_memory_gb = int(int(raw_mem.replace("Mi", "")) / 1024) - 6
         elif raw_mem.endswith("Gi"):
             total_memory_gb = int(raw_mem.replace("Gi", "")) - 6
-        memory_gb_per_gpu = (
-            1
-            if total_memory_gb <= gpu_count
-            else min(gpu_mem_gb, math.floor(total_memory_gb * 0.8 / gpu_count))
-        )
+        if gpu_count > 0:
+            memory_gb_per_gpu = (
+                1
+                if total_memory_gb <= gpu_count
+                else min(gpu_mem_gb, math.floor(total_memory_gb * 0.8 / gpu_count))
+            )
+        else:
+            memory_gb_per_gpu = 0
 
         # Get disk space information
         disk_info = await self.get_node_disk_info(node.metadata.name)
